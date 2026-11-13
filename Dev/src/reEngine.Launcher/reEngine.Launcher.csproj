@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <AssemblyName>reEngine</AssemblyName>
+    <RootNamespace>reEngine.Launcher</RootNamespace>
+    <ApplicationIcon>..\..\assets\reEngine.ico</ApplicationIcon>
+    <PublishSingleFile>true</PublishSingleFile>
+    <SelfContained>false</SelfContained>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Reference Include="Foundation.Launcher">
+      <HintPath>..\..\lib\Foundation.Launcher.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <EmbeddedResource Include="..\..\lib\Foundation.Launcher.dll" LogicalName="Foundation.Launcher.dll" />
+  </ItemGroup>
+
+</Project>

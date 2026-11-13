@@ -1,0 +1,50 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+    <AssemblyName>reEngine.Installer</AssemblyName>
+    <RootNamespace>reEngine.Installer</RootNamespace>
+    <ApplicationTitle>reEngine Setup</ApplicationTitle>
+    <ApplicationIcon>..\..\assets\reEngine.ico</ApplicationIcon>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\reEngine.Core\reEngine.Core.csproj">
+      <Private>false</Private>
+      <ReferenceOutputAssembly>true</ReferenceOutputAssembly>
+    </ProjectReference>
+    <Reference Include="Foundation.Core">
+      <HintPath>..\..\lib\Foundation.Core.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Foundation.Installer">
+      <HintPath>..\..\lib\Foundation.Installer.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+
+  <Target Name="CompressEmbeddedAssemblies"
+          DependsOnTargets="ResolveProjectReferences"
+          BeforeTargets="AssignTargetPaths;PrepareResourceNames;PrepareResources">
+    <MakeDir Directories="$(IntermediateOutputPath)" />
+    <PropertyGroup>
+      <_ReEngineCoreOut>$(MSBuildProjectDirectory)\..\reEngine.Core\bin\$(Configuration)\net8.0\reEngine.Core.dll</_ReEngineCoreOut>
+    </PropertyGroup>
+    <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -Command &quot;$files = @('$(MSBuildProjectDirectory)\..\..\lib\Foundation.Core.dll','$(MSBuildProjectDirectory)\..\..\lib\Foundation.Installer.dll','$(_ReEngineCoreOut)'); foreach ($src in $files) { if (-not (Test-Path $src)) { throw ('Missing assembly: ' + $src) }; $name = [System.IO.Path]::GetFileName($src); $dst = Join-Path '$(MSBuildProjectDirectory)\$(IntermediateOutputPath)' ($name + '.gz'); $bytes = [System.IO.File]::ReadAllBytes($src); $fs = [System.IO.File]::Create($dst); try { $gz = New-Object System.IO.Compression.GZipStream($fs, [System.IO.Compression.CompressionLevel]::Optimal); try { $gz.Write($bytes, 0, $bytes.Length) } finally { $gz.Dispose() } } finally { $fs.Dispose() } }&quot;" />
+    <ItemGroup>
+      <EmbeddedResource Remove="$(IntermediateOutputPath)Foundation.Core.dll.gz;$(IntermediateOutputPath)Foundation.Installer.dll.gz;$(IntermediateOutputPath)reEngine.Core.dll.gz" />
+      <EmbeddedResource Include="$(IntermediateOutputPath)Foundation.Core.dll.gz" LogicalName="Foundation.Core.dll.gz" />
+      <EmbeddedResource Include="$(IntermediateOutputPath)Foundation.Installer.dll.gz" LogicalName="Foundation.Installer.dll.gz" />
+      <EmbeddedResource Include="$(IntermediateOutputPath)reEngine.Core.dll.gz" LogicalName="reEngine.Core.dll.gz" />
+    </ItemGroup>
+  </Target>
+
+  <ItemGroup Condition="'$(InstallerPayloadZip)' != '' and Exists('$(InstallerPayloadZip)')">
+    <EmbeddedResource Include="$(InstallerPayloadZip)"
+                      LogicalName="reEngine.Installer.Embedded.payload.zip" />
+  </ItemGroup>
+
+</Project>
