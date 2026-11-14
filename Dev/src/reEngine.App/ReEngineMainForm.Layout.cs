@@ -190,7 +190,9 @@ internal sealed partial class ReEngineMainForm
         int pillRight = w - pad;
         foreach (Label pill in new[] { _lblUpdatePill, _lblAssocPill, _lblDaemonPill })
         {
-            pill.Size = new Size(Math.Max(96, pill.PreferredWidth + 16), 24);
+            int measured = TextRenderer.MeasureText(pill.Text ?? string.Empty, pill.Font).Width;
+            int pillWidth = Math.Max(96, Math.Max(pill.PreferredWidth, measured) + 18);
+            pill.Size = new Size(pillWidth, 24);
             pillRight -= pill.Width;
             pill.Location = new Point(pillRight, 14);
             pillRight -= 8;
@@ -231,7 +233,8 @@ internal sealed partial class ReEngineMainForm
         ForeColor = accent,
         BackColor = Surface3,
         Font = new Font("Segoe UI Semibold", 8.25f, FontStyle.Bold),
-        TextAlign = ContentAlignment.MiddleCenter
+        TextAlign = ContentAlignment.MiddleCenter,
+        UseMnemonic = false
     };
 
     private static Button CreateActionButton(string text, Color back, Color fore)

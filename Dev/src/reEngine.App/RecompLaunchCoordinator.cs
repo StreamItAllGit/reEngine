@@ -1,9 +1,11 @@
 // @module: reEngine.App.RecompLaunchCoordinator
-// @purpose: Orchestrates .recomp manifest loading, data\rom preload discovery, track-safe engine resolution, non-blocking update check, and guarded launch.
-// @depends-on: System, System.Diagnostics, System.IO, System.Threading, System.Threading.Tasks, Foundation.Core, reEngine.Core
-// @exports: RecompLaunchCoordinator
+// @purpose: Orchestrates .recomp manifest loading, data\rom preload discovery, track-safe engine resolution, per-module isolation, and guarded launch.
+// @depends-on: System, System.Collections.Generic, System.Diagnostics, System.Globalization, System.IO, System.Linq, System.Text.RegularExpressions, System.Threading, System.Threading.Tasks, Foundation.Core, reEngine.Core
+// @exports: ChildLaunchPlan, RecompLaunchCoordinator
 
 using System.Diagnostics;
+using System.Globalization;
+using System.Text.RegularExpressions;
 using Foundation.Core;
 using reEngine.Core.Manifests;
 using reEngine.Core.Resolution;
@@ -11,10 +13,19 @@ using reEngine.Core.Updates;
 
 namespace reEngine.App;
 
-internal sealed class RecompLaunchCoordinator
+internal sealed record ChildLaunchPlan(
+    string ModuleDataDirectory,
+    string ModuleConfigPath,
+    string ModuleLogDirectory,
+    IReadOnlyList<string> Arguments);
+
+internal sealed partial class RecompLaunchCoordinator
 {
     private readonly UpdateCoordinator _updateCoordinator;
     private readonly Action<string, string> _log;
+
+    [GeneratedRegex("^[a-z0-9][a-z0-9-]*$", RegexOptions.CultureInvariant)]
+    private static partial Regex ModuleSlugRegex();
 
     public RecompLaunchCoordinator(UpdateCoordinator updateCoordinator, Action<string, string> log)
     {
@@ -22,12 +33,22 @@ internal sealed class RecompLaunchCoordinator
         _log = log ?? throw new ArgumentNullException(nameof(log));
     }
 
+    public Task<int> LaunchAsync(
+        string packagePath,
+        string enginesDir,
+        ReEngineSettings settings,
+        SandboxEnvironment sandbox,
+        string? sandboxBoundary,
+        CancellationToken ct) =>
+        LaunchAsync(packagePath, enginesDir, settings, sandbox, sandboxBoundary, new RecompLaunchOptions(), ct);
+
     public async Task<int> LaunchAsync(
         string packagePath,
         string enginesDir,
         ReEngineSettings settings,
         SandboxEnvironment sandbox,
         string? sandboxBoundary,
+        RecompLaunchOptions? launchOptions,
         CancellationToken ct)
     {
         string fullPkgPath = Path.GetFullPath(packagePath);
@@ -37,6 +58,8 @@ internal sealed class RecompLaunchCoordinator
         }
 
         RecompPackageLoadResult loaded = RecompPackageReader.Load(fullPkgPath);
+        ChildLaunchPlan plan = BuildChildLaunchPlan(loaded, sandbox, sandboxBoundary, launchOptions);
+
         _log("INFO", $"Loaded module '{loaded.Manifest.ModuleId}' v{loaded.Manifest.Version} (engine={loaded.Manifest.EngineId}, track={loaded.Manifest.CompatibleEngineTrack}).");
         _log("INFO", $"Preload ROM directory '{loaded.PreloadMedia.PreloadDirectory}' exists={loaded.PreloadMedia.DirectoryExists}, files={loaded.PreloadMedia.DiscoveredMediaFiles.Count}, primary='{loaded.PreloadMedia.PrimaryMediaPath ?? "none"}'.");
 
@@ -58,13 +81,120 @@ internal sealed class RecompLaunchCoordinator
 
         if (sandbox.DryRun)
         {
-            string drySummary = $"[DRY-RUN] Would launch '{resolution.SelectedEngine.ExecutablePath}' for '{fullPkgPath}' (preload='{loaded.PreloadMedia.PrimaryMediaPath ?? "none"}').";
+            string argsSummary = string.Join(' ', plan.Arguments.Select(QuoteArg));
+            string drySummary = $"[DRY-RUN] Would launch '{resolution.SelectedEngine.ExecutablePath}' for '{fullPkgPath}' (preload='{loaded.PreloadMedia.PrimaryMediaPath ?? "none"}', args='{argsSummary}').";
             _log("INFO", drySummary);
             Console.WriteLine(drySummary);
             return 0;
         }
 
-        return await SpawnEngineAsync(resolution.SelectedEngine, loaded, sandbox, ct).ConfigureAwait(false);
+        return await SpawnEngineAsync(resolution.SelectedEngine, plan, ct).ConfigureAwait(false);
+    }
+
+    internal static ChildLaunchPlan BuildChildLaunchPlan(
+        RecompPackageLoadResult loaded,
+        SandboxEnvironment sandbox,
+        string? sandboxBoundary,
+        RecompLaunchOptions? launchOptions = null)
+    {
+        ArgumentNullException.ThrowIfNull(loaded);
+        ArgumentNullException.ThrowIfNull(sandbox);
+
+        RecompLaunchOptions opts = launchOptions ?? new RecompLaunchOptions();
+        string moduleId = loaded.Manifest.ModuleId?.Trim() ?? string.Empty;
+        if (!ModuleSlugRegex().IsMatch(moduleId))
+        {
+            throw new InvalidOperationException(
+                $"Fail-Closed Containment Violation: invalid moduleId '{loaded.Manifest.ModuleId}'; expected lowercase slug matching ^[a-z0-9][a-z0-9-]*$.");
+        }
+
+        bool isContained = sandbox.TestMode || sandbox.IsContainedSandbox;
+        string? effectiveBoundary = isContained
+            ? (!string.IsNullOrWhiteSpace(sandboxBoundary) ? sandboxBoundary : sandbox.DataDirectory)
+            : null;
+
+        string moduleDataDir = Path.GetFullPath(Path.Combine(sandbox.DataDirectory, "modules", moduleId));
+        if (effectiveBoundary is not null)
+        {
+            moduleDataDir = SandboxEnvironment.AssertPathContained(moduleDataDir, effectiveBoundary);
+        }
+
+        string moduleConfigPath = Path.Combine(moduleDataDir, "settings.json");
+        if (!string.IsNullOrWhiteSpace(opts.ConfigPathOverride))
+        {
+            string candidateConfig = Path.GetFullPath(opts.ConfigPathOverride.Trim());
+            if (IsPathInsideDirectory(candidateConfig, moduleDataDir))
+            {
+                moduleConfigPath = candidateConfig;
+            }
+        }
+        if (effectiveBoundary is not null)
+        {
+            moduleConfigPath = SandboxEnvironment.AssertPathContained(moduleConfigPath, effectiveBoundary);
+        }
+
+        string moduleLogDir = !string.IsNullOrWhiteSpace(opts.LogDirectoryOverride)
+            ? Path.GetFullPath(opts.LogDirectoryOverride.Trim())
+            : Path.Combine(moduleDataDir, "logs");
+        if (effectiveBoundary is not null)
+        {
+            moduleLogDir = SandboxEnvironment.AssertPathContained(moduleLogDir, effectiveBoundary);
+        }
+
+        string? fixturePath = ResolveOptionalContainedPath(opts.FixturePath, effectiveBoundary);
+        string? screenshotPath = ResolveOptionalContainedPath(opts.DumpScreenshotPath, effectiveBoundary);
+        string? audioPath = ResolveOptionalContainedPath(opts.DumpAudioPath, effectiveBoundary);
+        string? inputScriptPath = ResolveOptionalContainedPath(opts.InputScriptPath, effectiveBoundary);
+
+        var args = new List<string>
+        {
+            "--module", loaded.PackagePath
+        };
+        if (!string.IsNullOrWhiteSpace(loaded.PreloadMedia.PrimaryMediaPath))
+        {
+            args.Add("--preload-media");
+            args.Add(loaded.PreloadMedia.PrimaryMediaPath);
+        }
+        if (opts.ShouldWaitForExit) args.Add("--wait");
+        if (sandbox.TestMode) args.Add("--test-mode");
+        if (opts.ShouldRunHeadless || sandbox.Headless) args.Add("--headless");
+        if (opts.ShouldShowVisibleTest || sandbox.VisibleTest) args.Add("--visible-test");
+
+        args.Add("--data-dir");
+        args.Add(moduleDataDir);
+        args.Add("--config");
+        args.Add(moduleConfigPath);
+        args.Add("--log-dir");
+        args.Add(moduleLogDir);
+
+        if (opts.ShouldEnableRuntimeLogs) args.Add("--enable-logs");
+        if (opts.Frames is int frames)
+        {
+            args.Add("--frames");
+            args.Add(frames.ToString(CultureInfo.InvariantCulture));
+        }
+        if (fixturePath is not null)
+        {
+            args.Add("--fixture");
+            args.Add(fixturePath);
+        }
+        if (screenshotPath is not null)
+        {
+            args.Add("--dump-screenshot");
+            args.Add(screenshotPath);
+        }
+        if (audioPath is not null)
+        {
+            args.Add("--dump-audio");
+            args.Add(audioPath);
+        }
+        if (inputScriptPath is not null)
+        {
+            args.Add("--input-script");
+            args.Add(inputScriptPath);
+        }
+
+        return new ChildLaunchPlan(moduleDataDir, moduleConfigPath, moduleLogDir, args);
     }
 
     private async Task TryNonBlockingUpdateCheckAsync(
@@ -93,7 +223,7 @@ internal sealed class RecompLaunchCoordinator
                 ct: timeoutCts.Token).ConfigureAwait(false);
             _log("INFO", $"Launch update check: {outcome.StatusMessage}");
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not InvalidOperationException)
         {
             _log("WARN", $"Non-blocking update check skipped: {ex.Message}");
         }
@@ -101,28 +231,21 @@ internal sealed class RecompLaunchCoordinator
 
     private async Task<int> SpawnEngineAsync(
         InstalledEngineCandidate engine,
-        RecompPackageLoadResult loaded,
-        SandboxEnvironment sandbox,
+        ChildLaunchPlan plan,
         CancellationToken ct)
     {
+        Directory.CreateDirectory(plan.ModuleDataDirectory);
+        Directory.CreateDirectory(plan.ModuleLogDirectory);
+
         var psi = new ProcessStartInfo
         {
             FileName = engine.ExecutablePath,
             WorkingDirectory = engine.EngineDirectory,
             UseShellExecute = false
         };
-        psi.ArgumentList.Add("--module");
-        psi.ArgumentList.Add(loaded.PackagePath);
-        if (!string.IsNullOrWhiteSpace(loaded.PreloadMedia.PrimaryMediaPath))
+        foreach (string arg in plan.Arguments)
         {
-            psi.ArgumentList.Add("--preload-media");
-            psi.ArgumentList.Add(loaded.PreloadMedia.PrimaryMediaPath);
-        }
-        if (sandbox.TestMode)
-        {
-            psi.ArgumentList.Add("--test-mode");
-            psi.ArgumentList.Add("--data-dir");
-            psi.ArgumentList.Add(sandbox.DataDirectory);
+            psi.ArgumentList.Add(arg);
         }
 
         using var guard = new JobObjectGuard();
@@ -136,4 +259,25 @@ internal sealed class RecompLaunchCoordinator
         await proc.WaitForExitAsync(ct).ConfigureAwait(false);
         return proc.ExitCode;
     }
+
+    private static string? ResolveOptionalContainedPath(string? rawPath, string? boundary)
+    {
+        if (string.IsNullOrWhiteSpace(rawPath))
+        {
+            return null;
+        }
+        string fullPath = Path.GetFullPath(rawPath.Trim());
+        return boundary is not null ? SandboxEnvironment.AssertPathContained(fullPath, boundary) : fullPath;
+    }
+
+    private static bool IsPathInsideDirectory(string candidatePath, string rootDir)
+    {
+        string fullCandidate = Path.GetFullPath(candidatePath).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        string fullRoot = Path.GetFullPath(rootDir).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        return string.Equals(fullCandidate, fullRoot, StringComparison.OrdinalIgnoreCase) ||
+               fullCandidate.StartsWith(fullRoot + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string QuoteArg(string arg) =>
+        arg.IndexOfAny([' ', '"', '\t']) >= 0 ? $"\"{arg}\"" : arg;
 }

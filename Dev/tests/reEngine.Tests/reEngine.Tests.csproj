@@ -19,4 +19,10 @@
     </Reference>
   </ItemGroup>
 
+  <ItemGroup>
+    <Compile Include="..\..\src\reEngine.Launcher\LauncherArgsHelper.cs" Link="Linked\LauncherArgsHelper.cs" />
+    <Compile Include="..\..\src\reEngine.App\RecompLaunchOptions.cs" Link="Linked\RecompLaunchOptions.cs" />
+    <Compile Include="..\..\src\reEngine.App\RecompLaunchCoordinator.cs" Link="Linked\RecompLaunchCoordinator.cs" />
+  </ItemGroup>
+
 </Project>

@@ -1,8 +1,9 @@
 // @module: reEngine.App.ReEngineMainForm
 // @purpose: Dark Slate WinForms Suite Manager interaction logic, settings persistence, association triggers, and --visible-test showcase capture.
-// @depends-on: System, System.Drawing, System.Drawing.Imaging, System.IO, System.Reflection, System.Runtime.InteropServices, System.Windows.Forms, Foundation.Core, reEngine.Core
+// @depends-on: System, System.Drawing, System.Drawing.Imaging, System.IO, System.Linq, System.Reflection, System.Runtime.InteropServices, System.Windows.Forms, Foundation.Core, reEngine.Core
 // @exports: ReEngineMainForm
 
+using System.ComponentModel;
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.Reflection;
@@ -28,6 +29,7 @@ internal sealed partial class ReEngineMainForm : Form
     private readonly IFileAssociationStore _assocStore;
     private readonly Action<string, string> _log;
     private readonly bool _visibleTestShowcase;
+    private readonly string? _sandboxBoundary;
 
     private ReEngineSettings _settings;
     private System.Windows.Forms.Timer? _showcaseTimer;
@@ -40,7 +42,8 @@ internal sealed partial class ReEngineMainForm : Form
         UpdateCoordinator updateCoordinator,
         IFileAssociationStore assocStore,
         Action<string, string> log,
-        bool visibleTestShowcase = false)
+        bool visibleTestShowcase = false,
+        string? sandboxBoundary = null)
     {
         _sandbox = sandbox ?? throw new ArgumentNullException(nameof(sandbox));
         _enginesDir = enginesDir ?? throw new ArgumentNullException(nameof(enginesDir));
@@ -48,6 +51,7 @@ internal sealed partial class ReEngineMainForm : Form
         _assocStore = assocStore ?? throw new ArgumentNullException(nameof(assocStore));
         _log = log ?? throw new ArgumentNullException(nameof(log));
         _visibleTestShowcase = visibleTestShowcase;
+        _sandboxBoundary = sandboxBoundary;
         _settings = _updateCoordinator.LoadSettings().Value;
 
         Text = $"reEngine — Suite Router & Engine Manager (v{ReEnginePackagingConstants.Version})";
@@ -60,7 +64,6 @@ internal sealed partial class ReEngineMainForm : Form
 
         TryApplyEmbeddedIcon();
         InitializeControls();
-        LayoutControls();
         RefreshAllState();
 
         if (_visibleTestShowcase)
@@ -107,7 +110,10 @@ internal sealed partial class ReEngineMainForm : Form
                 Icon = new Icon(iconStream);
             }
         }
-        catch { /* ignore icon load failure */ }
+        catch (Exception ex) when (ex is IOException or InvalidOperationException or Win32Exception or ArgumentException)
+        {
+            _log("WARN", $"Embedded icon load skipped: {ex.Message}");
+        }
     }
 
     private void RefreshAllState()
@@ -141,6 +147,7 @@ internal sealed partial class ReEngineMainForm : Form
         _lblStatusText.Text = engines.Count > 0
             ? $"Discovered {engines.Count} side-by-side engine installation(s) under '{_enginesDir}'."
             : $"No installed platform engines found under '{_enginesDir}'.";
+        LayoutControls();
     }
 
     private void OnRegisterAssociationClicked()
@@ -157,29 +164,21 @@ internal sealed partial class ReEngineMainForm : Form
         _btnCheckUpdates.Enabled = false;
         _lblUpdatePill.Text = "CHECKING";
         _lblUpdatePill.ForeColor = AccentCyan;
+        LayoutControls();
         try
         {
             _settings.ShouldCheckUpdates = _chkCheckUpdates.Checked;
             _settings.ShouldAutoStagePatches = _chkAutoStage.Checked;
             var resolver = new EngineVersionResolver();
-            InstalledEngineCandidate? primary = resolver.DiscoverInstalledEngines(_enginesDir).FirstOrDefault();
-            string engId = primary?.EngineId ?? "reStation";
-            SemVer ver = primary?.Version ?? new SemVer(0, 1, 0);
-            UpdateCheckOutcome outcome = await _updateCoordinator.CheckAndStageAsync(
-                _settings,
-                engId,
-                ver,
-                $"{ver.Major}.{ver.Minor}.x",
-                _settings.LastUpdateFeedUrl);
+            IReadOnlyList<InstalledEngineCandidate> engines = resolver.DiscoverInstalledEngines(_enginesDir);
 
-            _lblUpdatePill.Text = outcome.BreakingUpdateAvailable
-                ? "BREAKING AVAILABLE"
-                : (outcome.CompatiblePatchStaged ? "PATCH STAGED" : "UP TO DATE");
-            _lblUpdatePill.ForeColor = outcome.BreakingUpdateAvailable
-                ? AccentWarning
-                : (outcome.CompatiblePatchStaged ? AccentSuccess : AccentCyan);
-            _lblStatusText.Text = outcome.StatusMessage;
-            _log("INFO", $"UI update check: {outcome.StatusMessage}");
+            MultiEngineUpdateSweepResult sweep = await _updateCoordinator.CheckAllInstalledEnginesAsync(
+                _settings,
+                engines,
+                _settings.LastUpdateFeedUrl,
+                allowedLocalFeedRoot: _sandboxBoundary);
+
+            ApplySweepStatus(sweep);
         }
         catch (Exception ex)
         {
@@ -191,7 +190,48 @@ internal sealed partial class ReEngineMainForm : Form
         finally
         {
             _btnCheckUpdates.Enabled = true;
+            LayoutControls();
         }
+    }
+
+    private void ApplySweepStatus(MultiEngineUpdateSweepResult sweep)
+    {
+        if (sweep.NetworkUnavailable)
+        {
+            _lblUpdatePill.Text = "OFFLINE / SKIPPED";
+            _lblUpdatePill.ForeColor = AccentWarning;
+            _lblStatusText.Text = sweep.SummaryMessage;
+            _log("WARN", $"UI update check: {sweep.SummaryMessage}");
+            return;
+        }
+
+        bool anyBreaking = sweep.Outcomes.Any(o => o.BreakingUpdateAvailable);
+        bool anyStaged = sweep.Outcomes.Any(o => o.CompatiblePatchStaged);
+        bool anyAvailable = sweep.Outcomes.Any(o => o.CompatiblePatchAvailable);
+
+        if (anyBreaking)
+        {
+            _lblUpdatePill.Text = "BREAKING AVAILABLE";
+            _lblUpdatePill.ForeColor = AccentWarning;
+        }
+        else if (anyStaged)
+        {
+            _lblUpdatePill.Text = "PATCH STAGED";
+            _lblUpdatePill.ForeColor = AccentSuccess;
+        }
+        else if (anyAvailable)
+        {
+            _lblUpdatePill.Text = "PATCH AVAILABLE";
+            _lblUpdatePill.ForeColor = AccentWarning;
+        }
+        else
+        {
+            _lblUpdatePill.Text = "UP TO DATE";
+            _lblUpdatePill.ForeColor = AccentCyan;
+        }
+
+        _lblStatusText.Text = sweep.SummaryMessage;
+        _log("INFO", $"UI update check: {sweep.SummaryMessage}");
     }
 
     private async void OnOpenPackageClicked()
@@ -206,9 +246,24 @@ internal sealed partial class ReEngineMainForm : Form
             return;
         }
 
-        var coordinator = new RecompLaunchCoordinator(_updateCoordinator, _log);
-        int code = await coordinator.LaunchAsync(dlg.FileName, _enginesDir, _settings, _sandbox, null, CancellationToken.None);
-        _lblStatusText.Text = code == 0 ? $"Launched '{Path.GetFileName(dlg.FileName)}' cleanly." : $"Launch failed with exit code {code}.";
+        try
+        {
+            var coordinator = new RecompLaunchCoordinator(_updateCoordinator, _log);
+            int code = await coordinator.LaunchAsync(
+                dlg.FileName,
+                _enginesDir,
+                _settings,
+                _sandbox,
+                _sandboxBoundary,
+                new RecompLaunchOptions(),
+                CancellationToken.None);
+            _lblStatusText.Text = code == 0 ? $"Launched '{Path.GetFileName(dlg.FileName)}' cleanly." : $"Launch failed with exit code {code}.";
+        }
+        catch (Exception ex)
+        {
+            _lblStatusText.Text = $"Launch blocked: {ex.Message}";
+            _log("ERROR", $"UI package launch failed: {ex.Message}");
+        }
     }
 
     private void OnSaveSettingsClicked()

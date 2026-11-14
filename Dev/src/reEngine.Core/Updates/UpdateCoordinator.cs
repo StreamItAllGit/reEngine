@@ -1,96 +1,15 @@
 // @module: reEngine.Core.Updates.UpdateCoordinator
-// @purpose: Schema-versioned settings persistence and non-blocking track-aware update checking with 6-pillar SafeNetworkTransfer staging.
-// @depends-on: System, System.Collections.Generic, System.IO, System.Linq, System.Net.Http, System.Text, System.Text.Json, System.Threading, System.Threading.Tasks, Foundation.Core, reEngine.Core.Resolution
-// @exports: ReEngineSettings, UpdateFeedEntry, UpdateFeedManifest, UpdateCheckOutcome, UpdateCoordinator
+// @purpose: Schema-versioned settings persistence and non-blocking multi-engine track-aware update sweep with SafeNetworkTransfer staging.
+// @depends-on: System, System.Collections.Generic, System.IO, System.Linq, System.Net.Http, System.Net.Sockets, System.Text, System.Text.Json, System.Threading, System.Threading.Tasks, Foundation.Core, reEngine.Core.Resolution
+// @exports: UpdateCoordinator
 
+using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
-using System.Text.Json.Serialization;
 using Foundation.Core;
 using reEngine.Core.Resolution;
 
 namespace reEngine.Core.Updates;
-
-/// <summary>
-/// Persisted <c>data\settings.json</c> schema following Standard 18 &amp; Standard 19.
-/// </summary>
-public sealed class ReEngineSettings
-{
-    /// <summary>Settings schema version (currently 1).</summary>
-    [JsonPropertyName("schemaVersion")]
-    public int SchemaVersion { get; set; } = 1;
-
-    /// <summary>Canonical application identifier.</summary>
-    [JsonPropertyName("appId")]
-    public string AppId { get; set; } = "reengine";
-
-    /// <summary>ISO-8601 UTC timestamp of the last save.</summary>
-    [JsonPropertyName("updatedAtUtc")]
-    public string UpdatedAtUtc { get; set; } = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ss.fffZ");
-
-    /// <summary>Whether launch-time compatible update checks are enabled.</summary>
-    [JsonPropertyName("shouldCheckUpdates")]
-    public bool ShouldCheckUpdates { get; set; } = true;
-
-    /// <summary>Whether compatible patch updates on the active track are automatically staged.</summary>
-    [JsonPropertyName("shouldAutoStagePatches")]
-    public bool ShouldAutoStagePatches { get; set; } = true;
-
-    /// <summary>Optional feed URL or local sandbox feed path used for update checks.</summary>
-    [JsonPropertyName("lastUpdateFeedUrl")]
-    public string? LastUpdateFeedUrl { get; set; }
-
-    /// <summary>Optional override path to the <c>engines\</c> root directory.</summary>
-    [JsonPropertyName("enginesDirectoryOverride")]
-    public string? EnginesDirectoryOverride { get; set; }
-
-    /// <summary>Optional global pass-through resolution scale preference (1..8).</summary>
-    [JsonPropertyName("preferredResolutionScale")]
-    public int PreferredResolutionScale { get; set; } = 2;
-
-    /// <summary>Saved manager window width.</summary>
-    [JsonPropertyName("windowWidth")]
-    public int? WindowWidth { get; set; }
-
-    /// <summary>Saved manager window height.</summary>
-    [JsonPropertyName("windowHeight")]
-    public int? WindowHeight { get; set; }
-
-    /// <summary>Preserves unknown forward-compatible settings properties across round-trips.</summary>
-    [JsonExtensionData]
-    public IDictionary<string, JsonElement>? ExtensionData { get; set; }
-}
-
-/// <summary>
-/// Single engine release entry inside an update feed manifest.
-/// </summary>
-public sealed record UpdateFeedEntry(
-    [property: JsonPropertyName("engineId")] string EngineId,
-    [property: JsonPropertyName("version")] string Version,
-    [property: JsonPropertyName("downloadUrl")] string DownloadUrl,
-    [property: JsonPropertyName("sha256Hex")] string Sha256Hex,
-    [property: JsonPropertyName("fileSizeBytes")] long FileSizeBytes,
-    [property: JsonPropertyName("notes")] string? Notes = null);
-
-/// <summary>
-/// Update feed manifest listing available engine versions.
-/// </summary>
-public sealed record UpdateFeedManifest(
-    [property: JsonPropertyName("schemaVersion")] int SchemaVersion,
-    [property: JsonPropertyName("updatedAtUtc")] string UpdatedAtUtc,
-    [property: JsonPropertyName("engines")] IReadOnlyList<UpdateFeedEntry> Engines);
-
-/// <summary>
-/// Result of evaluating an update feed against the active engine version and compatibility track.
-/// </summary>
-public sealed record UpdateCheckOutcome(
-    bool Checked,
-    bool CompatiblePatchAvailable,
-    bool CompatiblePatchStaged,
-    string? StagedPatchPath,
-    bool BreakingUpdateAvailable,
-    string? BreakingVersion,
-    string StatusMessage);
 
 /// <summary>
 /// Coordinates schema-versioned settings persistence and track-safe engine update checks/staging.
@@ -165,6 +84,129 @@ public sealed class UpdateCoordinator
         UpdateFeedManifest manifest = await FetchFeedManifestAsync(source, customHandler, allowedLocalFeedRoot, ct).ConfigureAwait(false);
         return await EvaluateAndStageAsync(settings, manifest, engineId, installedVersion, compatibleEngineTrack, customHandler, ct)
             .ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Sweeps every distinct <c>(EngineId, Track)</c> target across <paramref name="installedEngines"/>,
+    /// fetching the feed manifest once and degrading transient network/socket/JSON faults cleanly.
+    /// </summary>
+    public async Task<MultiEngineUpdateSweepResult> CheckAllInstalledEnginesAsync(
+        ReEngineSettings settings,
+        IReadOnlyList<InstalledEngineCandidate> installedEngines,
+        string? feedSource = null,
+        HttpMessageHandler? customHandler = null,
+        string? allowedLocalFeedRoot = null,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(settings);
+        ArgumentNullException.ThrowIfNull(installedEngines);
+
+        if (!settings.ShouldCheckUpdates)
+        {
+            return new MultiEngineUpdateSweepResult(
+                SweepExecuted: false,
+                NetworkUnavailable: false,
+                Array.Empty<UpdateCheckOutcome>(),
+                "Update checks disabled in settings.");
+        }
+
+        string? source = !string.IsNullOrWhiteSpace(feedSource) ? feedSource.Trim() : settings.LastUpdateFeedUrl;
+        if (string.IsNullOrWhiteSpace(source))
+        {
+            return new MultiEngineUpdateSweepResult(
+                SweepExecuted: false,
+                NetworkUnavailable: false,
+                Array.Empty<UpdateCheckOutcome>(),
+                "No update feed configured; skipping remote check.");
+        }
+
+        UpdateFeedManifest manifest;
+        try
+        {
+            manifest = await FetchFeedManifestAsync(source, customHandler, allowedLocalFeedRoot, ct).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (IsTransientFeedOrNetworkException(ex, ct))
+        {
+            return new MultiEngineUpdateSweepResult(
+                SweepExecuted: false,
+                NetworkUnavailable: true,
+                Array.Empty<UpdateCheckOutcome>(),
+                $"Update check skipped (offline/unavailable): {ex.Message}");
+        }
+
+        List<(string EngineId, SemVer Version, string Track)> targets = BuildSweepTargets(installedEngines);
+        var outcomes = new List<UpdateCheckOutcome>(targets.Count);
+        bool anyNetworkUnavailable = false;
+
+        foreach ((string engineId, SemVer version, string track) in targets)
+        {
+            try
+            {
+                UpdateCheckOutcome outcome = await EvaluateAndStageAsync(
+                    settings, manifest, engineId, version, track, customHandler, ct).ConfigureAwait(false);
+                outcomes.Add(outcome);
+            }
+            catch (Exception ex) when (IsTransientFeedOrNetworkException(ex, ct))
+            {
+                anyNetworkUnavailable = true;
+                outcomes.Add(new UpdateCheckOutcome(
+                    Checked: false,
+                    CompatiblePatchAvailable: true,
+                    CompatiblePatchStaged: false,
+                    StagedPatchPath: null,
+                    BreakingUpdateAvailable: false,
+                    BreakingVersion: null,
+                    StatusMessage: $"Patch staging skipped (offline/unavailable): {ex.Message}",
+                    NetworkUnavailable: true));
+            }
+        }
+
+        return new MultiEngineUpdateSweepResult(
+            SweepExecuted: true,
+            NetworkUnavailable: anyNetworkUnavailable,
+            outcomes,
+            BuildSweepSummary(targets, outcomes));
+    }
+
+    private static List<(string EngineId, SemVer Version, string Track)> BuildSweepTargets(
+        IReadOnlyList<InstalledEngineCandidate> installedEngines)
+    {
+        if (installedEngines.Count == 0)
+        {
+            return new List<(string, SemVer, string)> { ("reStation", new SemVer(0, 1, 0), "0.1.x") };
+        }
+
+        return installedEngines
+            .GroupBy(
+                c => (EngineId: c.EngineId.Trim().ToUpperInvariant(), Track: $"{c.Version.Major}.{c.Version.Minor}.x"))
+            .Select(g =>
+            {
+                InstalledEngineCandidate top = g.OrderByDescending(c => c.Version).First();
+                return (top.EngineId, top.Version, $"{top.Version.Major}.{top.Version.Minor}.x");
+            })
+            .OrderBy(t => t.EngineId, StringComparer.OrdinalIgnoreCase)
+            .ThenByDescending(t => t.Version)
+            .ToList();
+    }
+
+    private static bool IsTransientFeedOrNetworkException(Exception ex, CancellationToken ct) =>
+        ex is HttpRequestException or SocketException or IOException or TimeoutException or JsonException
+        || (ex is OperationCanceledException && !ct.IsCancellationRequested);
+
+    private static string BuildSweepSummary(
+        IReadOnlyList<(string EngineId, SemVer Version, string Track)> targets,
+        IReadOnlyList<UpdateCheckOutcome> outcomes)
+    {
+        if (outcomes.Count == 0)
+        {
+            return "Up to date.";
+        }
+        if (outcomes.Count == 1)
+        {
+            return outcomes[0].StatusMessage;
+        }
+
+        return string.Join(" | ", targets.Select((t, idx) => $"{t.EngineId} ({t.Track}): {outcomes[idx].StatusMessage}"));
     }
 
     private async Task<UpdateFeedManifest> FetchFeedManifestAsync(

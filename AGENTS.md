@@ -1,6 +1,6 @@
 # Project Context: reEngine (`<PROJECTS_ROOT>\Personal\reEngine\`)
 
-- **Role:** Top-level zero-daemon `.recomp` suite router, side-by-side `re*` engine resolver & manager UI (`v0.1.0`, Tier A 6-folder).
+- **Role:** Top-level zero-daemon `.recomp` suite router, side-by-side `re*` engine resolver & manager UI (`v0.1.1`, Tier A 6-folder).
 - **Boundaries:** `Foundation\` & `_DevBible\` strictly read-only; immutable `<PROJECTS_ROOT>\SharedLibs\reEngine\v<Ver>\` drops; fail-closed `--test-mode` in `Sandbox\` (virtualized `.recomp` registry store, never touching `HKCU` or `<PROGRAMS_ROOT>\`).
 - **Branding:** [`reEngine.svg`](<REPO_ROOT>/Dev/assets/reEngine.svg) | [`reEngine.ico`](<REPO_ROOT>/Dev/assets/reEngine.ico)
 

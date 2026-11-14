@@ -1,9 +1,10 @@
 // @module: reEngine.App.Program
 // @purpose: Entry point for reEngine CLI router, fail-closed sandbox containment guard, and dark WinForms manager UI.
-// @depends-on: System, System.Collections.Generic, System.IO, System.Linq, System.Runtime.InteropServices, System.Threading, System.Threading.Tasks, System.Windows.Forms, Foundation.Core, reEngine.Core
+// @depends-on: System, System.Collections.Generic, System.IO, System.Linq, System.Runtime.InteropServices, System.Text.Json, System.Threading, System.Threading.Tasks, System.Windows.Forms, Foundation.Core, reEngine.Core
 // @exports: Program
 
 using System.Runtime.InteropServices;
+using System.Text.Json;
 using Foundation.Core;
 using reEngine.Core.Associations;
 using reEngine.Core.Bootstrap;
@@ -16,11 +17,6 @@ internal static class Program
 {
     private const int AttachParentProcess = -1;
 
-    private static readonly HashSet<string> ValueOptions = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "--open", "--engines-dir", "--data-dir", "--config", "--log-dir", "--feed", "--port", "--ui"
-    };
-
     [DllImport("kernel32.dll", SetLastError = true)]
     private static extern bool AttachConsole(int dwProcessId);
 
@@ -28,17 +24,10 @@ internal static class Program
     private static int Main(string[] args)
     {
         string[] rawArgs = args ?? Array.Empty<string>();
-        bool hasCliFlags = rawArgs.Length > 0;
-        if (hasCliFlags && OperatingSystem.IsWindows())
+        if (rawArgs.Length > 0 && OperatingSystem.IsWindows() &&
+            !Console.IsOutputRedirected && !Console.IsErrorRedirected)
         {
-            try
-            {
-                if (!Console.IsOutputRedirected && !Console.IsErrorRedirected)
-                {
-                    AttachConsole(AttachParentProcess);
-                }
-            }
-            catch { /* no parent console available */ }
+            _ = AttachConsole(AttachParentProcess);
         }
 
         if (CliArgumentHelper.HasFlag(rawArgs, "--version") || CliArgumentHelper.HasFlag(rawArgs, "-v"))
@@ -47,7 +36,10 @@ internal static class Program
             return 0;
         }
 
-        if (CliArgumentHelper.HasFlag(rawArgs, "--help") || CliArgumentHelper.HasFlag(rawArgs, "-h") || CliArgumentHelper.HasFlag(rawArgs, "/?"))
+        if (CliArgumentHelper.HasFlag(rawArgs, "--help") ||
+            CliArgumentHelper.HasFlag(rawArgs, "-h") ||
+            CliArgumentHelper.HasFlag(rawArgs, "/?") ||
+            CliArgumentHelper.HasFlag(rawArgs, "help"))
         {
             PrintUsage();
             return 0;
@@ -56,9 +48,15 @@ internal static class Program
         var sandbox = new SandboxEnvironment("reengine", rawArgs, defaultConfigFileName: "settings.json");
         var logLines = new Queue<string>(100);
         var logSink = new CappedSharedLogSink(Path.Combine(sandbox.LogDirectory, "reengine.log"));
+
+        string[] SnapshotRecentLogs()
+        {
+            lock (logLines) return logLines.ToArray();
+        }
+
         void Log(string level, string msg)
         {
-            string line = $"{DateTime.UtcNow:yyyy-MM-ddTHH:mm:ss.fffZ} [{level}] {msg}";
+            string line = ReEngineTelemetryFormatter.FormatLogLine(level, msg);
             lock (logLines)
             {
                 if (logLines.Count >= 100) logLines.Dequeue();
@@ -71,27 +69,62 @@ internal static class Program
             sandbox.LogDirectory,
             ReEnginePackagingConstants.AppId,
             ReEnginePackagingConstants.Version,
-            () => { lock (logLines) return logLines.ToArray(); });
+            SnapshotRecentLogs);
+
+        using var cts = new CancellationTokenSource();
+        Console.CancelKeyPress += (_, e) =>
+        {
+            e.Cancel = true;
+            cts.Cancel();
+        };
 
         try
         {
-            return RunAsync(rawArgs, sandbox, Log).GetAwaiter().GetResult();
+            return RunAsync(rawArgs, sandbox, Log, cts.Token).GetAwaiter().GetResult();
+        }
+        catch (OperationCanceledException) when (cts.IsCancellationRequested)
+        {
+            Log("WARN", "Operation cancelled by user/signal.");
+            Console.Error.WriteLine("reEngine cancelled.");
+            return 130;
         }
         catch (Exception ex)
         {
             Log("ERROR", ex.Message);
-            CrashBundleService.TryWriteCrashBundle(sandbox.LogDirectory, ReEnginePackagingConstants.AppId, ReEnginePackagingConstants.Version, ex);
+            CrashBundleService.TryWriteCrashBundle(
+                sandbox.LogDirectory,
+                ReEnginePackagingConstants.AppId,
+                ReEnginePackagingConstants.Version,
+                ex,
+                SnapshotRecentLogs());
             Console.Error.WriteLine($"reEngine error: {ex.Message}");
-            return 1;
+            return MapExceptionToExitCode(ex);
         }
     }
 
-    private static async Task<int> RunAsync(string[] args, SandboxEnvironment sandbox, Action<string, string> log)
+    internal static int MapExceptionToExitCode(Exception ex) => ex switch
+    {
+        OperationCanceledException => 130,
+        ArgumentException or InvalidDataException or JsonException => 2,
+        InvalidOperationException ioe when IsContainmentViolation(ioe.Message) => 2,
+        _ => 1
+    };
+
+    private static bool IsContainmentViolation(string? message) =>
+        !string.IsNullOrWhiteSpace(message) &&
+        (message.Contains("Fail-Closed Sandbox Violation", StringComparison.OrdinalIgnoreCase) ||
+         message.Contains("Fail-Closed Containment Violation", StringComparison.OrdinalIgnoreCase));
+
+    private static async Task<int> RunAsync(
+        string[] args,
+        SandboxEnvironment sandbox,
+        Action<string, string> log,
+        CancellationToken ct)
     {
         var updateCoordinator = new UpdateCoordinator(sandbox.DataDirectory, sandbox.ConfigFilePath);
         ReEngineSettings settings = updateCoordinator.LoadSettings().Value;
 
-        string? cliEnginesDir = CliArgumentHelper.GetOption(args, "--engines-dir");
+        string? cliEnginesDir = RecompLaunchOptions.GetOptionValue(args, "--engines-dir", requiredIfPresent: true);
         string enginesDir = ResolveEnginesDir(cliEnginesDir, settings.EnginesDirectoryOverride, sandbox);
 
         string? sandboxBoundary = null;
@@ -105,11 +138,12 @@ internal static class Program
             ? new VirtualRegistryAssociationStore(sandbox.DataDirectory, sandboxBoundary)
             : new WindowsRegistryAssociationStore(testMode: false);
 
-        string? openTarget = CliArgumentHelper.GetOption(args, "--open")
-            ?? CliArgumentHelper.GetPositional(args, 0, opt => ValueOptions.Contains(opt));
+        string? openTarget = RecompLaunchOptions.GetOptionValue(args, "--open", requiredIfPresent: true)
+            ?? RecompLaunchOptions.GetPositionalArg(args, 0);
         bool registerAssoc = CliArgumentHelper.HasFlag(args, "--register-assoc");
         bool checkUpdates = CliArgumentHelper.HasFlag(args, "--check-updates");
-        string? feedOverride = CliArgumentHelper.GetOption(args, "--feed");
+        bool strictUpdates = CliArgumentHelper.HasFlag(args, "--strict");
+        string? feedOverride = RecompLaunchOptions.GetOptionValue(args, "--feed", requiredIfPresent: true);
 
         if (registerAssoc)
         {
@@ -126,14 +160,16 @@ internal static class Program
 
         if (checkUpdates)
         {
-            return await RunUpdateCheckCliAsync(updateCoordinator, settings, enginesDir, feedOverride, sandboxBoundary, log)
+            return await RunUpdateCheckCliAsync(
+                updateCoordinator, settings, enginesDir, feedOverride, sandboxBoundary, strictUpdates, log, ct)
                 .ConfigureAwait(false);
         }
 
         if (!string.IsNullOrWhiteSpace(openTarget))
         {
+            RecompLaunchOptions launchOptions = RecompLaunchOptions.FromArgs(args, sandbox);
             var launcher = new RecompLaunchCoordinator(updateCoordinator, log);
-            return await launcher.LaunchAsync(openTarget, enginesDir, settings, sandbox, sandboxBoundary, CancellationToken.None)
+            return await launcher.LaunchAsync(openTarget, enginesDir, settings, sandbox, sandboxBoundary, launchOptions, ct)
                 .ConfigureAwait(false);
         }
 
@@ -151,7 +187,8 @@ internal static class Program
             updateCoordinator,
             assocStore,
             log,
-            visibleTestShowcase: sandbox.VisibleTest);
+            visibleTestShowcase: sandbox.VisibleTest,
+            sandboxBoundary: sandboxBoundary);
         Application.Run(form);
         return form.ExitCode;
     }
@@ -162,27 +199,37 @@ internal static class Program
         string enginesDir,
         string? feedOverride,
         string? sandboxBoundary,
-        Action<string, string> log)
+        bool strict,
+        Action<string, string> log,
+        CancellationToken ct)
     {
         var hb = new HeartbeatLogger("reEngine UpdateCheck", line => log("HEARTBEAT", line), Console.Out);
         hb.ReportProgress(0, 2, "Discovering installed engines", forceEmit: true);
         var resolver = new EngineVersionResolver();
         IReadOnlyList<InstalledEngineCandidate> engines = resolver.DiscoverInstalledEngines(enginesDir);
-        InstalledEngineCandidate? primary = engines.FirstOrDefault();
 
-        string engineId = primary?.EngineId ?? "reStation";
-        SemVer currentVer = primary?.Version ?? new SemVer(0, 1, 0);
-        string track = $"{currentVer.Major}.{currentVer.Minor}.x";
-
-        UpdateCheckOutcome outcome = await coordinator.CheckAndStageAsync(
+        MultiEngineUpdateSweepResult sweep = await coordinator.CheckAllInstalledEnginesAsync(
             settings,
-            engineId,
-            currentVer,
-            track,
+            engines,
             feedOverride,
-            allowedLocalFeedRoot: sandboxBoundary).ConfigureAwait(false);
-        hb.Complete(2, outcome.StatusMessage);
-        Console.WriteLine(outcome.StatusMessage);
+            allowedLocalFeedRoot: sandboxBoundary,
+            ct: ct).ConfigureAwait(false);
+
+        hb.Complete(2, sweep.SummaryMessage);
+        if (sweep.NetworkUnavailable)
+        {
+            log("WARN", sweep.SummaryMessage);
+            if (strict)
+            {
+                Console.Error.WriteLine(sweep.SummaryMessage);
+                return 4;
+            }
+            Console.WriteLine(sweep.SummaryMessage);
+            return 0;
+        }
+
+        log("INFO", sweep.SummaryMessage);
+        Console.WriteLine(sweep.SummaryMessage);
         return 0;
     }
 
@@ -272,7 +319,10 @@ internal static class Program
 
     private static void PrintUsage()
     {
-        Console.WriteLine("reEngine — Zero-Daemon .recomp Suite Router");
-        Console.WriteLine("Usage: reEngine.exe [--open <path> | <file.recomp>] [--register-assoc] [--check-updates] [--engines-dir <dir>] [--data-dir <dir>] [--log-dir <dir>] [--config <path>] [--test-mode] [--dry-run] [--headless] [--visible-test]");
+        Console.WriteLine("reEngine - Zero-Daemon .recomp Suite Router");
+        Console.WriteLine("Usage: reEngine.exe [--open <path> | <file.recomp>] [--wait] [--register-assoc] [--check-updates [--strict]] [--feed <urlOrPath>]");
+        Console.WriteLine("                    [--engines-dir <dir>] [--data-dir <dir>] [--log-dir <dir>] [--config <path>] [--test-mode] [--dry-run] [--headless] [--visible-test]");
+        Console.WriteLine("                    [--enable-logs] [--frames <n>] [--fixture <path>] [--dump-screenshot <path>] [--dump-audio <path>] [--input-script <path>]");
+        Console.WriteLine("                    [--version] [--help]");
     }
 }
