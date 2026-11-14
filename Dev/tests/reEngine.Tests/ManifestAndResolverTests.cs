@@ -186,6 +186,53 @@ public sealed class ManifestAndResolverTests : IDisposable
         Assert.Equal(new SemVer(0, 2, 0), result.SelectedEngine!.Version);
     }
 
+    [Fact]
+    public void ParseRecompArchiveInAppFolder_ResolvesParentModuleRootAndStrictDataRomPreload()
+    {
+        string installRoot = Path.Combine(_tempRoot, "KingsField-Recomp");
+        string appDir = Path.Combine(installRoot, "app");
+        string romDir = Path.Combine(installRoot, "data", "rom");
+        string gameDataDir = Path.Combine(installRoot, "data", "gamedata");
+        Directory.CreateDirectory(appDir);
+        Directory.CreateDirectory(romDir);
+        Directory.CreateDirectory(gameDataDir);
+
+        string expectedChd = Path.Combine(romDir, "KingsField.chd");
+        string ignoredBin = Path.Combine(gameDataDir, "GAME.BIN");
+        File.WriteAllBytes(expectedChd, [0x4D, 0x43, 0x6F, 0x6D]);
+        File.WriteAllBytes(ignoredBin, [0x01, 0x02]);
+
+        string cartridgePath = Path.Combine(appDir, "KingsFieldRecomp.recomp");
+        using (FileStream fs = File.Create(cartridgePath))
+        using (var zip = new ZipArchive(fs, ZipArchiveMode.Create))
+        {
+            ZipArchiveEntry entry = zip.CreateEntry("module.recomp.json");
+            using var writer = new StreamWriter(entry.Open());
+            writer.Write("""
+                {
+                  "schemaVersion": 1,
+                  "moduleId": "kings-field-slus-00158",
+                  "title": "King's Field",
+                  "version": "0.1.4",
+                  "engineId": "reStation",
+                  "engineVersion": "0.1.2",
+                  "compatibleEngineTrack": "0.1.x",
+                  "preloadRomDir": "data/rom"
+                }
+                """);
+        }
+
+        RecompPackageLoadResult loaded = RecompPackageReader.Load(cartridgePath);
+
+        Assert.Equal(installRoot, loaded.ModuleRootDirectory);
+        Assert.True(loaded.PreloadMedia.DirectoryExists);
+        string[] found = Assert.Single(loaded.PreloadMedia.DiscoveredMediaFiles) is string single
+            ? [single]
+            : Array.Empty<string>();
+        Assert.Equal(expectedChd, found[0]);
+        Assert.DoesNotContain(ignoredBin, loaded.PreloadMedia.DiscoveredMediaFiles);
+    }
+
     private string SeedEngineVersions(string engineId, params string[] versionFolders)
     {
         string enginesRoot = Path.Combine(_tempRoot, "engines_" + Guid.NewGuid().ToString("N"));

@@ -1,6 +1,6 @@
 # reEngine — System Architecture
 
-**Synced Version:** `0.1.1` (`2026-11-14`)  
+**Synced Version:** `0.1.2` (`2026-11-14`)  
 **Owner:** `reEngine` Core (`@devv` / `@dean`)
 
 ---
@@ -12,7 +12,7 @@ Unlike `Mother` (`:5100`), `reEngine` runs **zero** background daemons or Window
 Solution: [`Dev\reEngine.slnx`](<REPO_ROOT>/Dev/reEngine.slnx) (`Dev\Directory.Build.props`, `TreatWarningsAsErrors = true`, Release `<DebugType>none</DebugType>` + `<PathMap>`).
 
 - **`reEngine.Core` (`net8.0`, Pure `Foundation.Core`-Only Library):**
-  - `Manifests\RecompPackageManifest.cs`: `RecompPackageManifest`, `PreloadRomDiscoveryResult`, `RecompPackageLoadResult`, `RecompPackageReader` (reads JSON & Zip-Slip-guarded `.recomp` archives; discovers gitignored `data\rom\` optical/ROM media).
+  - `Manifests\RecompPackageManifest.cs`: `RecompPackageManifest`, `PreloadRomDiscoveryResult`, `RecompPackageLoadResult`, `RecompPackageReader` (reads JSON & Zip-Slip-guarded `.recomp` archives; `ResolveModuleRootDirectory` resolves `app\*.recomp` cartridges to parent `<InstallRoot>\`; discovers gitignored `data\rom\` optical/ROM media).
   - `Resolution\EngineVersionResolver.cs`: `SemVer`, `InstalledEngineCandidate`, `EngineResolutionResult`, `EngineTrackMatcher`, `EngineVersionResolver` (discovers `engines\<engineId>\v<Ver>\` and selects highest compatible track `>= engineVersion`, ignoring newer breaking tracks).
   - `Associations\FileAssociationStores.cs`: `FileAssociationRecord`, `IFileAssociationStore`, `VirtualRegistryAssociationStore` (`<dataDir>\virtual_registry.json`), `WindowsRegistryAssociationStore` (HKCU `Software\Classes`, throws if constructed in `--test-mode`).
   - `Updates\UpdateModels.cs` & `Updates\UpdateCoordinator.cs`: `ReEngineSettings`, `UpdateFeedEntry`, `UpdateFeedManifest`, `UpdateCheckOutcome`, `MultiEngineUpdateSweepResult` (`SweepExecuted`, `NetworkUnavailable`, `Outcomes`, `SummaryMessage`), and `CheckAllInstalledEnginesAsync` (sweeps every distinct `(EngineId, Track)` pair and degrades transient HTTP/socket/IO/timeout/JSON feed failures gracefully without crash dumps while keeping containment checks fail-closed).
@@ -23,4 +23,4 @@ Solution: [`Dev\reEngine.slnx`](<REPO_ROOT>/Dev/reEngine.slnx) (`Dev\Directory.B
   - `ReEngineMainForm.cs` & `ReEngineMainForm.Layout.cs`: Dark Slate (`#0E0E10` / `#18181B` / `#38BDF8`) suite manager threading `sandboxBoundary`, using shared `CheckAllInstalledEnginesAsync` sweep (`OFFLINE / SKIPPED` warning pill), refreshing `LayoutControls()` on pill text mutations, and capturing `--visible-test` PNGs.
 - **`reEngine.Launcher` (`net8.0-windows`, Standalone — zero `reEngine.Core` ref):** `Program.cs` + `LauncherArgsHelper.cs` (`<= 140 LOC`): resolves `app\reEngine.exe` via embedded `Foundation.Launcher.dll` (`RootLauncherHost.ResolveTargetExecutable`), normalizes caller-CWD relative paths (preserving HTTP/HTTPS `--feed` URIs), waits synchronously across CLI/router flags (`--open`, `--wait`, `--check-updates`, `--register-assoc`, `--visible-test`, `--test-mode`, `--headless`, `--dry-run`, `--help`, `--version`, positional paths while skipping `ValueOptions` values such as `--port 15100` / `--ui desktop`), handles `CancelKeyPress` (`130`), and propagates child exit codes verbatim.
 - **`reEngine.Installer` (`net8.0-windows`):** Single-EXE setup (`StandardInstallerHost.Run`) embedding gzip-compressed `Foundation.Core.dll.gz`, `Foundation.Installer.dll.gz`, and `reEngine.Core.dll.gz` with `AllowAutoStart = false` and `#38BDF8` accent.
-- **`reEngine.Tests` (`net8.0`, xUnit):** 33 passing contract, containment, multi-engine sweep, launcher sync-wait/normalization, launch-plan isolation, and telemetry/crash-bundle tests across `ManifestAndResolverTests.cs`, `AssociationUpdateAndContainmentTests.cs`, `LauncherAndLaunchPlanTests.cs`, and `UpdateSweepAndTelemetryTests.cs`.
+- **`reEngine.Tests` (`net8.0`, xUnit):** 34 passing contract, containment, multi-engine sweep, launcher sync-wait/normalization, launch-plan isolation, `app\*.recomp` parent-root `data\rom\` discovery, and telemetry/crash-bundle tests across `ManifestAndResolverTests.cs`, `AssociationUpdateAndContainmentTests.cs`, `LauncherAndLaunchPlanTests.cs`, and `UpdateSweepAndTelemetryTests.cs`.

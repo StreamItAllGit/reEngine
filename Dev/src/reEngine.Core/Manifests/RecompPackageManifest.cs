@@ -121,8 +121,7 @@ public static class RecompPackageReader
             throw new FileNotFoundException($"Recomp package not found: '{fullPackagePath}'.", fullPackagePath);
         }
 
-        string moduleRootDir = Path.GetDirectoryName(fullPackagePath)
-            ?? throw new InvalidOperationException($"Cannot determine module root directory for '{fullPackagePath}'.");
+        string moduleRootDir = ResolveModuleRootDirectory(fullPackagePath);
 
         RecompPackageManifest manifest = IsZipArchive(fullPackagePath)
             ? ReadFromZipArchive(fullPackagePath)
@@ -131,6 +130,34 @@ public static class RecompPackageReader
         ValidateManifest(manifest, fullPackagePath);
         PreloadRomDiscoveryResult preload = DiscoverPreloadMedia(moduleRootDir, manifest);
         return new RecompPackageLoadResult(manifest, fullPackagePath, moduleRootDir, preload);
+    }
+
+    /// <summary>
+    /// Resolves the logical module root directory for a package path. When a <c>.recomp</c> cartridge or manifest
+    /// sits inside an <c>app\</c> subfolder of an installed app root, returns its parent install root so
+    /// <c>data\rom\</c> discovery and per-app containment align with Standard 12 clean-root installs.
+    /// </summary>
+    public static string ResolveModuleRootDirectory(string fullPackagePath)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(fullPackagePath);
+        string full = Path.GetFullPath(fullPackagePath);
+        string packageDir = Path.GetDirectoryName(full)
+            ?? throw new InvalidOperationException($"Cannot determine module root directory for '{full}'.");
+        string trimmedDir = packageDir.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        if (string.Equals(Path.GetFileName(trimmedDir), "app", StringComparison.OrdinalIgnoreCase))
+        {
+            string? parentDir = Path.GetDirectoryName(trimmedDir);
+            string? volumeRoot = string.IsNullOrWhiteSpace(parentDir) ? null : Path.GetPathRoot(parentDir);
+            if (!string.IsNullOrWhiteSpace(parentDir) &&
+                !string.Equals(
+                    parentDir.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar),
+                    volumeRoot?.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar),
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                return parentDir;
+            }
+        }
+        return packageDir;
     }
 
     /// <summary>

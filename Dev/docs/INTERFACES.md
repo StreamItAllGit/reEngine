@@ -1,12 +1,12 @@
 # reEngine — Interfaces & Contracts
 
-**Synced Version:** `0.1.1` (`2026-11-14`)  
+**Synced Version:** `0.1.2` (`2026-11-14`)  
 **Owner:** `reEngine` Core (`@devv` / `@dean`)
 
 ---
 
 ## 1. `.recomp` Package Manifest (`module.recomp.json` / `*.recomp`)
-Parsed by `RecompPackageReader.Load(string packagePath)` (supports direct JSON and Zip-Slip-guarded `.recomp` ZIP archives containing `module.recomp.json`) using canonical Standard 18 `camelCase` keys:
+Parsed by `RecompPackageReader.Load(string packagePath)` (supports direct JSON and Zip-Slip-guarded `.recomp` ZIP archives containing `module.recomp.json`, calling `ResolveModuleRootDirectory` so `<InstallRoot>\app\*.recomp` resolves `ModuleRootDirectory` to `<InstallRoot>\`) using canonical Standard 18 `camelCase` keys:
 - `schemaVersion`: `int` (must be `>= 1`, default `1`)
 - `moduleId`: `string` (validated against `^[a-z0-9][a-z0-9-]*$` for isolated `<dataDir>\modules\<moduleId>\` containment, e.g., `"kings-field-slus-00158"`)
 - `title`: `string`

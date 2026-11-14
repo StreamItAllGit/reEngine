@@ -182,6 +182,16 @@ if (Test-Path $relLatestZip) { Remove-Item $relLatestZip -Force }
 Invoke-7z @("a", "-t7z", "-mx=9", "-mmt=on", $relVerZip, (Join-Path $relVerDir "*"))
 Invoke-7z @("a", "-t7z", "-mx=9", "-mmt=on", $relLatestZip, (Join-Path $relLatestDir "*"))
 
+# Standard 03 §6.2: keep max 2 unpacked Full Releases (Latest + 2 newest v* folders); retain all .7z archives.
+$unpackedReleases = Get-ChildItem -Path $releasesDir -Directory | Where-Object { $_.Name -match '^v\d+\.\d+\.\d+' } |
+    Sort-Object { try { [version]($_.Name.TrimStart('v').Split('-')[0]) } catch { [version]"0.0.0" } } -Descending
+if ($unpackedReleases.Count -gt 2) {
+    $unpackedReleases | Select-Object -Skip 2 | ForEach-Object {
+        Write-Host "  Pruning older unpacked release folder '$($_.Name)' (.7z archive preserved)..."
+        Remove-Item $_.FullName -Recurse -Force
+    }
+}
+
 if (-not $SkipSourceArchive) {
     Write-Host "[6/7] Updating Archive\reEngine-v$Version-src.7z..."
     $srcArchive = Join-Path $root "Archive\reEngine-v$Version-src.7z"

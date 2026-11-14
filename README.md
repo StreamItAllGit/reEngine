@@ -1,6 +1,6 @@
-# reEngine (`v0.1.1`)
+# reEngine (`v0.1.2`)
 
-- **Active Version:** `v0.1.1` (`2026-11-14`)
+- **Active Version:** `v0.1.2` (`2026-11-14`)
 - **Lifecycle State:** `active` ([`active.state`](<REPO_ROOT>/active.state))
 - **Group / Path:** `<PROJECTS_ROOT>\Personal\reEngine\`
 - **Logo Assets:** [`Dev\assets\reEngine.svg`](<REPO_ROOT>/Dev/assets/reEngine.svg) | [`Dev\assets\reEngine.png`](<REPO_ROOT>/Dev/assets/reEngine.png) | [`Dev\assets\reEngine.ico`](<REPO_ROOT>/Dev/assets/reEngine.ico)
@@ -29,16 +29,16 @@ reEngine.exe --test-mode --visible-test --data-dir .\Sandbox\data --log-dir .\Sa
 | `--wait` | Synchronously wait across root `reEngine.exe` and child engine execution (caller-CWD relative paths normalized; exit codes `0, 1, 2, 3, 4, 5, 6, 130` propagated). |
 | `--register-assoc` | Register per-user `.recomp` Windows shell file association (`HKCU\Software\Classes`; virtualized in `--test-mode`). |
 | `--check-updates` (`--strict`) | Sweep all installed `(engineId, track)` engines side-by-side; offline socket drops log `[WARN]` (`Exit 0`, or `Exit 4` with `--strict`, `0` crash dumps). |
-| `--data-dir` / `--config` / `--log-dir` | Redirect writable runtime data, `settings.json`, and Standard 15 `[v0.1.1] [PID/T]` telemetry logs (`--test-mode` fail-closed). |
+| `--data-dir` / `--config` / `--log-dir` | Redirect writable runtime data, `settings.json`, and Standard 15 `[v0.1.2] [PID/T]` telemetry logs (`--test-mode` fail-closed). |
 | `--headless` / `--visible-test` | Automated CI mode (`--headless`) or short dark-UI foreground showcase (`--visible-test`). |
 | `--frames`, `--fixture`, `--dump-screenshot`, `--dump-audio`, `--input-script`, `--enable-logs` | Containment-checked runtime, diagnostic, and automated test-capture flags forwarded cleanly to resolved `re*` child engines. |
 
 ---
 
 ## 3. Architecture At a Glance
-- **Application Archetype:** Zero-Daemon Suite Router & Dark Manager (`Tier A`, `net8.0` Core + `net8.0-windows` App/Launcher/Installer consuming `Foundation.Core`, `Foundation.Launcher`, and `Foundation.Installer`; `33/33` passing xUnit tests at `v0.1.1`; migrating to a cross-platform `SDL3` shell across `v1.1.0–v2.0.0`).
+- **Application Archetype:** Zero-Daemon Suite Router & Dark Manager (`Tier A`, `net8.0` Core + `net8.0-windows` App/Launcher/Installer consuming `Foundation.Core`, `Foundation.Launcher`, and `Foundation.Installer`; `34/34` passing xUnit tests at `v0.1.2`; migrating to a cross-platform `SDL3` shell across `v1.1.0–v2.0.0`).
 - **4-Tier Recomp Routing & Sister-App Boundary:** Targets `.recomp` modules first (plus developer `--jit-bringup` raw-disc seeding in `re*` engines). `uStation` never builds a competing recompiler and delegates `.recomp` launches through `reEngine.exe --open <pkg> --wait`.
-- **Engine Track Resolution, Isolation & Canonical Media Preload:** Matches `compatibleEngineTrack` and `>= engineVersion` across `engines\re<Platform>\v<Ver>\`, isolates child `--data-dir`/`--config`/`--log-dir` inside `<dataDir>\modules\<moduleId>\`, and auto-detects gitignored user optical/ROM media in `<module>\data\rom\` before prompting media pickers.
+- **Engine Track Resolution, Isolation & Canonical Media Preload:** Matches `compatibleEngineTrack` and `>= engineVersion` across `engines\re<Platform>\v<Ver>\`, resolves `app\<Module>.recomp` parent `<InstallRoot>\data\rom\` via `RecompPackageReader.ResolveModuleRootDirectory`, isolates child `--data-dir`/`--config`/`--log-dir` inside `<dataDir>\modules\<moduleId>\`, and auto-detects gitignored user optical/ROM media in `<module>\data\rom\` before prompting media pickers.
 - **Horizon (`v1.0.0` & `v2.0.0`):** `v1.0.0` certifies multi-engine `win-x64` routing across `>= 2` `re*` engines and `>= 2` `R1–R3` `.recomp` modules plus `uStation` synchronous delegation (decoupled from `R4` standalone ports and per-game overlay counts); `v2.0.0` delivers full-stack 10-platform routing (`win-x64`, `linux-x64`, `osx-arm64`, `steamos-deck`, `linux-bionic-arm64`, `ios-arm64`, `browser-wasm`, `switch`, `xbox`, `playstation`) with graceful Zero-RWX static module resolution on locked-down hosts.
 
 ---

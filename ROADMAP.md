@@ -1,6 +1,6 @@
 # reEngine — Roadmap & Milestones
 
-**Current Active Version:** `0.1.1`  
+**Current Active Version:** `0.1.2`  
 **Lifecycle State:** `active.state`  
 **Last Updated:** 2026-11-14
 
@@ -14,7 +14,7 @@ Provide a lightweight, **zero-daemon top-level `.recomp` suite router and engine
 ---
 
 ## 2. Active In-Dev Milestone
-- **Shipped Baseline (`PATCH+1`):** `v0.1.1` (`2026-11-14`) — Lockstep Router CLI Sync, Offline Update Resilience, Multi-Engine `(EngineId, Track)` Sweep, Per-Module `<dataDir>\modules\<moduleId>\` Isolation, Crash `recentLogs` & `SharedLibs\reEngine\v0.1.1\` SDK Drop (`33/33` xUnit tests, `@dean` Gate 2 `PASS`, `@inspecter-reengine` `Sandbox\` `PASS`).
+- **Shipped Baseline (`PATCH+1`):** `v0.1.2` (`2026-11-14`) — Parent-Root `data\rom\` Resolution for `app\*.recomp` ZIP Cartridges (`RecompPackageReader.ResolveModuleRootDirectory`), Max-2 Unpacked `Releases\` Retention, `34/34` xUnit Tests (`0` Warnings), `SharedLibs\reEngine\v0.1.2\`, `@dean` Gate 2 `PASS`, and `Sandbox\` Verification (atop `v0.1.1` Sync CLI, Offline `[WARN]`, and Per-Module Isolation).
 - **Next Active Milestone:** `v0.2.0` — Resumable `.part` Staging Decoupling, Atomic Apply (`staged_updates\` $\rightarrow$ `engines\`) & `"supportedEngineTracks"` Runtime Compatibility Matcher.
 
 ---
@@ -23,8 +23,8 @@ Provide a lightweight, **zero-daemon top-level `.recomp` suite router and engine
 
 ```mermaid
 flowchart LR
-    V01["v0.1.0 (Shipped)\nWinForms Router & SDK"] --> V011["v0.1.1 (Shipped)\nSync CLI, Offline WARN & Isolation"]
-    V011 --> V02["v0.2.0 (Next)\nAtomic .part Apply & Track Matcher"]
+    V01["v0.1.0 (Shipped)\nWinForms Router & SDK"] --> V012["v0.1.2 (Shipped)\napp/*.recomp + Max-2 Releases"]
+    V012 --> V02["v0.2.0 (Next)\nAtomic .part Apply & Track Matcher"]
     V02 --> V03["v0.3.0\n--jit-bringup / 4-Backend Routing & Shelf"]
     V03 --> V04["v0.4.0\nuStation --open --wait & R&D Bridge"]
     V04 --> V10["v1.0.0 (GOLD win-x64)\nMulti-Engine R1-R3 Cert"]

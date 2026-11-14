@@ -7,8 +7,8 @@
   "containerTier": "Tier A (6-Folder)",
   "ecosystemTier": "Tier1_Infrastructure",
   "appArchetype": "ENGINE",
-  "version": "0.1.1",
-  "activeMilestone": "0.1.1",
+  "version": "0.1.2",
+  "activeMilestone": "0.1.2",
   "goalMajorVersion": "1.0.0",
   "stateChangedDate": "2026-11-13",
   "lastVersionDate": "2026-11-14",
@@ -16,7 +16,7 @@
   "supersededBy": null,
   "tasklistDetailLevel": 3,
   "openTaskCount": 0,
-  "completedTaskCount": 6,
+  "completedTaskCount": 4,
   "openReportCount": 0,
   "gates": {
     "isGate0ScopePassed": true,
@@ -25,6 +25,6 @@
     "isInspecterVerified": true,
     "isTessaSynced": true
   },
-  "notes": "Wave 1 v0.1.1 shipped: all gates PASS (Gate 1/2 @dean, Sandbox verify @inspecter-reengine, Root Quartet & Manual Shelf @tessa, synced Releases/Archive/active.state).",
-  "updatedAtUtc": "2026-11-14T03:02:30.000Z"
+  "notes": "Wave 1 v0.1.2 shipped & @tessa synced: 34/34 tests passing (0 warnings), Gate 2 PASS, SharedLibs/reEngine/v0.1.2 published, Sandbox verified (--version 0.1.2, --headless --verify), Root Quartet + Notion synced.",
+  "updatedAtUtc": "2026-11-14T09:38:00.000Z"
 }

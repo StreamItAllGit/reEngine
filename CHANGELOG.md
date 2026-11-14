@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-11-14
+
+### Added
+- Added `RecompPackageReader.ResolveModuleRootDirectory` (`reEngine.Core`) so clean-root single-file cartridges stored under `<InstallRoot>\app\<Module>.recomp` (or `app\module.recomp.json`) resolve `ModuleRootDirectory` to the parent `<InstallRoot>\` while preserving strict `manifest.PreloadRomDir` (`data\rom\`) discovery containment.
+- Added xUnit regression test `ParseRecompArchiveInAppFolder_ResolvesParentModuleRootAndStrictDataRomPreload` in `ManifestAndResolverTests.cs` (`34/34` passing, `0` warnings).
+
+### Changed
+- Bumped `reEngine` to `v0.1.2` across `Dev\version.txt`, `Dev\Directory.Build.props`, `Dev\app.manifest.json`, `ReEnginePackagingConstants.Version`, Manual Shelf docs, and `SharedLibs\reEngine\v0.1.2\`.
+- Updated `Dev\scripts\build_release.ps1` to prune older unpacked `Releases\v*` directories past max `2` (`Standard 03 §6.2`) while retaining `.7z` archives and `Installers\` history.
+
 ## [0.1.1] - 2026-11-14
 
 ### Added

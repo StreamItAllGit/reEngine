@@ -1,7 +1,7 @@
 # Project Context: reEngine (`<PROJECTS_ROOT>\Personal\reEngine\`)
 
-- **Role:** Top-level zero-daemon `.recomp` suite router, side-by-side `re*` engine resolver & manager UI (`v0.1.1`, Tier A 6-folder).
-- **Boundaries:** `Foundation\` & `_DevBible\` strictly read-only; immutable `<PROJECTS_ROOT>\SharedLibs\reEngine\v<Ver>\` drops; fail-closed `--test-mode` in `Sandbox\` (virtualized `.recomp` registry store, never touching `HKCU` or `<PROGRAMS_ROOT>\`).
+- **Role:** Zero-daemon `.recomp` suite router, side-by-side `re*` resolver & UI (`v0.1.2`, Tier A 6-folder).
+- **Boundaries:** `Foundation\`, `_DevBible\` & `<PROJECTS_ROOT>\Research\*` (`Tier R`, zero `Corpus\` copy) strictly read-only ([Oracle](<USER_HOME_PREFIX>/<WORKSTATION_USER>/.gemini/config/skills/graduate/references/tier_r_oracle_and_hardware_reference.md)); immutable `SharedLibs\reEngine\v<Ver>\`; fail-closed `--test-mode` in `Sandbox\` (never `HKCU`/`<PROGRAMS_ROOT>\`).
 - **Branding:** [`reEngine.svg`](<REPO_ROOT>/Dev/assets/reEngine.svg) | [`reEngine.ico`](<REPO_ROOT>/Dev/assets/reEngine.ico)
 
 ## 1. Root Quartet & Lifecycle State
@@ -12,5 +12,5 @@
 - **Plans & Reports:** [`Dev\docs\plans\`](<REPO_ROOT>/Dev/docs/plans/) | [`Dev\docs\reports\`](<REPO_ROOT>/Dev/docs/reports/)
 
 ## 3. Governance & Notion Human Hub
-- **Bible:** [`00_CORE_INVARIANTS_AND_GLOSSARY.md`](<PROJECTS_ROOT>/Personal/_DevBible/00_CORE_INVARIANTS_AND_GLOSSARY.md) (`Standard 00–19`, `@dean` Dual-Gate, `@tessa` Notion Steward)
+- **Bible:** [`00_CORE_INVARIANTS_AND_GLOSSARY.md`](<PROJECTS_ROOT>/Personal/_DevBible/00_CORE_INVARIANTS_AND_GLOSSARY.md) (`Standard 00–19`, `@dean`, `@tessa`)
 - **Notion (`🛠️ Projects`):** `<NOTION_PAGE_ID>` (`Project = "reEngine"` in `collection://<NOTION_COLLECTION_ID>`)

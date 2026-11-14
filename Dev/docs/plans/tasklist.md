@@ -1,15 +1,23 @@
-# reEngine — `v0.1.1` Tasklist
+# reEngine — `v0.1.2` Tasklist
 
-- **Target Version:** `v0.1.1` (Shipped: `v0.1.0`, Active Plan: [`v0.1.1.2026-11-13.md`](<REPO_ROOT>/Dev/docs/plans/v0.1.1.2026-11-13.md))
+- **Target Version:** `v0.1.2` (Shipped: `v0.1.1`, Active Plan: [`v0.1.2.2026-11-14.md`](<REPO_ROOT>/Dev/docs/plans/v0.1.2.2026-11-14.md))
 - **Detail Level:** `3` *(1 = Basic · 2 = Informative · 3 = Guided Hints · 4 = Full How-To)*
 - **Last Synced:** `2026-11-14`
 
-## Block 1 — Zero-Daemon Router & `.recomp` Associations (`v0.1.0` Shipped) ✅
-- [x] **1.1 Initialized `reEngine` Tier A Workspace, `.recomp` Routing & `app.manifest.json` (`v0.1.0`):**
-  - **Targets:** `Dev\`, `Dev\app.manifest.json`, `active.state`
-  - **Why:** Establishes the zero-daemon (`0 MB` idle, `AllowAutoStart = false`) side-by-side platform engine router.
+## Block 3 — `v0.1.2` Parent-Root `app\*.recomp` Cartridge & `data\rom\` Resolution (`Active PATCH+1`)
+- [x] **T1 — Parent-Root `ResolveModuleRootDirectory` (`RecompPackageReader`):**
+  - **Targets:** `RecompPackageManifest.cs`
+  - **Why:** Ensure clean-root `<InstallRoot>\app\<Game>.recomp` resolves `ModuleRootDirectory` to `<InstallRoot>\` so `data\rom\` discovery stays strictly under `manifest.PreloadRomDir`.
+- [x] **T2 — `v0.1.2` Lockstep Version Bump (`0.1.2`):**
+  - **Targets:** `Dev\version.txt`, `Directory.Build.props`, `app.manifest.json`, `ReEngineBootstrapHelper.cs`
+  - **Why:** Align SDK & installer metadata for `reStation v0.1.2` and `KingsFieldRecomp v0.1.4`.
+- [x] **T3 — Unit Tests & Zero-Warning Suite (`34/34`):**
+  - **Targets:** `ManifestAndResolverTests.cs` (`ParseRecompArchiveInAppFolder_ResolvesParentModuleRootAndStrictDataRomPreload`)
+  - **Why:** Regression-lock parent-root resolution while ignoring `data\gamedata\`.
+- [x] **T4 — `@dean` Gate 2, `Releases\v0.1.0\` Prune, Single-Pass `v0.1.2` Packaging & `Sandbox\` Verify:**
+  - **Targets:** `build_release.ps1`, `SharedLibs\reEngine\v0.1.2\`, `Sandbox\`
 
-## Block 2 — `v0.1.1` Lockstep CLI Sync, Offline Resilience & Isolation (`Active PATCH+1`)
+## Block 2 — `v0.1.1` Lockstep CLI Sync, Offline Resilience & Isolation (`Shipped`) ✅
 - [x] **T1 — Launcher Sync-Wait, CWD Path Normalization & `Foundation` Proposal Report:**
   - **Targets:** `reEngine.Launcher\LauncherArgsHelper.cs`, `reEngine.Launcher\Program.cs`, `Foundation\Dev\docs\reports\0.3.1.20261114-022857.-.rootlauncher-shouldwait-proposal.md`
   - **Why:** Propagate child exit codes `(0, 1, 2, 3, 4, 5, 6, 130)` synchronously and resolve caller-CWD relative paths without touching `Foundation\Dev\src\`.
