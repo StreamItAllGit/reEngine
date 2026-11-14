@@ -1,6 +1,6 @@
 # reEngine — Roadmap & Milestones
 
-**Current Active Version:** `0.1.2`  
+**Current Active Version:** `0.1.3`  
 **Lifecycle State:** `active.state`  
 **Last Updated:** 2026-11-14
 
@@ -14,7 +14,7 @@ Provide a lightweight, **zero-daemon top-level `.recomp` suite router and engine
 ---
 
 ## 2. Active In-Dev Milestone
-- **Shipped Baseline (`PATCH+1`):** `v0.1.2` (`2026-11-14`) — Parent-Root `data\rom\` Resolution for `app\*.recomp` ZIP Cartridges (`RecompPackageReader.ResolveModuleRootDirectory`), Max-2 Unpacked `Releases\` Retention, `34/34` xUnit Tests (`0` Warnings), `SharedLibs\reEngine\v0.1.2\`, `@dean` Gate 2 `PASS`, and `Sandbox\` Verification (atop `v0.1.1` Sync CLI, Offline `[WARN]`, and Per-Module Isolation).
+- **Shipped Baseline (`PATCH+1`):** `v0.1.3` (`2026-11-14`) — Release Sanitization (`Sanitize-MarkdownForEndUser` UTF-8 + fail-fast leak check across `Installers\` and `Releases\{v0.1.3,Latest}\`), `MPL-2.0` `LICENSE` bundling (`app\`, `Archive\`, `SharedLibs\reEngine\v0.1.3\`), `app.manifest.json` & `AGENTS.md` workspace-relative scrub, `>= 85`-line Manual Shelf expansion, `34/34` xUnit tests (`0` warnings), `@dean-2` Gate 2 `PASS`, and `@inspecter` live `Sandbox\` + `--visible-test` `PASS` ([`0.1.3.2026-11-14_1056.-.sandbox-and-visible-test-verify.md`](<REPO_ROOT>/Dev/docs/reports/archive/0.1.3.2026-11-14_1056.-.sandbox-and-visible-test-verify.md)).
 - **Next Active Milestone:** `v0.2.0` — Resumable `.part` Staging Decoupling, Atomic Apply (`staged_updates\` $\rightarrow$ `engines\`) & `"supportedEngineTracks"` Runtime Compatibility Matcher.
 
 ---
@@ -23,8 +23,8 @@ Provide a lightweight, **zero-daemon top-level `.recomp` suite router and engine
 
 ```mermaid
 flowchart LR
-    V01["v0.1.0 (Shipped)\nWinForms Router & SDK"] --> V012["v0.1.2 (Shipped)\napp/*.recomp + Max-2 Releases"]
-    V012 --> V02["v0.2.0 (Next)\nAtomic .part Apply & Track Matcher"]
+    V01["v0.1.0 (Shipped)\nWinForms Router & SDK"] --> V013["v0.1.3 (Shipped)\nLICENSE + Sanitized Releases + Manuals"]
+    V013 --> V02["v0.2.0 (Next)\nAtomic .part Apply & Track Matcher"]
     V02 --> V03["v0.3.0\n--jit-bringup / 4-Backend Routing & Shelf"]
     V03 --> V04["v0.4.0\nuStation --open --wait & R&D Bridge"]
     V04 --> V10["v1.0.0 (GOLD win-x64)\nMulti-Engine R1-R3 Cert"]
@@ -107,6 +107,8 @@ flowchart LR
 ---
 
 ## 4. Completed Milestones
+- `0.1.3` *(2026-11-14)*: Hardened UTF-8 `Sanitize-MarkdownForEndUser` + fail-fast leak guards across `Installers\RELEASE_NOTES.md` and `Releases\{v0.1.3,Latest}\*.md`, bundled root `MPL-2.0` `LICENSE` across portable `Builds\v0.1.3\app\`, `Archive\`, and `SharedLibs\reEngine\v0.1.3\`, scrubbed `AGENTS.md` & `app.manifest.json`, expanded all 4 Manual Shelf documents to `>= 85` non-empty lines, added `## License & Legal` to `README.md` / `USER_GUIDE.md`, passed `34/34` xUnit tests (`0` warnings), `@dean-2` Gate 2 `PASS`, `audit_installer.ps1` (`0` findings), and `@inspecter` live `Sandbox\` + `--visible-test` `PASS` ([`0.1.3.2026-11-14.md`](<REPO_ROOT>/Dev/docs/plans/0.1.3.2026-11-14.md) | [`0.1.3.2026-11-14_1056.-.sandbox-and-visible-test-verify.md`](<REPO_ROOT>/Dev/docs/reports/archive/0.1.3.2026-11-14_1056.-.sandbox-and-visible-test-verify.md)).
+- `0.1.2` *(2026-11-14)*: Delivered `RecompPackageReader.ResolveModuleRootDirectory` for parent `<InstallRoot>\data\rom\` discovery on `app\*.recomp` ZIP cartridges, max-2 unpacked `Releases\` pruning, `34/34` xUnit tests (`0` warnings), `SharedLibs\reEngine\v0.1.2\`, and `Sandbox\` verification ([`v0.1.2.2026-11-14.md`](<REPO_ROOT>/Dev/docs/plans/v0.1.2.2026-11-14.md)).
 - `0.1.1` *(2026-11-14)*: Closed all `5` verified `v0.1.0` runtime/CLI lockstep defects with `33/33` passing xUnit tests (`0` warnings), `@dean` Gate 1 (`#24`) & Gate 2 (`#29`) `PASS`, signed `Installers\reEngine-Setup-v0.1.1-win-x64.exe` (`0` `audit_installer.ps1` findings), `SharedLibs\reEngine\v0.1.1\` SDK drop, and `@inspecter-reengine` live `Sandbox\` + `--visible-test` `PASS` ([`0.1.1.20261114-025555.-.sandbox-verify.md`](<REPO_ROOT>/Dev/docs/reports/archive/0.1.1.20261114-025555.-.sandbox-verify.md)); resolved archived reports [`0.1.0.20261114-020546.-.lockstep-audit.md`](<REPO_ROOT>/Dev/docs/reports/archive/0.1.0.20261114-020546.-.lockstep-audit.md) & [`0.1.0.2026-11-13_13-29-52.-.v010-sandbox-and-visible-test-verify.md`](<REPO_ROOT>/Dev/docs/reports/archive/0.1.0.2026-11-13_13-29-52.-.v010-sandbox-and-visible-test-verify.md).
   - [x] `T1`: `reEngine.Launcher` synchronous wait (`--open`, `--wait`, `--check-updates`, `--register-assoc`, `--visible-test`, `--test-mode`, `--headless`, `--dry-run`, `--help`, `--version`, positional paths), caller-CWD relative-path normalization, `(0, 1, 2, 3, 4, 5, 6, 130)` exit propagation, plus Standard 15 read-only `Foundation` proposal report (`0.3.1.20261114-022857.-.rootlauncher-shouldwait-proposal.md`).
   - [x] `T2`: `UpdateCoordinator.CheckAllInstalledEnginesAsync` multi-engine `(EngineId, Track)` sweep + offline/dropped-socket `[WARN]` (`0` crash dumps, `--strict` exit `4`), `recentLogs` snapshot on `CrashBundleService`, Standard 15 `[v0.1.1] [PID/T]` single-prefix `[HEARTBEAT]`, and `ReEngineMainForm` `sandboxBoundary` + `LayoutControls()` refresh.

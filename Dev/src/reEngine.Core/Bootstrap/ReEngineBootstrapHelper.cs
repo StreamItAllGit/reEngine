@@ -22,7 +22,7 @@ public static class ReEnginePackagingConstants
     public const string DisplayName = "reEngine";
 
     /// <summary>Current packaged SemVer version.</summary>
-    public const string Version = "0.1.2";
+    public const string Version = "0.1.3";
 
     /// <summary>Brand accent color hex (Sky Cyan).</summary>
     public const string BrandAccentHex = "#38BDF8";

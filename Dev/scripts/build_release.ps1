@@ -10,11 +10,23 @@ param(
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
+$utf8NoBom = [System.Text.UTF8Encoding]::new($false)
+function Read-Utf8Text([string]$Path) {
+    return [System.IO.File]::ReadAllText($Path, $utf8NoBom)
+}
+
+function Write-Utf8Text([string]$Path, [string]$Content) {
+    [System.IO.File]::WriteAllText($Path, $Content, $utf8NoBom)
+}
+
 $root = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $devDir = Join-Path $root "Dev"
 if ([string]::IsNullOrWhiteSpace($Version)) {
-    $Version = (Get-Content (Join-Path $devDir "version.txt") -Raw).Trim()
+    $Version = (Read-Utf8Text (Join-Path $devDir "version.txt")).Trim()
 }
+$licensePath = Join-Path $root "LICENSE"
+if (-not (Test-Path $licensePath)) { throw "Root LICENSE file not found at $licensePath" }
+
 $sevenZip = Join-Path $devDir "assets\native\7z.exe"
 if (-not (Test-Path $sevenZip)) { throw "7z.exe not found at $sevenZip" }
 
@@ -31,15 +43,58 @@ function Invoke-7z([string[]]$SevenZipArgs) {
     if ($LASTEXITCODE -ne 0) { throw "7z.exe exited with $LASTEXITCODE ($($SevenZipArgs -join ' '))" }
 }
 
-function Sanitize-MarkdownForEndUser([string]$Text) {
-    $lines = $Text -split "\r?\n"
-    $filtered = foreach ($line in $lines) {
-        if ($line -match 'Dev\\(?:src|tests|docs\\plans|docs\\reports)|Sandbox\\|--test-mode|--visible-test|@pland|@inspecter|@dean|@devv|@tessa') {
-            continue
-        }
-        $line
+function Get-EndUserLeakPattern {
+    $mojibake = [string]::Concat([char]0x00C2, [char]0x00A7)
+    $userPart = ""
+    if (-not [string]::IsNullOrWhiteSpace($env:USERNAME)) {
+        $userPart = "|" + [regex]::Escape($env:USERNAME)
     }
-    return (($filtered -join "`r`n").Trim() + "`r`n")
+    return "(?i)(?:file:///|@(?:pland|dean|devv|inspecter|tessa|nora|milo|simon|julian|holly|rowan|coordinator|monitor)[a-z0-9-]*|\bStandards?\s+\d+|$([regex]::Escape($mojibake))|Dev\\(?:src|tests|docs|scripts|lib|assets)|Sandbox\\|SharedLibs\\|--test-mode|--visible-test|audit_installer\.ps1|[CD]:[\\/](?:Projects|Users)|_DevBible|\bDev Bible\b$userPart)"
+}
+
+function Sanitize-MarkdownForEndUser([string]$Text) {
+    if ([string]::IsNullOrEmpty($Text)) { return "`r`n" }
+    $mojibake = [string]::Concat([char]0x00C2, [char]0x00A7)
+    $sectionSign = [string][char]0x00A7
+    $enDash = [string][char]0x2013
+    $clean = $Text.Replace($mojibake, $sectionSign)
+    $clean = [regex]::Replace($clean, '\[([^\]]+)\]\(file:///[^)]+\)', '$1')
+    $clean = [regex]::Replace($clean, '`file:///[^`\r\n]+`', '')
+    $clean = [regex]::Replace($clean, 'file:///[^\s`)\]]+', '')
+
+    $userPart = if ([string]::IsNullOrWhiteSpace($env:USERNAME)) { "" } else { "|" + [regex]::Escape($env:USERNAME) }
+    $dropRegex = "(?i)Dev\\(?:src|tests|docs|scripts|lib|assets)|Sandbox\\|SharedLibs\\|--test-mode|--visible-test|audit_installer\.ps1|[CD]:[\\/](?:Projects|Users)|_DevBible|\bDev Bible\b$userPart"
+    $handleBacktick = '`@(?:pland|dean|devv|inspecter|tessa|nora|milo|simon|julian|holly|rowan|coordinator|monitor)[a-z0-9-]*`'
+    $handleBare = '@(?:pland|dean|devv|inspecter|tessa|nora|milo|simon|julian|holly|rowan|coordinator|monitor)[a-z0-9-]*'
+    $stdBacktick = "(?i)``(?:per\s+)?\bStandards?\s+\d+(?:\s*(?:$enDash|-)\s*\d+)?(?:\s*$sectionSign[\d.]+)?``"
+    $stdBare = "(?i)(?:per\s+)?\bStandards?\s+\d+(?:\s*(?:$enDash|-)\s*\d+)?(?:\s*$sectionSign[\d.]+)?"
+
+    $lines = $clean -split "\r?\n"
+    $filtered = [System.Collections.Generic.List[string]]::new()
+    foreach ($line in $lines) {
+        if ($line -match $dropRegex) { continue }
+        $s = [regex]::Replace($line, $handleBacktick, '')
+        $s = [regex]::Replace($s, $handleBare, '')
+        $s = [regex]::Replace($s, $stdBacktick, '')
+        $s = [regex]::Replace($s, $stdBare, '')
+        $s = [regex]::Replace($s, '\s*\(\s*\)', '')
+        $s = [regex]::Replace($s, '(?<=\S) {2,}', ' ')
+        $filtered.Add($s.TrimEnd())
+    }
+    $joined = ($filtered -join "`r`n")
+    $joined = [regex]::Replace($joined, "(\r?\n){3,}", "`r`n`r`n")
+    return ($joined.Trim() + "`r`n")
+}
+
+function Assert-NoEndUserLeaks([string[]]$FilePaths) {
+    $leakRegex = Get-EndUserLeakPattern
+    foreach ($fp in $FilePaths) {
+        $body = Read-Utf8Text $fp
+        $m = [regex]::Match($body, $leakRegex)
+        if ($m.Success) {
+            throw "End-user markdown sanitization leak detected in '$fp': matched '$($m.Value)'"
+        }
+    }
 }
 
 if (-not $SkipTests) {
@@ -49,7 +104,8 @@ if (-not $SkipTests) {
 }
 
 Write-Host "[2/7] Staging portable build in Builds\v$Version..."
-$stageDir = Join-Path $root "Builds\v$Version"
+$buildsRoot = Join-Path $root "Builds"
+$stageDir = Join-Path $buildsRoot "v$Version"
 $stageApp = Join-Path $stageDir "app"
 $stageScripts = Join-Path $stageDir "scripts"
 $stageInteractive = Join-Path $stageScripts "interactive"
@@ -69,7 +125,8 @@ if ($LASTEXITCODE -ne 0) { throw "dotnet publish reEngine.Launcher failed ($LAST
 Copy-Item (Join-Path $launcherStage "reEngine.exe") (Join-Path $stageDir "reEngine.exe") -Force
 Remove-Item $launcherStage -Recurse -Force -ErrorAction SilentlyContinue
 
-[System.IO.File]::WriteAllText((Join-Path $stageApp "version.txt"), "$Version", [System.Text.UTF8Encoding]::new($false))
+Write-Utf8Text (Join-Path $stageApp "version.txt") "$Version"
+Copy-Item $licensePath (Join-Path $stageApp "LICENSE") -Force
 Copy-Item (Join-Path $devDir "scripts\*.bat") $stageScripts -Force
 Copy-Item (Join-Path $devDir "scripts\interactive\*.bat") $stageInteractive -Force
 Get-ChildItem $stageDir -Include *.pdb, *.xml -Recurse -File | Remove-Item -Force
@@ -82,10 +139,20 @@ $runtimeAgents = (@'
 - **Data & Logs:** `data\settings.json` and `logs\` unless overridden by `--data-dir`, `--config`, `--log-dir` (or `REENGINE_{DATA_DIR,CONFIG,LOG_DIR}`).
 - **Daemon Policy:** Zero background daemons; `AllowAutoStart = false`.
 '@).Replace('__VER__', $Version)
-[System.IO.File]::WriteAllText((Join-Path $stageDir "AGENTS.md"), $runtimeAgents + "`r`n", [System.Text.UTF8Encoding]::new($false))
+Write-Utf8Text (Join-Path $stageDir "AGENTS.md") ($runtimeAgents + "`r`n")
 
 Invoke-Sign (Join-Path $stageApp "reEngine.exe")
 Invoke-Sign (Join-Path $stageDir "reEngine.exe")
+
+# Retain at most the 2 newest portable Builds\v* directories (deletes stale v0.1.0 / v0.1.1).
+$staleBuilds = Get-ChildItem -Path $buildsRoot -Directory -ErrorAction SilentlyContinue |
+    Where-Object { $_.Name -match '^v\d+\.\d+\.\d+' } |
+    Sort-Object { try { [version]($_.Name.TrimStart('v').Split('-')[0]) } catch { [version]"0.0.0" } } -Descending |
+    Select-Object -Skip 2
+foreach ($sb in $staleBuilds) {
+    Write-Host "  Removing stale staging folder 'Builds\$($sb.Name)'..."
+    Remove-Item $sb.FullName -Recurse -Force
+}
 
 Write-Host "[3/7] Running pre-package Zero-PII & forbidden-extension scan..."
 $forbiddenExts = @(".pdb", ".db", ".sqlite", ".sqlite3", ".log")
@@ -127,19 +194,23 @@ New-Item -ItemType Directory -Force $centralInstallers | Out-Null
 Get-ChildItem $centralInstallers -Filter "reEngine-Setup-*.exe" -File | Remove-Item -Force
 Copy-Item $installerPath (Join-Path $centralInstallers $installerName) -Force
 
-$releaseNotes = (@'
-# reEngine — Release v__VER__
+$emDash = [string][char]0x2014
+$rawReleaseNotes = (@'
+# reEngine __EMDASH__ Release v__VER__
 
 Zero-daemon `.recomp` suite router, side-by-side platform engine track resolver, and self-bootstrapping SDK (`AllowAutoStart = false`).
 
 ## Highlights
 - Parses Standard 18 `.recomp` JSON and ZIP manifests with fail-closed Zip-Slip and `data\rom\` preload media discovery.
 - Resolves highest compatible `engines\re<Platform>\v<Ver>\` track (`>= engineVersion`) while preserving older breaking tracks.
-- Registers per-user `.recomp` Windows shell association (`HKCU\Software\Classes`) or `virtual_registry.json` under `--test-mode`.
+- Registers per-user `.recomp` Windows shell associations cleanly (`HKCU\Software\Classes`) with zero background daemons (`AllowAutoStart = false`).
 - Non-blocking launch update check (`SafeNetworkTransfer` + SHA-256 verification) and Dark Slate WinForms manager UI.
-- Signed single-EXE 4-pillar installer (`AllowAutoStart = false`) and immutable `SharedLibs\reEngine\v__VER__\` SDK drop.
-'@).Replace('__VER__', $Version)
-[System.IO.File]::WriteAllText((Join-Path $installersDir "RELEASE_NOTES.md"), $releaseNotes + "`r`n", [System.Text.UTF8Encoding]::new($false))
+- Signed single-EXE 4-pillar installer (`AllowAutoStart = false`) with bundled `MPL-2.0` `LICENSE` (`app\LICENSE`) and redistributable SDK drop.
+'@).Replace('__VER__', $Version).Replace('__EMDASH__', $emDash)
+$endUserReleaseNotes = Sanitize-MarkdownForEndUser $rawReleaseNotes
+$installerReleaseNotesPath = Join-Path $installersDir "RELEASE_NOTES.md"
+Write-Utf8Text $installerReleaseNotesPath $endUserReleaseNotes
+Assert-NoEndUserLeaks @($installerReleaseNotesPath)
 
 $auditScript = Join-Path $env:USERPROFILE ".gemini\config\skills\release-packaging\scripts\audit_installer.ps1"
 if (Test-Path $auditScript) {
@@ -156,17 +227,23 @@ foreach ($d in @($relVerDir, $relLatestDir)) {
     New-Item -ItemType Directory -Force $d | Out-Null
 }
 
-$userGuide = Get-Content (Join-Path $devDir "docs\USER_GUIDE.md") -Raw
-$endUserReadme = Sanitize-MarkdownForEndUser $userGuide
-$endUserFeatures = Sanitize-MarkdownForEndUser (Get-Content (Join-Path $root "FEATURES.md") -Raw)
-$changelogText = Get-Content (Join-Path $root "CHANGELOG.md") -Raw
+$endUserReadme = Sanitize-MarkdownForEndUser (Read-Utf8Text (Join-Path $devDir "docs\USER_GUIDE.md"))
+$endUserFeatures = Sanitize-MarkdownForEndUser (Read-Utf8Text (Join-Path $root "FEATURES.md"))
+$endUserChangelog = Sanitize-MarkdownForEndUser (Read-Utf8Text (Join-Path $root "CHANGELOG.md"))
 
 foreach ($dir in @($relVerDir, $relLatestDir)) {
     Copy-Item $installerPath (Join-Path $dir $installerName) -Force
-    [System.IO.File]::WriteAllText((Join-Path $dir "README.md"), $endUserReadme, [System.Text.UTF8Encoding]::new($false))
-    [System.IO.File]::WriteAllText((Join-Path $dir "FEATURES.md"), $endUserFeatures, [System.Text.UTF8Encoding]::new($false))
-    [System.IO.File]::WriteAllText((Join-Path $dir "RELEASE_NOTES.md"), $releaseNotes + "`r`n", [System.Text.UTF8Encoding]::new($false))
-    [System.IO.File]::WriteAllText((Join-Path $dir "CHANGELOG.md"), $changelogText, [System.Text.UTF8Encoding]::new($false))
+    $mdPaths = @(
+        (Join-Path $dir "README.md"),
+        (Join-Path $dir "FEATURES.md"),
+        (Join-Path $dir "RELEASE_NOTES.md"),
+        (Join-Path $dir "CHANGELOG.md")
+    )
+    Write-Utf8Text $mdPaths[0] $endUserReadme
+    Write-Utf8Text $mdPaths[1] $endUserFeatures
+    Write-Utf8Text $mdPaths[2] $endUserReleaseNotes
+    Write-Utf8Text $mdPaths[3] $endUserChangelog
+    Assert-NoEndUserLeaks $mdPaths
 
     $sumLines = foreach ($fn in @($installerName, "README.md", "FEATURES.md", "RELEASE_NOTES.md", "CHANGELOG.md")) {
         $h = (Get-FileHash (Join-Path $dir $fn) -Algorithm SHA256).Hash.ToLowerInvariant()
@@ -182,7 +259,6 @@ if (Test-Path $relLatestZip) { Remove-Item $relLatestZip -Force }
 Invoke-7z @("a", "-t7z", "-mx=9", "-mmt=on", $relVerZip, (Join-Path $relVerDir "*"))
 Invoke-7z @("a", "-t7z", "-mx=9", "-mmt=on", $relLatestZip, (Join-Path $relLatestDir "*"))
 
-# Standard 03 §6.2: keep max 2 unpacked Full Releases (Latest + 2 newest v* folders); retain all .7z archives.
 $unpackedReleases = Get-ChildItem -Path $releasesDir -Directory | Where-Object { $_.Name -match '^v\d+\.\d+\.\d+' } |
     Sort-Object { try { [version]($_.Name.TrimStart('v').Split('-')[0]) } catch { [version]"0.0.0" } } -Descending
 if ($unpackedReleases.Count -gt 2) {
@@ -198,7 +274,7 @@ if (-not $SkipSourceArchive) {
     if (Test-Path $srcArchive) { Remove-Item $srcArchive -Force }
     Push-Location $root
     try {
-        Invoke-7z @("a", "-t7z", "-mx=9", "-xr!bin", "-xr!obj", "-xr!*.user", $srcArchive, "Dev", "README.md", "FEATURES.md", "ROADMAP.md", "CHANGELOG.md", "AGENTS.md", "active.state")
+        Invoke-7z @("a", "-t7z", "-mx=9", "-xr!bin", "-xr!obj", "-xr!*.user", $srcArchive, "Dev", "README.md", "FEATURES.md", "ROADMAP.md", "CHANGELOG.md", "AGENTS.md", "LICENSE", "active.state")
     } finally {
         Pop-Location
     }
@@ -212,11 +288,13 @@ foreach ($sdkDir in @((Join-Path $sharedRoot "v$Version"), (Join-Path $sharedRoo
     foreach ($fn in @("reEngine.Core.dll", "reEngine.Core.xml", "reEngine.Core.deps.json")) {
         Copy-Item (Join-Path $coreOut $fn) (Join-Path $sdkDir $fn) -Force
     }
+    Copy-Item $licensePath (Join-Path $sdkDir "LICENSE") -Force
     Copy-Item $installerPath (Join-Path $sdkDir $installerName) -Force
     $artifacts = @(
         "reEngine.Core.dll",
         "reEngine.Core.xml",
         "reEngine.Core.deps.json",
+        "LICENSE",
         $installerName
     ) | ForEach-Object {
         $p = Join-Path $sdkDir $_
@@ -235,7 +313,7 @@ foreach ($sdkDir in @((Join-Path $sharedRoot "v$Version"), (Join-Path $sharedRoo
         updatedAtUtc  = [DateTime]::UtcNow.ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
         artifacts     = $artifacts
     } | ConvertTo-Json -Depth 5
-    [System.IO.File]::WriteAllText((Join-Path $sdkDir "sdk-manifest.json"), $manifestObj + "`r`n", [System.Text.UTF8Encoding]::new($false))
+    Write-Utf8Text (Join-Path $sdkDir "sdk-manifest.json") ($manifestObj + "`r`n")
 }
 
 Remove-Item $workTemp -Recurse -Force -ErrorAction SilentlyContinue

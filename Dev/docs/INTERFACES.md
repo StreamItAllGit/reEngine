@@ -1,55 +1,111 @@
 # reEngine — Interfaces & Contracts
 
-**Synced Version:** `0.1.2` (`2026-11-14`)  
-**Owner:** `reEngine` Core (`@devv` / `@dean`)
+**Synced Version:** `0.1.3` (`2026-11-14`)  
+**Owner:** `reEngine` Core (`@devv` / `@dean`)  
+**Schema Discipline:** Canonical `camelCase` JSON keys per [`18_DATA_DICTIONARY_AND_SCHEMA_LOOKUP.md`](<PROJECTS_ROOT>/Personal/_DevBible/18_DATA_DICTIONARY_AND_SCHEMA_LOOKUP.md)
 
 ---
 
 ## 1. `.recomp` Package Manifest (`module.recomp.json` / `*.recomp`)
-Parsed by `RecompPackageReader.Load(string packagePath)` (supports direct JSON and Zip-Slip-guarded `.recomp` ZIP archives containing `module.recomp.json`, calling `ResolveModuleRootDirectory` so `<InstallRoot>\app\*.recomp` resolves `ModuleRootDirectory` to `<InstallRoot>\`) using canonical Standard 18 `camelCase` keys:
-- `schemaVersion`: `int` (must be `>= 1`, default `1`)
-- `moduleId`: `string` (validated against `^[a-z0-9][a-z0-9-]*$` for isolated `<dataDir>\modules\<moduleId>\` containment, e.g., `"kings-field-slus-00158"`)
-- `title`: `string`
-- `version`: `string` (Full SemVer `"0.1.3"`)
-- `engineId`: `string` (required, e.g., `"reStation"`, `"re64"`, `"reCube"`)
-- `engineVersion`: `string` (required minimum SemVer, e.g., `"0.1.0"`)
-- `compatibleEngineTrack`: `string` (required track selector, e.g., `"0.1.x"`, `"1.x"`)
-- `preloadRomDir`: `string` (defaults to `"data/rom"`, strictly contained inside module root)
-- `entryExecutable`: `string?` (optional module entrypoint relative path)
 
-Preload media discovery (`RecompPackageReader.DiscoverPreloadMedia`) prioritizes `.cue` > `.chd` > `.iso` > cartridge/disc images > `.7z`/`.zip`/`.img` > `.bin`.
+Parsed by `RecompPackageReader.Load(string packagePath)`. Supports plain UTF-8 JSON (`*.recomp.json`) and ZIP archives (`*.recomp`) containing a root `module.recomp.json` (or single root `*.recomp.json`). ZIP ingestion enforces fail-closed Zip-Slip validation rejecting rooted entries, `:` drive tokens, and `..` path traversal.
 
-## 2. Settings (`data\settings.json`) & Virtual Registry (`data\virtual_registry.json`)
-`ReEngineSettings` (persisted via `GranularSettingsManager` with `[JsonExtensionData]` preservation):
-- `schemaVersion`: `int` (`1`), `appId`: `string` (`"reengine"`), `updatedAtUtc`: ISO-8601 UTC
-- `shouldCheckUpdates`: `bool` (default `true`)
-- `shouldAutoStagePatches`: `bool` (default `true`)
-- `lastUpdateFeedUrl`: `string?` (optional remote HTTP/HTTPS URL or contained local feed path)
-- `enginesDirectoryOverride`: `string?`
-- `preferredResolutionScale`: `int` (default `2`), `windowWidth`: `int?`, `windowHeight`: `int?`
+| Field (`camelCase`) | Type | Required | Default / Validation | Purpose |
+| :--- | :--- | :---: | :--- | :--- |
+| `schemaVersion` | `int` | Yes | `>= 1` (`1`) | Manifest schema revision. |
+| `moduleId` | `string` | Yes | `^[a-z0-9][a-z0-9-]*$` | Lowercase kebab slug isolating `<dataDir>\modules\<moduleId>\`. |
+| `title` | `string` | Yes | Non-empty | Human-facing game/module display title. |
+| `version` | `string` | Yes | SemVer (`"0.1.5"`) | Packaged module semantic version. |
+| `engineId` | `string` | Yes | Non-empty | Target platform engine folder (`"reStation"`, `"re64"`, `"reCube"`). |
+| `engineVersion` | `string` | Yes | Valid `SemVer` | Minimum compatible engine version required (`>=`). |
+| `compatibleEngineTrack` | `string` | Yes | Track selector | Compatibility track (`X.Y.x`, `X.Y.*`, `X.Y`, `X.x`, `X.*`, `X.Y.Z`). |
+| `preloadRomDir` | `string` | No | `"data/rom"` | Relative preload directory inside `ModuleRootDirectory`. |
+| `entryExecutable` | `string?` | No | `null` | Optional module-specific executable path relative to root. |
 
-`FileAssociationRecord` (`VirtualRegistryAssociationStore` / `WindowsRegistryAssociationStore`):
-- `schemaVersion`, `extension` (`".recomp"`), `progId` (`"reEngine.RecompModule"`), `commandTemplate` (`"\"<exe>\" --open \"%1\""`), `iconPath`, `updatedAtUtc`.
+- **Parent-Root Cartridge Resolution (`ResolveModuleRootDirectory`):** When a `.recomp` cartridge or `.recomp.json` manifest lives directly inside `<InstallRoot>\app\`, `ModuleRootDirectory` resolves to `<InstallRoot>\` (except when `<InstallRoot>` would be a drive volume root), aligning `data\rom\` discovery with clean-root installations.
+- **Preload Media Priority (`DiscoverPreloadMedia`):** Enumerates `preloadRomDir` recursively and ranks `PrimaryMediaPath` deterministically:
+  1. Priority `0`: `.cue`
+  2. Priority `1`: `.chd`
+  3. Priority `2`: `.iso`
+  4. Priority `3`: `.gcm`, `.rvz`, `.n64`, `.z64`, `.v64`, `.sfc`, `.smc`, `.nes`, `.gb`, `.gbc`, `.gba`
+  5. Priority `4`: `.7z`, `.zip`, `.img`
+  6. Priority `5`: `.bin` (tie-broken lexicographically via `StringComparer.OrdinalIgnoreCase`)
 
-## 3. Update Feed (`UpdateFeedManifest`), Multi-Engine Sweep & SDK (`ReEngineBootstrapHelper`)
-`UpdateFeedManifest`: `schemaVersion`, `updatedAtUtc`, `engines[]` (`engineId`, `version`, `downloadUrl`, `sha256Hex`, `fileSizeBytes`, `notes`).
-- `UpdateCheckOutcome(..., bool NetworkUnavailable = false)`: single `(EngineId, Track)` evaluation result (`Checked` preserved in-memory only for `v0.1.0` compatibility).
-- `MultiEngineUpdateSweepResult(bool SweepExecuted, bool NetworkUnavailable, IReadOnlyList<UpdateCheckOutcome> Outcomes, string SummaryMessage)`: returned by `UpdateCoordinator.CheckAllInstalledEnginesAsync(...)`, which groups installed engines by `(EngineId, Track = "{Major}.{Minor}.x")` (falling back to `reStation 0.1.0`), fetches `UpdateFeedManifest` once, stages compatible patches under `<dataDir>\staged_updates\<engineId>\v<Ver>\`, alerts on breaking tracks without overwriting, and degrades transient HTTP/socket/IO/timeout/feed-JSON faults cleanly (`NetworkUnavailable = true`, `0` crash dumps) while keeping `SandboxEnvironment.AssertPathContained` escapes fail-closed.
+---
 
-`ReEngineBootstrapHelper`:
-- `ResolveDefaultReEngineInstallDir(explicitDir, sandboxDataDir, testMode)` (fail-closed in `--test-mode`; uses `REENGINE_HOME` or dynamically constructed `<D>:\Programs\reEngine` otherwise).
-- `ResolveEnginesRootDir(reEngineInstallDir)` & `BuildEngineVersionInstallDir(reEngineInstallDir, engineId, version)`.
-- `EnsureReEngineInstalledAsync(...)`: checks `app\version.txt` -> `app\install-manifest.json` -> `.install_manifest.json` -> `version.txt`, runs bundled silent installer via `JobObjectGuard` if missing/older, and optionally registers `.recomp` association.
+## 2. Settings, Virtual Registry & App Manifest Contracts
 
-## 4. CLI Flags, Child Isolation & Exit Code Contract
-- **Primary CLI Flags:** `--open <path>` (or positional `*.recomp` / `*.recomp.json`), `--wait`, `--register-assoc`, `--check-updates`, `--strict`, `--feed <urlOrPath>`, `--engines-dir <dir>`, `--data-dir <dir>`, `--config <path>`, `--log-dir <dir>`, `--test-mode`, `--dry-run`, `--headless`, `--visible-test`, `--enable-logs`, `--frames <n>`, `--fixture <path>`, `--dump-screenshot <path>`, `--dump-audio <path>`, `--input-script <path>`, `--version`, `--help`.
-- **Per-Module Child Isolation (`RecompLaunchCoordinator.BuildChildLaunchPlan`):**
-  - Isolates child `--data-dir` to `<dataDir>\modules\<moduleId>\`, `--config` to `<moduleDataDir>\settings.json` (honoring an explicit `--config` only when already inside `<moduleDataDir>`), and `--log-dir` to `<moduleDataDir>\logs` (or explicit containment-checked CLI `--log-dir`).
-  - Forwards `--module <fullPkgPath>`, optional `--preload-media <primaryMediaPath>`, `--wait`, `--test-mode`, `--headless`, `--visible-test`, `--enable-logs`, `--frames <n>`, `--fixture <path>`, `--dump-screenshot <path>`, `--dump-audio <path>`, and `--input-script <path>` (all paths containment-checked against `sandboxBoundary` when sandboxed).
-- **Propagated Exit Codes (`reEngine.Launcher` $\leftrightarrow$ `reEngine.App`):**
-  - `0`: Success (or non-strict offline `--check-updates` `[WARN]`).
-  - `1`: General runtime failure, missing resolved engine, or child failure.
-  - `2`: Fail-closed sandbox/containment violation, Zip-Slip/`InvalidDataException`/`JsonException` manifest error, or invalid CLI `ArgumentException`.
-  - `4`: Offline/network failure when `--check-updates --strict` is set.
-  - `130`: `Console.CancelKeyPress` / `OperationCanceledException` interruption.
-  - Any other child exit codes (`3`, `5`, `6`, etc.) propagate verbatim from child engine to root `reEngine.exe`.
+### 2.1 User Settings (`data\settings.json` — `ReEngineSettings`)
+Persisted atomically with `.bak` recovery via `GranularSettingsManager`, preserving unknown keys via `[JsonExtensionData]`:
+- `schemaVersion` (`int`, default `1`): settings schema version.
+- `appId` (`string`, default `"reengine"`): canonical lowercase application identifier.
+- `updatedAtUtc` (`string`): ISO-8601 UTC timestamp updated on save.
+- `shouldCheckUpdates` (`bool`, default `true`): toggles non-blocking launch update checks.
+- `shouldAutoStagePatches` (`bool`, default `true`): toggles SHA-256 compatible patch staging.
+- `lastUpdateFeedUrl` (`string?`): remote HTTP/HTTPS feed URL or sandbox-contained local feed path.
+- `enginesDirectoryOverride` (`string?`): optional custom path to the `engines\` root.
+- `preferredResolutionScale` (`int`, default `2`): pass-through default scale (`1..8`).
+- `windowWidth` / `windowHeight` (`int?`): remembered WinForms manager dimensions.
+
+### 2.2 File Association Record (`FileAssociationRecord`)
+Written under `HKCU\Software\Classes\.recomp` (`reEngine.RecompModule`) live, or `<dataDir>\virtual_registry.json` when `--test-mode` / containment is active:
+- `schemaVersion`: `1`
+- `extension`: `".recomp"`
+- `progId`: `"reEngine.RecompModule"`
+- `commandTemplate`: `"\"<exe>\" --open \"%1\""`
+- `iconPath`: resolved executable/icon path (`"<exe>,0"`)
+- `updatedAtUtc`: ISO-8601 UTC timestamp
+
+### 2.3 Suite App Manifest (`Dev\app.manifest.json`)
+- `schemaVersion`: `2`, `manifestType`: `"standalone-app"`, `appId`: `"reengine"`, `version`: `"0.1.3"`, `activeMilestone`: `"0.1.3"`, `goalMajorVersion`: `"1.0.0"`, `sdkVersion`: `"0.3.1"`.
+- `downstreamProjects`: `["Personal/reStation", "Personal/KingsFieldRecomp", "Personal/HMBackToNature-Recomp"]` (workspace-relative slugs, zero literal drive paths).
+
+---
+
+## 3. Update Feed, Multi-Engine Sweep & Bootstrap SDK (`reEngine.Core`)
+
+- **Feed Schema (`UpdateFeedManifest`):**
+  - `schemaVersion` (`int`), `updatedAtUtc` (`string`), `engines` (`UpdateFeedEntry[]`).
+  - Each `UpdateFeedEntry` carries `engineId`, `version`, `downloadUrl`, `sha256Hex`, `fileSizeBytes`, and optional `notes`.
+- **Multi-Engine Sweep (`UpdateCoordinator.CheckAllInstalledEnginesAsync`):**
+  - Deduplicates installed engines by `(EngineId, "{Major}.{Minor}.x")` and picks the highest version per track (falling back to `reStation 0.1.0` when empty).
+  - Stages compatible patches to `<dataDir>\staged_updates\<engineId>\v<Ver>\` via `SafeNetworkTransfer` with SHA-256 verification without mutating breaking tracks.
+  - Degrades transient `HttpRequestException`, `SocketException`, `IOException`, `TimeoutException`, `JsonException`, and non-user `OperationCanceledException` faults to `MultiEngineUpdateSweepResult.NetworkUnavailable = true` (`0` crash dumps), while keeping sandbox escapes fail-closed (`InvalidOperationException`).
+- **Bootstrap SDK (`ReEngineBootstrapHelper` & `SharedLibs\reEngine\v0.1.3\`):**
+  - `sdk-manifest.json` tracks `reEngine.Core.dll`, `reEngine.Core.xml`, `reEngine.Core.deps.json`, `LICENSE`, and `reEngine-Setup-v0.1.3-win-x64.exe` with byte sizes and SHA-256 digests.
+  - `ResolveDefaultReEngineInstallDir(explicitDir, sandboxDataDir, testMode)` enforces `sandboxDataDir` containment in `--test-mode` or falls back to `explicitDir` -> `REENGINE_HOME` -> dynamic `<D>:\Programs\reEngine`.
+  - `EnsureReEngineInstalledAsync` probes `app\version.txt` -> `app\install-manifest.json` -> `.install_manifest.json` -> `version.txt`, invokes the bundled setup EXE silently via `JobObjectGuard` (`--silent --no-launch --no-shortcuts --install-dir ...`, plus `--test-mode --data-dir ...` when sandboxed), and optionally runs `--register-assoc --headless`.
+
+### 3.1 Engine Resolution & Telemetry Types (`reEngine.Core`)
+- **`InstalledEngineCandidate`:** `EngineId`, `Version` (`SemVer`), `VersionFolderName` (`v<Ver>`), `EngineDirectory`, `ExecutablePath` (discovered via `<engineId>.exe`, `app\<engineId>.exe`, or contained `engine.manifest.json` `entryExecutable`).
+- **`EngineResolutionResult`:** `Found` (`bool`), `SelectedEngine` (`InstalledEngineCandidate?`), `DiscoveredCandidates`, `DiagnosticMessage`.
+- **`ReEngineTelemetryFormatter`:**
+  - `FormatLogLine(level, message, utcNow)` emits `<yyyy-MM-ddTHH:mm:ss.fffZ> [v0.1.3] [PID:<id>/T:<tid>] [<LEVEL>] <message>`.
+  - `StripHeartbeatPrefix(line)` strips duplicate `[HEARTBEAT] ` prefixes produced by `HeartbeatLogger`.
+- **`CrashBundleService` Integration:** `Program.Main` registers global handlers and writes `crash_reengine_*.json` with `"recentLogs"` populated from the bounded 100-entry `SnapshotRecentLogs()` queue.
+
+---
+
+## 4. CLI Contract, Child Isolation & Exit Code Matrix
+
+### 4.1 CLI Flags & Launcher Argument Rules
+- **Package & Association Flags:** `--open <path>` (or positional `*.recomp` / `*.recomp.json`), `--wait`, `--register-assoc`.
+- **Update Flags:** `--check-updates`, `--strict`, `--feed <urlOrPath>`.
+- **Directory & Mode Flags:** `--engines-dir <dir>`, `--data-dir <dir>`, `--config <path>`, `--log-dir <dir>`, `--test-mode`, `--dry-run`, `--headless`, `--visible-test`, `--version` (`-v`), `--help` (`-h`, `/?`, `help`).
+- **Forwarded Engine / Test Flags:** `--enable-logs`, `--frames <n>`, `--fixture <path>`, `--dump-screenshot <path>`, `--dump-audio <path>`, `--input-script <path>`.
+- **Launcher Rules (`LauncherArgsHelper`):** Normalizes caller-CWD relative paths for `PathOptions` and positional targets (preserving `http://`/`https://` `--feed` URIs), skips value tokens for `--port` / `--ui` / `--frames`, and waits synchronously whenever `ShouldWaitForChild` detects any CLI/test flag.
+
+### 4.2 Per-Module Child Isolation (`RecompLaunchCoordinator.BuildChildLaunchPlan`)
+1. Isolates `--data-dir` to `<dataDir>\modules\<moduleId>\`, `--config` to `<moduleDataDir>\settings.json` (accepting explicit `--config` only if inside `<moduleDataDir>`), and `--log-dir` to `<moduleDataDir>\logs` (or containment-checked `--log-dir`).
+2. Forwards `--module <fullPkgPath>`, optional `--preload-media <PrimaryMediaPath>`, plus active wait/mode/test flags.
+
+### 4.3 Propagated Exit Codes (`reEngine.Launcher` $\leftrightarrow$ `reEngine.App`)
+
+| Exit Code | Trigger / Meaning |
+| :---: | :--- |
+| `0` | Success, `--version`/`--help`/`--dry-run` pass, or non-strict offline `--check-updates` (`[WARN]`). |
+| `1` | General runtime failure, missing compatible `re*` engine, or child launch failure. |
+| `2` | Invalid CLI `ArgumentException`, Zip-Slip/`InvalidDataException`/`JsonException` manifest error, or fail-closed containment violation. |
+| `4` | `--check-updates --strict` failure when update feed/network is unavailable. |
+| `130` | `Console.CancelKeyPress` / `OperationCanceledException` interrupt (terminates child process tree cleanly). |
+| `3, 5, 6, ...` | Propagated verbatim from child `re*` engines during `--open` / `--wait`. |

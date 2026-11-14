@@ -1,6 +1,6 @@
-# reEngine (`v0.1.2`)
+# reEngine (`v0.1.3`)
 
-- **Active Version:** `v0.1.2` (`2026-11-14`)
+- **Active Version:** `v0.1.3` (`2026-11-14`)
 - **Lifecycle State:** `active` ([`active.state`](<REPO_ROOT>/active.state))
 - **Group / Path:** `<PROJECTS_ROOT>\Personal\reEngine\`
 - **Logo Assets:** [`Dev\assets\reEngine.svg`](<REPO_ROOT>/Dev/assets/reEngine.svg) | [`Dev\assets\reEngine.png`](<REPO_ROOT>/Dev/assets/reEngine.png) | [`Dev\assets\reEngine.ico`](<REPO_ROOT>/Dev/assets/reEngine.ico)
@@ -29,14 +29,14 @@ reEngine.exe --test-mode --visible-test --data-dir .\Sandbox\data --log-dir .\Sa
 | `--wait` | Synchronously wait across root `reEngine.exe` and child engine execution (caller-CWD relative paths normalized; exit codes `0, 1, 2, 3, 4, 5, 6, 130` propagated). |
 | `--register-assoc` | Register per-user `.recomp` Windows shell file association (`HKCU\Software\Classes`; virtualized in `--test-mode`). |
 | `--check-updates` (`--strict`) | Sweep all installed `(engineId, track)` engines side-by-side; offline socket drops log `[WARN]` (`Exit 0`, or `Exit 4` with `--strict`, `0` crash dumps). |
-| `--data-dir` / `--config` / `--log-dir` | Redirect writable runtime data, `settings.json`, and Standard 15 `[v0.1.2] [PID/T]` telemetry logs (`--test-mode` fail-closed). |
+| `--data-dir` / `--config` / `--log-dir` | Redirect writable runtime data, `settings.json`, and Standard 15 `[v0.1.3] [PID/T]` telemetry logs (`--test-mode` fail-closed). |
 | `--headless` / `--visible-test` | Automated CI mode (`--headless`) or short dark-UI foreground showcase (`--visible-test`). |
 | `--frames`, `--fixture`, `--dump-screenshot`, `--dump-audio`, `--input-script`, `--enable-logs` | Containment-checked runtime, diagnostic, and automated test-capture flags forwarded cleanly to resolved `re*` child engines. |
 
 ---
 
 ## 3. Architecture At a Glance
-- **Application Archetype:** Zero-Daemon Suite Router & Dark Manager (`Tier A`, `net8.0` Core + `net8.0-windows` App/Launcher/Installer consuming `Foundation.Core`, `Foundation.Launcher`, and `Foundation.Installer`; `34/34` passing xUnit tests at `v0.1.2`; migrating to a cross-platform `SDL3` shell across `v1.1.0–v2.0.0`).
+- **Application Archetype:** Zero-Daemon Suite Router & Dark Manager (`Tier A`, `net8.0` Core + `net8.0-windows` App/Launcher/Installer consuming `Foundation.Core`, `Foundation.Launcher`, and `Foundation.Installer`; `34/34` passing xUnit tests at `v0.1.3`; migrating to a cross-platform `SDL3` shell across `v1.1.0–v2.0.0`).
 - **4-Tier Recomp Routing & Sister-App Boundary:** Targets `.recomp` modules first (plus developer `--jit-bringup` raw-disc seeding in `re*` engines). `uStation` never builds a competing recompiler and delegates `.recomp` launches through `reEngine.exe --open <pkg> --wait`.
 - **Engine Track Resolution, Isolation & Canonical Media Preload:** Matches `compatibleEngineTrack` and `>= engineVersion` across `engines\re<Platform>\v<Ver>\`, resolves `app\<Module>.recomp` parent `<InstallRoot>\data\rom\` via `RecompPackageReader.ResolveModuleRootDirectory`, isolates child `--data-dir`/`--config`/`--log-dir` inside `<dataDir>\modules\<moduleId>\`, and auto-detects gitignored user optical/ROM media in `<module>\data\rom\` before prompting media pickers.
 - **Horizon (`v1.0.0` & `v2.0.0`):** `v1.0.0` certifies multi-engine `win-x64` routing across `>= 2` `re*` engines and `>= 2` `R1–R3` `.recomp` modules plus `uStation` synchronous delegation (decoupled from `R4` standalone ports and per-game overlay counts); `v2.0.0` delivers full-stack 10-platform routing (`win-x64`, `linux-x64`, `osx-arm64`, `steamos-deck`, `linux-bionic-arm64`, `ios-arm64`, `browser-wasm`, `switch`, `xbox`, `playstation`) with graceful Zero-RWX static module resolution on locked-down hosts.
@@ -54,3 +54,12 @@ reEngine.exe --test-mode --visible-test --data-dir .\Sandbox\data --log-dir .\Sa
 
 ## 5. Manual Shelf (`Dev\docs\`)
 - [`ARCHITECTURE.md`](<REPO_ROOT>/Dev/docs/ARCHITECTURE.md) | [`INTERFACES.md`](<REPO_ROOT>/Dev/docs/INTERFACES.md) | [`USER_GUIDE.md`](<REPO_ROOT>/Dev/docs/USER_GUIDE.md) | [`OPERATIONS.md`](<REPO_ROOT>/Dev/docs/OPERATIONS.md)
+
+---
+
+## License & Legal
+
+- **Router & SDK License (`MPL-2.0`):** `reEngine` (`reEngine.Core`, `reEngine.App`, `reEngine.Launcher`, and `reEngine.Installer`) is licensed under the **Mozilla Public License Version 2.0** ([`LICENSE`](<REPO_ROOT>/LICENSE)). Verbatim copies of `LICENSE` are distributed in the repository root, portable `Builds\v<Version>\app\LICENSE`, source archives, and `<PROJECTS_ROOT>\SharedLibs\reEngine\v<Version>\LICENSE`.
+- **Bundled Archiver Attribution (`7z.exe` / `7z.dll`):** Build-time archive packaging uses `7z.exe` and `7z.dll` ([`LICENSE-7ZIP.txt`](<REPO_ROOT>/Dev/assets/native/LICENSE-7ZIP.txt)), licensed under the **GNU LGPL-2.1+** with the **unRAR license restriction** (and BSD 3-clause / BSD 2-clause components for LZFSE, ZSTD, and XXH64).
+- **Non-Affiliation Notice:** `reEngine` is an independent clean-room software router and is not affiliated with, endorsed by, or sponsored by Sony Interactive Entertainment, Nintendo, Microsoft, Sega, or any game publisher or console hardware manufacturer. All product names and trademarks belong to their respective owners.
+- **Zero-ROM / Zero-BIOS Guarantee:** `reEngine` contains zero copyrighted retail game binaries, console BIOS/firmware dumps, or proprietary SDK assets. Users must legally supply their own optical discs or cartridge dumps inside each module's gitignored `data\rom\` preload directory.

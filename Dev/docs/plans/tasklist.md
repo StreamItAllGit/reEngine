@@ -1,10 +1,22 @@
-# reEngine — `v0.1.2` Tasklist
+# reEngine — `v0.1.3` Tasklist
 
-- **Target Version:** `v0.1.2` (Shipped: `v0.1.1`, Active Plan: [`v0.1.2.2026-11-14.md`](<REPO_ROOT>/Dev/docs/plans/v0.1.2.2026-11-14.md))
+- **Target Version:** `v0.1.3` (Shipped: `v0.1.2`, Active Plan: [`0.1.3.2026-11-14.md`](<REPO_ROOT>/Dev/docs/plans/0.1.3.2026-11-14.md))
 - **Detail Level:** `3` *(1 = Basic · 2 = Informative · 3 = Guided Hints · 4 = Full How-To)*
 - **Last Synced:** `2026-11-14`
 
-## Block 3 — `v0.1.2` Parent-Root `app\*.recomp` Cartridge & `data\rom\` Resolution (`Active PATCH+1`)
+## Block 4 — `v0.1.3` Release Sanitizer Hardening, Legal Parity & Manual Shelf Expansion (`Shipped`) ✅
+- [x] **T1 — Lockstep `v0.1.3` Bump, `app.manifest.json` Scrub & `AGENTS.md` Path Cleanup:**
+  - **Targets:** `Dev\version.txt`, `Dev\Directory.Build.props`, `ReEngineBootstrapHelper.cs`, `active.state`, `Dev\app.manifest.json`, `AGENTS.md`
+- [x] **T2 — Manual Shelf Expansion (`>= 85` Lines Each), `MPL-2.0`/7-Zip Legal Parity & Root Quartet Sync:**
+  - **Targets:** `Dev\docs\{ARCHITECTURE,INTERFACES,USER_GUIDE,OPERATIONS}.md`, `README.md`, `FEATURES.md`, `CHANGELOG.md`
+- [x] **T3 — Hardened `Dev\scripts\build_release.ps1` (`LICENSE` Bundling, Stale Build Cleanup & Fail-Fast Sanitizer):**
+  - **Targets:** `Dev\scripts\build_release.ps1`
+- [x] **T4 — Build/Test Gate, `@dean-2` Gate 2, Single-Pass Packaging & Live-View `Sandbox\` Verify:**
+  - [x] Pass `dotnet test Dev\reEngine.slnx -c Release /warnaserror` (`34/34`, `0` warnings, `0` skips)
+  - [x] `@dean-2` Gate 2 `PASS` + run `build_release.ps1 -Version 0.1.3` + `audit_installer.ps1` (`0` findings)
+  - [x] `@inspecter` isolated `Sandbox\` + `--visible-test` verification & `@tessa-2` Dual-Track Git/GitHub/Docs closeout sync
+
+## Block 3 — `v0.1.2` Parent-Root `app\*.recomp` Cartridge & `data\rom\` Resolution (`Shipped`) ✅
 - [x] **T1 — Parent-Root `ResolveModuleRootDirectory` (`RecompPackageReader`):**
   - **Targets:** `RecompPackageManifest.cs`
   - **Why:** Ensure clean-root `<InstallRoot>\app\<Game>.recomp` resolves `ModuleRootDirectory` to `<InstallRoot>\` so `data\rom\` discovery stays strictly under `manifest.PreloadRomDir`.

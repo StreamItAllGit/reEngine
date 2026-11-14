@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.3] - 2026-11-14
+
+### Added
+- Added explicit `## License & Legal` sections to `README.md` and the User Guide documenting the `MPL-2.0` router license (`LICENSE`), `7z.exe`/`7z.dll` (`LICENSE-7ZIP.txt`) LGPL-2.1+ with unRAR restriction attribution, trademark non-affiliation, and the strict zero-ROM / zero-BIOS BYO-media guarantee.
+- Added a fail-fast post-sanitization leak guard to the release packager validating all packaged Markdown files (`Releases\v<Version>\*.md` and `Releases\Latest\*.md`) against workstation paths, local URI leaks, internal workflow identifiers, and UTF-8 mojibake.
+
+### Changed
+- Bumped `reEngine` to `v0.1.3` across assemblies, manifests, `active.state`, `ReEnginePackagingConstants.Version`, Manual Shelf guides, and redistributable SDK metadata.
+- Normalized `app.manifest.json` `downstreamProjects` to clean workspace-relative slugs (`Personal/reStation`, `Personal/KingsFieldRecomp`, `Personal/HMBackToNature-Recomp`) and scrubbed workstation user-profile paths from `AGENTS.md` (`<= 25` lines, `< 1,600 B`).
+- Expanded all four Manual Shelf documents (`ARCHITECTURE.md`, `INTERFACES.md`, `USER_GUIDE.md`, and `OPERATIONS.md`) to comprehensive `>= 85`-line references.
+- Hardened the release packager (`Dev\scripts\build_release.ps1`) to ship `LICENSE` inside portable `Builds\v0.1.3\app\LICENSE`, `Archive\reEngine-v0.1.3-src.7z`, and `SharedLibs\reEngine\v0.1.3\` (`+ Latest\`, tracked in `sdk-manifest.json`), prune stale `Builds\v0.1.0` and `Builds\v0.1.1` staging directories, read UTF-8 Markdown explicitly, and run `Sanitize-MarkdownForEndUser` across `Installers\RELEASE_NOTES.md` plus all four `Releases\{v0.1.3,Latest}\*.md` files (`README.md`, `FEATURES.md`, `RELEASE_NOTES.md`, `CHANGELOG.md`).
+
+### Fixed
+- Eliminated `Â§` / UTF-8 mojibake and internal link/handle/path leaks in `Releases\Latest\` Markdown deliverables caused by Windows-1252 default file reads and unsanitized release notes / changelog staging.
+
 ## [0.1.2] - 2026-11-14
 
 ### Added
