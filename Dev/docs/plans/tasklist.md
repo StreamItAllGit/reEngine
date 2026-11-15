@@ -1,8 +1,8 @@
-# reEngine — `v0.1.3` Tasklist
+# reEngine — `v0.2.0` Tasklist
 
-- **Target Version:** `v0.1.3` (Shipped: `v0.1.2`, Active Plan: [`0.1.3.2026-11-14.md`](<REPO_ROOT>/Dev/docs/plans/0.1.3.2026-11-14.md))
+- **Target Version:** `v0.2.0` (`Shipped`; Prior Shipped: `v0.1.3`; Active Plan: [`0.2.0.2026-11-14.md`](0.2.0.2026-11-14.md))
 - **Detail Level:** `3` *(1 = Basic · 2 = Informative · 3 = Guided Hints · 4 = Full How-To)*
-- **Last Synced:** `2026-11-14`
+- **Last Synced:** `2026-11-15`
 
 ## Block 4 — `v0.1.3` Release Sanitizer Hardening, Legal Parity & Manual Shelf Expansion (`Shipped`) ✅
 - [x] **T1 — Lockstep `v0.1.3` Bump, `app.manifest.json` Scrub & `AGENTS.md` Path Cleanup:**
@@ -46,7 +46,17 @@
   - **Targets:** `build_release.ps1 -Version 0.1.1`, `SharedLibs\reEngine\v0.1.1\`, `Sandbox\`, `StreamItAllGit/reEngine`
   - **Why:** Package only after Gate 2 `PASS`, verify live `--visible-test` + `Sandbox\` probes, and sync Notion + private GitHub Release.
 
-## Deferred Backlog (`v0.2.0` / `v0.3.0` — Strictly Out of `v0.1.1` Scope)
-- [ ] **`v0.2.0` — Decouple `2s` Manifest Check from Resumable `.part` Staging & Atomic Apply (`staged_updates\` $\rightarrow$ `engines\`).**
-- [ ] **`v0.2.0` — Runtime `"supportedEngineTracks"` Multi-Track Matcher in `EngineVersionResolver`.**
+## Block 5 — `v0.2.0` Platform-Agnostic `.decomp` Router, Offline Ghidra, Install Profile & Public Readiness (`Shipped`) ✅
+- **Target Version:** `0.2.0` (Plan: [`0.2.0.2026-11-14.md`](0.2.0.2026-11-14.md) | Spoke: [`v0.2.0-decomp-and-toolchain.md`](../architecture/v0.2.0-decomp-and-toolchain.md))
+- **Upstream Gates:** Wave 0 (`_DevBible v1.5.0`) and Wave 1 (`Foundation v0.4.0`) cleared; `@dean` Gate 1 locked (`2026-11-14`).
+- [x] **RE-201 (`T1`, Wave 2A):** Define `DecompPackageManifest`, `IDecompPlatformProvider`, `AotCacheManifest`, and HKCU `.decomp` association contract (Std 18 keys post-Wave 0 `/define`).
+- [x] **RE-202 (`T2`, Wave 2B):** Package Apache-2.0 Headless Ghidra (`GPL/` + `docs/` + Swing stripped, `<= 160 MB`) + `jlink` OpenJDK (`GPLv2+CE`) + `THIRDPARTY_LICENSES.txt` for offline `Full` installs under `%LOCALAPPDATA%\Programs\StreamItAll\reEngine\toolchain\`.
+- [x] **RE-203 (`T3`, Wave 2B):** Implement `DecompPipelineCoordinator` (`D0`–`D5` delegation) and deterministic 3-part error for unbuilt platform engines (`re64`, `reGenesis`).
+- [x] **RE-204 (`T4`, Wave 2B):** Implement `<dataDir>\cache\` `AotCacheManager` + clean-room `.recomp` guard, and publish immutable `<PROJECTS_ROOT>\SharedLibs\reEngine\v0.2.0\`.
+- [x] **RE-205 (`T5`–`T7`, Wave 2B):** Adopt `Foundation v0.4.0` `%LOCALAPPDATA%\Programs\StreamItAll\reEngine\reEngine\`, `Lightweight`/`Full` installer profile, opt-in `--migrate-legacy`, `AllowAutoStart = false`, and `reEngine.App` `.decomp`/cache UI.
+- [x] **RE-206 (`T8`, Wave 2C):** Archive `Archive\pre-scrub-v0.2.0.7z`, scrub host PII/paths via `git-filter-repo`, run `dotnet test -c Release /warnaserror`, `Sandbox\` smoke (`--visible-test` + `.decomp` 3-part error), and `build_release.ps1` *(Gate 2 passed; Phase 3–5 closeout complete)*.
+
+## Deferred Backlog (`v0.3.0` — Strictly Out of `v0.2.0` Scope)
+- [ ] **`v0.3.0` — Decouple `2s` Manifest Check from Resumable `.part` Staging & Atomic Apply (`staged_updates\` $\rightarrow$ `engines\`).**
+- [ ] **`v0.3.0` — Runtime `"supportedEngineTracks"` Multi-Track Matcher in `EngineVersionResolver`.**
 - [ ] **`v0.3.0` — `--jit-bringup` & 4-Backend (`opengl`/`vulkan`/`parallelCpu`/`software`) Routing + Standard 09 Pill/Drawer Library UI.**

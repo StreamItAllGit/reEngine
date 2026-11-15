@@ -127,6 +127,8 @@ Remove-Item $launcherStage -Recurse -Force -ErrorAction SilentlyContinue
 
 Write-Utf8Text (Join-Path $stageApp "version.txt") "$Version"
 Copy-Item $licensePath (Join-Path $stageApp "LICENSE") -Force
+Copy-Item (Join-Path $devDir "settings.example.json") (Join-Path $stageDir "settings.example.json") -Force
+Copy-Item (Join-Path $devDir "scripts\THIRDPARTY_LICENSES.txt") (Join-Path $stageDir "THIRDPARTY_LICENSES.txt") -Force
 Copy-Item (Join-Path $devDir "scripts\*.bat") $stageScripts -Force
 Copy-Item (Join-Path $devDir "scripts\interactive\*.bat") $stageInteractive -Force
 Get-ChildItem $stageDir -Include *.pdb, *.xml -Recurse -File | Remove-Item -Force
@@ -135,7 +137,7 @@ $runtimeAgents = (@'
 # Runtime Context: reEngine (v__VER__)
 
 - **Launcher:** `reEngine.exe` (forwards to `app\reEngine.exe`)
-- **Engines Root:** `engines\re<Platform>\v<Ver>\` (side-by-side non-breaking tracks)
+- **Suite Layout:** Peer `..\engines\re<Platform>\v<Ver>\` and `..\toolchain\` under `suiteInstallDir` (fallback to local `.\engines\` / `.\toolchain\` for isolated portable/sandbox runs).
 - **Data & Logs:** `data\settings.json` and `logs\` unless overridden by `--data-dir`, `--config`, `--log-dir` (or `REENGINE_{DATA_DIR,CONFIG,LOG_DIR}`).
 - **Daemon Policy:** Zero background daemons; `AllowAutoStart = false`.
 '@).Replace('__VER__', $Version)
@@ -201,10 +203,10 @@ $rawReleaseNotes = (@'
 Zero-daemon `.recomp` suite router, side-by-side platform engine track resolver, and self-bootstrapping SDK (`AllowAutoStart = false`).
 
 ## Highlights
-- Parses Standard 18 `.recomp` JSON and ZIP manifests with fail-closed Zip-Slip and `data\rom\` preload media discovery.
-- Resolves highest compatible `engines\re<Platform>\v<Ver>\` track (`>= engineVersion`) while preserving older breaking tracks.
-- Registers per-user `.recomp` Windows shell associations cleanly (`HKCU\Software\Classes`) with zero background daemons (`AllowAutoStart = false`).
-- Non-blocking launch update check (`SafeNetworkTransfer` + SHA-256 verification) and Dark Slate WinForms manager UI.
+- Parses Standard 18 `.recomp` and `.decomp` JSON/ZIP manifests with fail-closed Zip-Slip, clean-room artifact guards, and `data\rom\` preload media discovery.
+- Orchestrates platform-agnostic `D0`-`D5` decompilation pipelines and resolves highest compatible `engines\re<Platform>\v<Ver>\` tracks (`>= engineVersion`).
+- Manages deterministic `<dataDir>\cache\` AOT-compiled assemblies (`aot-index.json`) with SHA-256 verification and cross-process locking.
+- Supports `%LOCALAPPDATA%\Programs\StreamItAll\reEngine\` user-scope installs (`--profile Lightweight|Full`) with zero background daemons (`AllowAutoStart = false`).
 - Signed single-EXE 4-pillar installer (`AllowAutoStart = false`) with bundled `MPL-2.0` `LICENSE` (`app\LICENSE`) and redistributable SDK drop.
 '@).Replace('__VER__', $Version).Replace('__EMDASH__', $emDash)
 $endUserReleaseNotes = Sanitize-MarkdownForEndUser $rawReleaseNotes

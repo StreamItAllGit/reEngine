@@ -26,7 +26,10 @@ UserSettings/
 *.tmp
 *.bak
 Thumbs.db
+desktop.ini
+ehthumbs.db
 .DS_Store
+._*
 
 # Canonical user ROM/disc preload directories
 **/data/rom/

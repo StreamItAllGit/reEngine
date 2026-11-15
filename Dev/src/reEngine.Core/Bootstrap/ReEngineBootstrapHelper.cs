@@ -22,7 +22,19 @@ public static class ReEnginePackagingConstants
     public const string DisplayName = "reEngine";
 
     /// <summary>Current packaged SemVer version.</summary>
-    public const string Version = "0.1.3";
+    public const string Version = "0.2.0";
+
+    /// <summary>Canonical studio umbrella folder under <c>%LOCALAPPDATA%\Programs\</c>.</summary>
+    public const string StudioName = "StreamItAll";
+
+    /// <summary>Canonical suite folder nested under <see cref="StudioName"/>.</summary>
+    public const string SuiteName = "reEngine";
+
+    /// <summary>Canonical umbrella subpath relative to <c>%LOCALAPPDATA%\Programs\</c> (Standard 18: umbrellaSubpath).</summary>
+    public const string UmbrellaSubpath = "StreamItAll\\reEngine\\reEngine";
+
+    /// <summary>Default installer footprint profile identifier (Standard 18: installProfile).</summary>
+    public const string DefaultInstallProfile = "lightweight";
 
     /// <summary>Brand accent color hex (Sky Cyan).</summary>
     public const string BrandAccentHex = "#38BDF8";
@@ -90,15 +102,107 @@ public static class ReEngineBootstrapHelper
             return Path.GetFullPath(envHome.Trim());
         }
 
-        string driveRoot = $"{(char)68}:{Path.DirectorySeparatorChar}";
-        return Path.GetFullPath(Path.Combine(driveRoot, "Programs", ReEnginePackagingConstants.DisplayName));
+        string localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        if (string.IsNullOrWhiteSpace(localAppData))
+        {
+            localAppData = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+                "AppData",
+                "Local");
+        }
+
+        return Path.GetFullPath(Path.Combine(
+            localAppData,
+            "Programs",
+            ReEnginePackagingConstants.StudioName,
+            ReEnginePackagingConstants.SuiteName,
+            ReEnginePackagingConstants.DisplayName));
     }
 
-    /// <summary>Returns the side-by-side <c>engines\</c> subdirectory under <paramref name="reEngineInstallDir"/>.</summary>
-    public static string ResolveEnginesRootDir(string reEngineInstallDir)
+    /// <summary>
+    /// Resolves the canonical suite umbrella directory (<c>%LOCALAPPDATA%\Programs\StreamItAll\reEngine\</c>)
+    /// while enforcing fail-closed containment in <c>--test-mode</c>.
+    /// </summary>
+    public static string ResolveDefaultSuiteInstallDir(
+        string? explicitSuiteDir = null,
+        string? sandboxDataDir = null,
+        bool testMode = false)
+    {
+        if (testMode)
+        {
+            if (string.IsNullOrWhiteSpace(sandboxDataDir))
+            {
+                throw new InvalidOperationException(
+                    "Fail-Closed Sandbox Violation: --test-mode requires a sandboxDataDir when resolving suite root.");
+            }
+
+            string fullSandbox = Path.GetFullPath(sandboxDataDir);
+            string candidate = string.IsNullOrWhiteSpace(explicitSuiteDir)
+                ? Path.Combine(fullSandbox, ReEnginePackagingConstants.SuiteName)
+                : Path.GetFullPath(explicitSuiteDir);
+
+            return SandboxEnvironment.AssertPathContained(candidate, fullSandbox);
+        }
+
+        if (!string.IsNullOrWhiteSpace(explicitSuiteDir))
+        {
+            return Path.GetFullPath(explicitSuiteDir);
+        }
+
+        string localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        if (string.IsNullOrWhiteSpace(localAppData))
+        {
+            localAppData = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+                "AppData",
+                "Local");
+        }
+
+        return Path.GetFullPath(Path.Combine(
+            localAppData,
+            "Programs",
+            ReEnginePackagingConstants.StudioName,
+            ReEnginePackagingConstants.SuiteName));
+    }
+
+    /// <summary>
+    /// Returns the offline Ghidra + OpenJDK <c>toolchain\</c> sibling directory under <c>suiteInstallDir</c>
+    /// (falling back to <paramref name="reEngineInstallDir"/>\toolchain for isolated portable/sandbox runs).
+    /// </summary>
+    public static string ResolveToolchainDir(string reEngineInstallDir) =>
+        ResolveSuiteSiblingDir(reEngineInstallDir, "toolchain");
+
+    /// <summary>
+    /// Returns the side-by-side <c>engines\</c> sibling directory under <c>suiteInstallDir</c>
+    /// (falling back to <paramref name="reEngineInstallDir"/>\engines for isolated portable/sandbox runs).
+    /// </summary>
+    public static string ResolveEnginesRootDir(string reEngineInstallDir) =>
+        ResolveSuiteSiblingDir(reEngineInstallDir, "engines");
+
+    private static string ResolveSuiteSiblingDir(string reEngineInstallDir, string siblingFolder)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(reEngineInstallDir);
-        return Path.Combine(Path.GetFullPath(reEngineInstallDir), "engines");
+        string fullInstallDir = Path.GetFullPath(reEngineInstallDir)
+            .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        string direct = Path.Combine(fullInstallDir, siblingFolder);
+
+        string? parentDir = Path.GetDirectoryName(fullInstallDir);
+        if (!string.IsNullOrWhiteSpace(parentDir) &&
+            !string.Equals(parentDir, Path.GetPathRoot(parentDir), StringComparison.OrdinalIgnoreCase))
+        {
+            string peer = Path.Combine(parentDir, siblingFolder);
+            if (Directory.Exists(peer))
+            {
+                return peer;
+            }
+
+            if (!Directory.Exists(direct))
+            {
+                return peer;
+            }
+        }
+
+        return direct;
     }
 
     /// <summary>

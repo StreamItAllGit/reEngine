@@ -144,6 +144,17 @@ internal sealed partial class ReEngineMainForm : Form
 
         _chkCheckUpdates.Checked = _settings.ShouldCheckUpdates;
         _chkAutoStage.Checked = _settings.ShouldAutoStagePatches;
+        string activeProfile = ReEngineAppStatusHelper.GetInstallProfile(_settings);
+        _cmbInstallProfile.SelectedItem = string.Equals(activeProfile, "full", StringComparison.OrdinalIgnoreCase)
+            ? "Full"
+            : "Lightweight";
+
+        DecompDispatchStatusSummary decompStatus = ReEngineAppStatusHelper.InspectDecompStatus(_enginesDir, _settings, engines.Count);
+        AotCacheStatusSummary aotStatus = ReEngineAppStatusHelper.InspectAotCache(_sandbox.DataDirectory);
+        _lblDecompPill.Text = decompStatus.FormatPillText();
+        _lblDecompPill.ForeColor = decompStatus.ToolchainAvailable ? AccentSuccess : AccentCyan;
+        _lblDecompAotStatus.Text = $"{decompStatus.FormatSummary()} | {aotStatus.FormatSummary()}";
+
         _lblStatusText.Text = engines.Count > 0
             ? $"Discovered {engines.Count} side-by-side engine installation(s) under '{_enginesDir}'."
             : $"No installed platform engines found under '{_enginesDir}'.";
@@ -152,11 +163,12 @@ internal sealed partial class ReEngineMainForm : Form
 
     private void OnRegisterAssociationClicked()
     {
-        string exePath = Environment.ProcessPath ?? Path.Combine(AppContext.BaseDirectory, "reEngine.exe");
-        FileAssociationRecord record = _assocStore.RegisterRecompAssociation(exePath);
-        _log("INFO", $"UI registered .recomp association: {record.CommandTemplate}");
+        string exePath = Program.ResolveLauncherExecutablePath();
+        FileAssociationRecord recompRecord = _assocStore.RegisterRecompAssociation(exePath);
+        FileAssociationRecord decompRecord = _assocStore.RegisterDecompAssociation(exePath);
+        _log("INFO", $"UI registered .recomp & .decomp associations: {recompRecord.CommandTemplate} | {decompRecord.CommandTemplate}");
         RefreshAllState();
-        _lblStatusText.Text = $"Registered .recomp association -> {record.ProgId}";
+        _lblStatusText.Text = $"Registered .recomp & .decomp associations -> {recompRecord.ProgId} / {decompRecord.ProgId}";
     }
 
     private async void OnCheckUpdatesClicked()
@@ -270,9 +282,11 @@ internal sealed partial class ReEngineMainForm : Form
     {
         _settings.ShouldCheckUpdates = _chkCheckUpdates.Checked;
         _settings.ShouldAutoStagePatches = _chkAutoStage.Checked;
+        ReEngineAppStatusHelper.SetInstallProfile(_settings, _cmbInstallProfile.SelectedItem as string);
         _settings.WindowWidth = ClientSize.Width;
         _settings.WindowHeight = ClientSize.Height;
         _updateCoordinator.SaveSettings(_settings);
+        RefreshAllState();
         _log("INFO", "Saved reEngine settings.json.");
         _lblStatusText.Text = "Settings saved atomically.";
     }

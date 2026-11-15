@@ -12,7 +12,8 @@ internal sealed record RecompLaunchOptions
 {
     public static readonly HashSet<string> ValueOptions = new(StringComparer.OrdinalIgnoreCase)
     {
-        "--open", "--engines-dir", "--data-dir", "--config", "--log-dir", "--feed", "--port", "--ui",
+        "--open", "--module", "--engines-dir", "--engine-dir", "--toolchain-dir", "--output-dir", "--stage",
+        "--data-dir", "--config", "--log-dir", "--feed", "--port", "--ui",
         "--frames", "--fixture", "--dump-screenshot", "--dump-audio", "--input-script"
     };
 

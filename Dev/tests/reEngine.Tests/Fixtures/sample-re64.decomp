@@ -1,0 +1,18 @@
+{
+  "moduleId": "sample-n64-decomp",
+  "title": "Sample Nintendo 64 Clean-Room Decomp Module",
+  "platformId": "n64",
+  "engineId": "re64",
+  "engineVersion": "0.1.0",
+  "compatibleEngineTrack": "0.1.x",
+  "decompSchemaVersion": "1.0.0",
+  "targetDecompTier": "D3",
+  "goalDecompTier": "D3",
+  "packageVersion": "0.1.0",
+  "preloadRomDir": "data/rom",
+  "toolchainRequirements": {
+    "minimumGhidraVersion": "11.2",
+    "requiresHeadlessJdk": true,
+    "requiredExtensions": []
+  }
+}

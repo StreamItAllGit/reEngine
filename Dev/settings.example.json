@@ -1,0 +1,9 @@
+{
+  "installProfile": "lightweight",
+  "reEngineInstallDir": "%LOCALAPPDATA%\\Programs\\StreamItAll\\reEngine\\reEngine",
+  "suiteInstallDir": "%LOCALAPPDATA%\\Programs\\StreamItAll\\reEngine",
+  "umbrellaSubpath": "StreamItAll\\reEngine\\reEngine",
+  "decompSchemaVersion": "1.0.0",
+  "goalDecompTier": "D3",
+  "targetDecompTier": "D3"
+}

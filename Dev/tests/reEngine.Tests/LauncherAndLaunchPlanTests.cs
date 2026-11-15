@@ -52,11 +52,45 @@ public sealed class LauncherAndLaunchPlanTests : IDisposable
     [InlineData(new[] { "--visible-test" }, true)]
     [InlineData(new[] { "--test-mode" }, true)]
     [InlineData(new[] { "--port", "15100", "game.recomp" }, true)]
+    [InlineData(new[] { "decomp", "--module", "sample.decomp" }, true)]
+    [InlineData(new[] { "--dry-run" }, true)]
+    [InlineData(new[] { "--headless" }, true)]
     [InlineData(new[] { "--help" }, true)]
     [InlineData(new[] { "--version" }, true)]
     public void LauncherArgsHelper_ShouldWaitForChild_HandlesSyncFlagsAndValueOptions(string[] args, bool expected)
     {
         Assert.Equal(expected, LauncherArgsHelper.ShouldWaitForChild(args));
+    }
+
+    [Fact]
+    public void LauncherArgsHelper_NormalizePathArguments_ResolvesDecompFlagsAndPreservesStage()
+    {
+        string callerCwd = Path.Combine(_tempRoot, "caller_decomp");
+        Directory.CreateDirectory(callerCwd);
+
+        string[] input =
+        [
+            "decomp",
+            "--module", @".\Fixtures\sample-re64.decomp",
+            "--stage", "D3",
+            "--engine-dir", @".\eng\re64",
+            @"--toolchain-dir=.\tc",
+            "--output-dir", @".\out\n64"
+        ];
+
+        string[] normalized = LauncherArgsHelper.NormalizePathArguments(input, callerCwd);
+
+        Assert.Equal("decomp", normalized[0]);
+        Assert.Equal(Path.GetFullPath(Path.Combine(callerCwd, "Fixtures", "sample-re64.decomp")), normalized[2]);
+        Assert.Equal("--stage", normalized[3]);
+        Assert.Equal("D3", normalized[4]);
+        Assert.Equal(Path.GetFullPath(Path.Combine(callerCwd, "eng", "re64")), normalized[6]);
+        Assert.Equal("--toolchain-dir=" + Path.GetFullPath(Path.Combine(callerCwd, "tc")), normalized[7]);
+        Assert.Equal(Path.GetFullPath(Path.Combine(callerCwd, "out", "n64")), normalized[9]);
+
+        Assert.Equal("decomp", RecompLaunchOptions.GetPositionalArg(input, 0));
+        Assert.Equal("D3", RecompLaunchOptions.GetOptionValue(input, "--stage", requiredIfPresent: true));
+        Assert.Equal(@".\Fixtures\sample-re64.decomp", RecompLaunchOptions.GetOptionValue(input, "--module", requiredIfPresent: true));
     }
 
     [Fact]

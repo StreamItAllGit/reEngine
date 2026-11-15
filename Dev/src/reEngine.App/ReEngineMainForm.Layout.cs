@@ -26,6 +26,7 @@ internal sealed partial class ReEngineMainForm
     private Label _lblTitle = null!;
     private Label _lblSubtitle = null!;
     private Label _lblDaemonPill = null!;
+    private Label _lblDecompPill = null!;
     private Label _lblAssocPill = null!;
     private Label _lblUpdatePill = null!;
     private Label _lblEnginesHeader = null!;
@@ -34,6 +35,9 @@ internal sealed partial class ReEngineMainForm
     private Label _lblControlsHeader = null!;
     private CheckBox _chkCheckUpdates = null!;
     private CheckBox _chkAutoStage = null!;
+    private Label _lblInstallProfile = null!;
+    private ComboBox _cmbInstallProfile = null!;
+    private Label _lblDecompAotStatus = null!;
     private Button _btnOpenPackage = null!;
     private Button _btnRegisterAssoc = null!;
     private Button _btnCheckUpdates = null!;
@@ -71,9 +75,10 @@ internal sealed partial class ReEngineMainForm
         };
 
         _lblDaemonPill = CreateStatusPill("ZERO-DAEMON", AccentCyan);
+        _lblDecompPill = CreateStatusPill("DECOMP: ROUTER", AccentCyan);
         _lblAssocPill = CreateStatusPill("UNREGISTERED", AccentWarning);
         _lblUpdatePill = CreateStatusPill("UP TO DATE", AccentCyan);
-        _headerPanel.Controls.AddRange(new Control[] { _lblTitle, _lblSubtitle, _lblDaemonPill, _lblAssocPill, _lblUpdatePill });
+        _headerPanel.Controls.AddRange(new Control[] { _lblTitle, _lblSubtitle, _lblDaemonPill, _lblDecompPill, _lblAssocPill, _lblUpdatePill });
 
         _lblEnginesHeader = new Label
         {
@@ -136,11 +141,33 @@ internal sealed partial class ReEngineMainForm
             ForeColor = TextPrimary,
             AutoSize = true
         };
+        _lblInstallProfile = new Label
+        {
+            Text = "Profile:",
+            ForeColor = TextMuted,
+            Font = new Font("Segoe UI", 9f),
+            AutoSize = true
+        };
+        _cmbInstallProfile = new ComboBox
+        {
+            DropDownStyle = ComboBoxStyle.DropDownList,
+            BackColor = Surface1,
+            ForeColor = TextPrimary,
+            FlatStyle = FlatStyle.Flat
+        };
+        _cmbInstallProfile.Items.AddRange(new object[] { "Lightweight", "Full" });
+        _lblDecompAotStatus = new Label
+        {
+            Text = ".decomp Dispatch: Router-only | AOT Cache: 0 assembly(ies) (0.00 MB)",
+            ForeColor = TextMuted,
+            Font = new Font("Segoe UI", 8.5f),
+            AutoEllipsis = true
+        };
 
         _btnOpenPackage = CreateActionButton("Open .recomp Package", AccentCyan, Surface0);
         _btnOpenPackage.Click += (_, _) => OnOpenPackageClicked();
 
-        _btnRegisterAssoc = CreateActionButton("Register .recomp Association", Surface3, TextPrimary);
+        _btnRegisterAssoc = CreateActionButton("Register Associations", Surface3, TextPrimary);
         _btnRegisterAssoc.Click += (_, _) => OnRegisterAssociationClicked();
 
         _btnCheckUpdates = CreateActionButton("Check For Updates", Surface3, TextPrimary);
@@ -160,15 +187,16 @@ internal sealed partial class ReEngineMainForm
         };
 
         SetTwoLineTooltip(_btnOpenPackage, "Open .recomp Package [Ctrl+O]", "Resolves the highest compatible engine track and detects data\\rom preload media.");
-        SetTwoLineTooltip(_btnRegisterAssoc, "Register .recomp Association [Ctrl+R]", "Writes the .recomp open handler to HKCU or virtual_registry.json in --test-mode.");
+        SetTwoLineTooltip(_btnRegisterAssoc, "Register Associations [Ctrl+R]", "Writes .recomp and .decomp open handlers to HKCU or virtual_registry.json in --test-mode.");
         SetTwoLineTooltip(_btnCheckUpdates, "Check For Updates [F5]", "Checks for compatible track patches while preserving older breaking engine tracks.");
         SetTwoLineTooltip(_btnSaveSettings, "Save Settings [Ctrl+S]", "Saves update and manager preferences atomically to settings.json.");
         SetTwoLineTooltip(_chkCheckUpdates, "Launch Update Checks", "Toggles non-blocking compatible update checks when launching .recomp modules.");
         SetTwoLineTooltip(_chkAutoStage, "Auto-Stage Compatible Patches", "Downloads and SHA-256 verifies compatible track patches without overwriting breaking tracks.");
+        SetTwoLineTooltip(_cmbInstallProfile, "Install Profile", "Active install profile (Lightweight or Full offline toolchain).");
 
         _controlsCard.Controls.AddRange(new Control[]
         {
-            _lblControlsHeader, _chkCheckUpdates, _chkAutoStage,
+            _lblControlsHeader, _chkCheckUpdates, _chkAutoStage, _lblInstallProfile, _cmbInstallProfile, _lblDecompAotStatus,
             _btnOpenPackage, _btnRegisterAssoc, _btnCheckUpdates, _btnSaveSettings
         });
 
@@ -188,21 +216,21 @@ internal sealed partial class ReEngineMainForm
         _lblSubtitle.Location = new Point(pad, 40);
 
         int pillRight = w - pad;
-        foreach (Label pill in new[] { _lblUpdatePill, _lblAssocPill, _lblDaemonPill })
+        foreach (Label pill in new[] { _lblUpdatePill, _lblAssocPill, _lblDecompPill, _lblDaemonPill })
         {
             int measured = TextRenderer.MeasureText(pill.Text ?? string.Empty, pill.Font).Width;
-            int pillWidth = Math.Max(96, Math.Max(pill.PreferredWidth, measured) + 18);
+            int pillWidth = Math.Max(92, Math.Max(pill.PreferredWidth, measured) + 16);
             pill.Size = new Size(pillWidth, 24);
             pillRight -= pill.Width;
             pill.Location = new Point(pillRight, 14);
-            pillRight -= 8;
+            pillRight -= 6;
         }
 
         _lblEnginesHeader.Location = new Point(pad, 88);
-        int controlsHeight = 136;
+        int controlsHeight = 160;
         int footerHeight = 44;
         int listTop = 114;
-        int listHeight = Math.Max(140, h - listTop - controlsHeight - footerHeight - pad * 2);
+        int listHeight = Math.Max(130, h - listTop - controlsHeight - footerHeight - pad * 2);
         _lstEngines.Bounds = new Rectangle(pad, listTop, w - pad * 2, listHeight);
         if (_lstEngines.Columns.Count == 4)
         {
@@ -214,9 +242,12 @@ internal sealed partial class ReEngineMainForm
         _controlsCard.Bounds = new Rectangle(pad, cardTop, w - pad * 2, controlsHeight);
         _lblControlsHeader.Location = new Point(16, 12);
         _chkCheckUpdates.Location = new Point(16, 40);
-        _chkAutoStage.Location = new Point(310, 40);
+        _chkAutoStage.Location = new Point(286, 40);
+        _lblInstallProfile.Location = new Point(_controlsCard.Width - 196, 42);
+        _cmbInstallProfile.Bounds = new Rectangle(_controlsCard.Width - 138, 38, 122, 26);
+        _lblDecompAotStatus.Bounds = new Rectangle(16, 68, _controlsCard.Width - 32, 20);
 
-        int btnY = 80;
+        int btnY = 104;
         _btnOpenPackage.Bounds = new Rectangle(16, btnY, 176, 34);
         _btnRegisterAssoc.Bounds = new Rectangle(200, btnY, 204, 34);
         _btnCheckUpdates.Bounds = new Rectangle(412, btnY, 152, 34);

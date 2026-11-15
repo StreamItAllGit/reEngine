@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-15
+
+### Added
+- Added platform-agnostic `.decomp` package and `D0`–`D5` pipeline contracts in `reEngine.Core`: `DecompPackageManifest`, `DecompToolchainRequirements`, `IDecompPlatformProvider`, `DecompStage` (`D0`–`D5`), `DecompPipelineCoordinator`, and deterministic 3-part `DecompUnbuiltEngineError` diagnostics (`[1/3 What Failed]`, `[2/3 Missing]`, `[3/3 Remediation]`) for unbuilt engines (`re64`, `reCube`, `reGenesis`).
+- Added `OfflineToolchainLocator` (`ReEngineInstallProfile.Lightweight` / `Full`, `MaxToolchainBudgetMb = 160`, `THIRDPARTY_LICENSES.txt`) and `Dev\scripts\stage_offline_toolchain.ps1` + `Dev\scripts\THIRDPARTY_LICENSES.txt` to stage and validate stripped Apache-2.0 headless Ghidra (`GPL/`, `docs/`, and Swing modules removed) + `jlink` OpenJDK with zero runtime internet access.
+- Added shared `<dataDir>\cache\` AOT cache contracts and manager (`IAotCacheManager`, `AotCacheManager`, `AotCacheKey`, `AotCacheEntry`, `AotCompileResult`, `CleanRoomRecompCheckResult`) backed by `Foundation.Retro.AotCacheLayoutHelper`, cross-process index locking (`aot-index.json`), SHA-256 tamper invalidation, stale eviction, and strict clean-room `.recomp` rejection of `*.Generated.dll` and `*.g.cs` artifacts.
+- Added `.decomp` file association support (`RegisterDecompAssociation`, `ReadDecompAssociation`, `UnregisterDecompAssociation` under `HKCU\Software\Classes\.decomp` / `reEngine.DecompModule` and `<dataDir>\virtual_registry.json`), CLI subcommand routing (`reEngine.exe decomp --module <file.decomp> [--stage D0..D5] [--engine-dir <dir>] [--toolchain-dir <dir>] [--output-dir <dir>]`, returning Exit `3` on unbuilt engines), and `ReEngineAppStatusHelper` + Dark Slate UI `Profile:` (`Lightweight`/`Full`) and `.decomp`/AOT status indicators.
+- Added `LegacyMigrationHelper` (`--profile Lightweight|Full`, `--suite-dir`, `--reengine-dir`, opt-in `--migrate-legacy`, and human-gated `--confirm-legacy-cleanup` for stranded `v0.1.1` artifacts) preserving user `data\rom\` files safely.
+- Added `Dev\settings.example.json` personal config overlay template and Standard 18 keys (`installProfile`, `reEngineInstallDir`, `suiteInstallDir`, `umbrellaSubpath`, `decompSchemaVersion`, `targetDecompTier`, `goalDecompTier`), plus synthetic fixture `Dev\tests\reEngine.Tests\Fixtures\sample-re64.decomp`.
+- Added 16 new xUnit tests (`DecompAndToolchainTests.cs`, `AotCacheManagerTests.cs`, `InstallerAndAppStatusTests.cs`, plus `.decomp` association and CLI tests) bringing `reEngine.Tests` to `50/50` passing with `0` warnings and `0` skipped.
+
+### Changed
+- Synced `Foundation v0.4.0` SDK drop (`Dev\lib\`) and bumped `reEngine` to `v0.2.0` across `Dev\version.txt`, `Dev\Directory.Build.props`, `Dev\app.manifest.json`, `active.state`, `ReEnginePackagingConstants.Version`, Manual Shelf docs, and `reEngine.Tests` (`net8.0-windows`).
+- Switched default non-admin installation root in `ReEngineBootstrapHelper.ResolveDefaultReEngineInstallDir` to `%LOCALAPPDATA%\Programs\StreamItAll\reEngine\reEngine` (suite root `%LOCALAPPDATA%\Programs\StreamItAll\reEngine` via `ResolveDefaultSuiteInstallDir`) while enforcing `AllowAutoStart = false`.
+- Updated `Dev\scripts\build_release.ps1` release highlights for `.decomp` routing, `<dataDir>\cache\` AOT management, and `--profile Lightweight|Full` user-scope installs.
+
+### Fixed
+- Fixed `LauncherArgsHelper.NormalizePathArguments` so the `decomp` subcommand token is preserved verbatim instead of being normalized into a caller-CWD filesystem path when forwarding `reEngine.exe decomp --module ...` to `app\reEngine.exe`.
+
 ## [0.1.3] - 2026-11-14
 
 ### Added
@@ -55,7 +74,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.1.0] - 2026-11-13
 
 ### Added
-- Initialized Tier A 6-folder repository scaffold (`Archive\`, `Builds\`, `Dev\`, `Installers\`, `Releases\`, `Sandbox\`), outer Git repository, Root Documentation Quartet, `AGENTS.md`, Manual Shelf docs, `Foundation v0.3.1` SDK sync (`Dev\lib\`), and original [`Dev\assets\reEngine.{svg,png,ico}`](<REPO_ROOT>/Dev/assets/reEngine.svg) brand artwork.
+- Initialized Tier A 6-folder repository scaffold (`Archive\`, `Builds\`, `Dev\`, `Installers\`, `Releases\`, `Sandbox\`), outer Git repository, Root Documentation Quartet, `AGENTS.md`, Manual Shelf docs, `Foundation v0.3.1` SDK sync (`Dev\lib\`), and original [`Dev\assets\reEngine.{svg,png,ico}`](Dev/assets/reEngine.svg) brand artwork.
 - Implemented `reEngine.slnx` (`Dev\Directory.Build.props`, `Dev\version.txt`) with `TreatWarningsAsErrors` and Release Zero-PII `<PathMap>` + `<DebugType>none</DebugType>`.
 - Implemented `reEngine.Core` (`net8.0`, `Foundation.Core`-only): `RecompPackageManifest` + `RecompPackageReader` (JSON/ZIP + Zip-Slip guard + `data\rom\` preload discovery), `EngineVersionResolver` + `EngineTrackMatcher` (side-by-side track resolution), `IFileAssociationStore` + `VirtualRegistryAssociationStore` + `WindowsRegistryAssociationStore`, `UpdateCoordinator` (`GranularSettingsManager` + `SafeNetworkTransfer`), and `ReEngineBootstrapHelper` (`AllowAutoStart = false`).
 - Implemented `reEngine.App` (`net8.0-windows`): CLI dispatcher (`--open`, `--register-assoc`, `--check-updates`, `--engines-dir`, `--data-dir`, `--config`, `--log-dir`, `--test-mode`, `--dry-run`, `--headless`, `--visible-test`), `RecompLaunchCoordinator`, and Dark Slate `ReEngineMainForm` (`#0E0E10` / `#18181B` / `#38BDF8`).

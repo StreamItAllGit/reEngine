@@ -13,19 +13,21 @@ internal static class LauncherArgsHelper
 {
     internal static readonly HashSet<string> ValueOptions = new(StringComparer.OrdinalIgnoreCase)
     {
-        "--open", "--engines-dir", "--data-dir", "--config", "--log-dir", "--feed", "--port", "--ui",
+        "--open", "--module", "--engines-dir", "--engine-dir", "--toolchain-dir", "--output-dir", "--stage",
+        "--data-dir", "--config", "--log-dir", "--feed", "--port", "--ui",
         "--frames", "--fixture", "--dump-screenshot", "--dump-audio", "--input-script"
     };
 
     private static readonly HashSet<string> PathOptions = new(StringComparer.OrdinalIgnoreCase)
     {
-        "--open", "--engines-dir", "--data-dir", "--config", "--log-dir", "--feed",
+        "--open", "--module", "--engines-dir", "--engine-dir", "--toolchain-dir", "--output-dir",
+        "--data-dir", "--config", "--log-dir", "--feed",
         "--fixture", "--dump-screenshot", "--dump-audio", "--input-script"
     };
 
     private static readonly HashSet<string> SyncFlags = new(StringComparer.OrdinalIgnoreCase)
     {
-        "--open", "--wait", "--check-updates", "--register-assoc", "--visible-test", "--test-mode",
+        "decomp", "--open", "--wait", "--check-updates", "--register-assoc", "--visible-test", "--test-mode",
         "--headless", "--dry-run", "--help", "-h", "/?", "help", "--version", "-v"
     };
 
@@ -94,7 +96,8 @@ internal static class LauncherArgsHelper
 
             if (!trimmed.StartsWith("-", StringComparison.Ordinal) &&
                 !string.Equals(trimmed, "/?", StringComparison.Ordinal) &&
-                !string.Equals(trimmed, "help", StringComparison.OrdinalIgnoreCase))
+                !string.Equals(trimmed, "help", StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(trimmed, "decomp", StringComparison.OrdinalIgnoreCase))
             {
                 normalized[i] = Path.GetFullPath(trimmed, baseDir);
             }

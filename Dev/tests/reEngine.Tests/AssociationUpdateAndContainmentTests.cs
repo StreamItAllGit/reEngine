@@ -59,6 +59,34 @@ public sealed class AssociationUpdateAndContainmentTests : IDisposable
     }
 
     [Fact]
+    public void VirtualRegistryAssociationStore_RegistersReadsAndUnregistersDecompAssociation_CoexistingWithRecomp()
+    {
+        string dataDir = Path.Combine(_tempRoot, "sandbox_decomp_assoc");
+        var store = new VirtualRegistryAssociationStore(dataDir, _tempRoot);
+        string dummyExe = Path.Combine(_tempRoot, "reEngine.exe");
+
+        FileAssociationRecord recompRec = store.RegisterRecompAssociation(dummyExe);
+        FileAssociationRecord decompRec = store.RegisterDecompAssociation(dummyExe);
+
+        FileAssociationRecord? readRecomp = store.ReadRecompAssociation();
+        FileAssociationRecord? readDecomp = store.ReadDecompAssociation();
+
+        Assert.NotNull(readRecomp);
+        Assert.NotNull(readDecomp);
+        Assert.Equal(".decomp", readDecomp!.Extension);
+        Assert.Equal("reEngine.DecompModule", readDecomp.ProgId);
+        Assert.Equal($"\"{Path.GetFullPath(dummyExe)}\" decomp --module \"%1\"", decompRec.CommandTemplate);
+        Assert.Equal(decompRec.CommandTemplate, readDecomp.CommandTemplate);
+        Assert.Equal(recompRec.CommandTemplate, readRecomp!.CommandTemplate);
+
+        Assert.True(store.UnregisterDecompAssociation());
+        Assert.Null(store.ReadDecompAssociation());
+        Assert.NotNull(store.ReadRecompAssociation());
+        Assert.True(store.UnregisterRecompAssociation());
+        Assert.False(File.Exists(store.RegistryFilePath));
+    }
+
+    [Fact]
     public void WindowsRegistryAssociationStore_ThrowsWhenConstructedInTestMode()
     {
         Assert.Throws<InvalidOperationException>(() => new WindowsRegistryAssociationStore(testMode: true));
@@ -192,15 +220,57 @@ public sealed class AssociationUpdateAndContainmentTests : IDisposable
     public void ReEnginePackagingConstants_EnforcesAllowAutoStartFalse_AndZeroPiiDefaultPath()
     {
         Assert.False(ReEnginePackagingConstants.AllowAutoStart);
+        Assert.Equal("0.2.0", ReEnginePackagingConstants.Version);
+        Assert.Equal("StreamItAll", ReEnginePackagingConstants.StudioName);
+        Assert.Equal("reEngine", ReEnginePackagingConstants.SuiteName);
+        Assert.Equal("StreamItAll\\reEngine\\reEngine", ReEnginePackagingConstants.UmbrellaSubpath);
+        Assert.Equal("lightweight", ReEnginePackagingConstants.DefaultInstallProfile);
         Assert.Equal("#38BDF8", ReEnginePackagingConstants.BrandAccentHex);
 
         string prevEnv = Environment.GetEnvironmentVariable("REENGINE_HOME") ?? string.Empty;
         try
         {
             Environment.SetEnvironmentVariable("REENGINE_HOME", null);
-            string expectedDefault = Path.GetFullPath(Path.Combine($"{(char)68}:{Path.DirectorySeparatorChar}", "Programs", "reEngine"));
+            string localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+            if (string.IsNullOrWhiteSpace(localAppData))
+            {
+                localAppData = Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+                    "AppData",
+                    "Local");
+            }
+
+            string expectedSuite = Path.GetFullPath(Path.Combine(localAppData, "Programs", "StreamItAll", "reEngine"));
+            string expectedDefault = Path.GetFullPath(Path.Combine(expectedSuite, "reEngine"));
             string resolved = ReEngineBootstrapHelper.ResolveDefaultReEngineInstallDir(testMode: false);
+            string resolvedSuite = ReEngineBootstrapHelper.ResolveDefaultSuiteInstallDir(testMode: false);
+
             Assert.Equal(expectedDefault, resolved);
+            Assert.Equal(expectedSuite, resolvedSuite);
+            Assert.Equal(Path.Combine(expectedSuite, "toolchain"), ReEngineBootstrapHelper.ResolveToolchainDir(resolved));
+            Assert.Equal(Path.Combine(expectedSuite, "engines"), ReEngineBootstrapHelper.ResolveEnginesRootDir(resolved));
+
+            // Peer suite siblings (..\toolchain, ..\engines) win even if direct subdirectories exist.
+            string peerSuite = Path.Combine(_tempRoot, "peer_suite");
+            string peerReEngine = Path.Combine(peerSuite, "reEngine");
+            string peerToolchain = Path.Combine(peerSuite, "toolchain");
+            string peerEngines = Path.Combine(peerSuite, "engines");
+            Directory.CreateDirectory(peerToolchain);
+            Directory.CreateDirectory(peerEngines);
+            Directory.CreateDirectory(Path.Combine(peerReEngine, "toolchain"));
+            Directory.CreateDirectory(Path.Combine(peerReEngine, "engines"));
+            Assert.Equal(peerToolchain, ReEngineBootstrapHelper.ResolveToolchainDir(peerReEngine));
+            Assert.Equal(peerEngines, ReEngineBootstrapHelper.ResolveEnginesRootDir(peerReEngine));
+
+            // Isolated portable/Sandbox installs fall back to .\toolchain and .\engines when peers do not exist.
+            string portableRoot = Path.Combine(_tempRoot, "portable_suite");
+            string portableReEngine = Path.Combine(portableRoot, "reEngine");
+            string portableToolchain = Path.Combine(portableReEngine, "toolchain");
+            string portableEngines = Path.Combine(portableReEngine, "engines");
+            Directory.CreateDirectory(portableToolchain);
+            Directory.CreateDirectory(portableEngines);
+            Assert.Equal(portableToolchain, ReEngineBootstrapHelper.ResolveToolchainDir(portableReEngine));
+            Assert.Equal(portableEngines, ReEngineBootstrapHelper.ResolveEnginesRootDir(portableReEngine));
         }
         finally
         {

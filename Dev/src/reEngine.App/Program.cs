@@ -8,12 +8,13 @@ using System.Text.Json;
 using Foundation.Core;
 using reEngine.Core.Associations;
 using reEngine.Core.Bootstrap;
+using reEngine.Core.Decomp;
 using reEngine.Core.Resolution;
 using reEngine.Core.Updates;
 
 namespace reEngine.App;
 
-internal static class Program
+internal static partial class Program
 {
     private const int AttachParentProcess = -1;
 
@@ -125,7 +126,7 @@ internal static class Program
         ReEngineSettings settings = updateCoordinator.LoadSettings().Value;
 
         string? cliEnginesDir = RecompLaunchOptions.GetOptionValue(args, "--engines-dir", requiredIfPresent: true);
-        string enginesDir = ResolveEnginesDir(cliEnginesDir, settings.EnginesDirectoryOverride, sandbox);
+        string enginesDir = ResolveEnginesDir(cliEnginesDir, settings, sandbox);
 
         string? sandboxBoundary = null;
         if (sandbox.TestMode || sandbox.IsContainedSandbox)
@@ -149,13 +150,20 @@ internal static class Program
         {
             string exeForAssoc = ResolveLauncherExecutablePath();
             FileAssociationRecord record = assocStore.RegisterRecompAssociation(exeForAssoc);
+            FileAssociationRecord decompRecord = assocStore.RegisterDecompAssociation(exeForAssoc);
             string modeTag = sandbox.TestMode || sandbox.IsContainedSandbox ? "VIRTUALIZED" : "HKCU";
-            log("INFO", $"Registered .recomp association ({modeTag}): {record.CommandTemplate}");
-            Console.WriteLine($"Registered .recomp association ({modeTag}): {record.CommandTemplate}");
+            log("INFO", $"Registered .recomp & .decomp associations ({modeTag}): {record.CommandTemplate} | {decompRecord.CommandTemplate}");
+            Console.WriteLine($"Registered .recomp & .decomp associations ({modeTag}): {record.CommandTemplate}");
             if (sandbox.Headless || (string.IsNullOrWhiteSpace(openTarget) && !checkUpdates && !sandbox.VisibleTest))
             {
                 return 0;
             }
+        }
+
+        if (string.Equals(openTarget, "decomp", StringComparison.OrdinalIgnoreCase))
+        {
+            return await RunDecompCliAsync(args, enginesDir, sandbox, sandboxBoundary, log, ct)
+                .ConfigureAwait(false);
         }
 
         if (checkUpdates)
@@ -193,82 +201,68 @@ internal static class Program
         return form.ExitCode;
     }
 
-    private static async Task<int> RunUpdateCheckCliAsync(
-        UpdateCoordinator coordinator,
-        ReEngineSettings settings,
-        string enginesDir,
-        string? feedOverride,
-        string? sandboxBoundary,
-        bool strict,
-        Action<string, string> log,
-        CancellationToken ct)
-    {
-        var hb = new HeartbeatLogger("reEngine UpdateCheck", line => log("HEARTBEAT", line), Console.Out);
-        hb.ReportProgress(0, 2, "Discovering installed engines", forceEmit: true);
-        var resolver = new EngineVersionResolver();
-        IReadOnlyList<InstalledEngineCandidate> engines = resolver.DiscoverInstalledEngines(enginesDir);
-
-        MultiEngineUpdateSweepResult sweep = await coordinator.CheckAllInstalledEnginesAsync(
-            settings,
-            engines,
-            feedOverride,
-            allowedLocalFeedRoot: sandboxBoundary,
-            ct: ct).ConfigureAwait(false);
-
-        hb.Complete(2, sweep.SummaryMessage);
-        if (sweep.NetworkUnavailable)
-        {
-            log("WARN", sweep.SummaryMessage);
-            if (strict)
-            {
-                Console.Error.WriteLine(sweep.SummaryMessage);
-                return 4;
-            }
-            Console.WriteLine(sweep.SummaryMessage);
-            return 0;
-        }
-
-        log("INFO", sweep.SummaryMessage);
-        Console.WriteLine(sweep.SummaryMessage);
-        return 0;
-    }
-
-    private static int RunHeadlessDiagnostics(
-        string enginesDir,
-        ReEngineSettings settings,
-        IFileAssociationStore assocStore,
-        SandboxEnvironment sandbox,
-        Action<string, string> log)
-    {
-        var hb = new HeartbeatLogger("reEngine Headless", line => log("HEARTBEAT", line), Console.Out);
-        hb.ReportProgress(1, 3, "Inspecting side-by-side engines", forceEmit: true);
-        var resolver = new EngineVersionResolver();
-        IReadOnlyList<InstalledEngineCandidate> discovered = resolver.DiscoverInstalledEngines(enginesDir);
-        hb.ReportProgress(2, 3, "Inspecting .recomp association", forceEmit: true);
-        FileAssociationRecord? assoc = assocStore.ReadRecompAssociation();
-        string summary = $"Headless sweep OK | testMode={sandbox.TestMode} | engines={discovered.Count} | assoc={(assoc is not null ? "ACTIVE" : "NONE")} | autoCheck={settings.ShouldCheckUpdates}";
-        hb.Complete(3, summary);
-        log("INFO", summary);
-        Console.WriteLine(summary);
-        return 0;
-    }
-
-    private static string ResolveEnginesDir(string? cliEnginesDir, string? settingsOverride, SandboxEnvironment sandbox)
+    private static string ResolveEnginesDir(string? cliEnginesDir, ReEngineSettings settings, SandboxEnvironment sandbox)
     {
         if (!string.IsNullOrWhiteSpace(cliEnginesDir))
         {
             return Path.GetFullPath(cliEnginesDir.Trim());
         }
-        if (!string.IsNullOrWhiteSpace(settingsOverride))
+        if (!string.IsNullOrWhiteSpace(settings.EnginesDirectoryOverride))
         {
-            return Path.GetFullPath(settingsOverride.Trim());
+            return Path.GetFullPath(settings.EnginesDirectoryOverride.Trim());
         }
+
+        string? suiteDir = ReEngineAppStatusHelper.TryReadSettingPath(settings, "suiteInstallDir");
+        string? reEngineDir = ReEngineAppStatusHelper.TryReadSettingPath(settings, "reEngineInstallDir");
+        string appRoot = ReEngineAppStatusHelper.ResolveAppInstallRoot();
+
         if (sandbox.TestMode || sandbox.IsContainedSandbox)
         {
+            string boundary = ResolveSandboxBoundary(sandbox);
+            string? suiteCandidate = !string.IsNullOrWhiteSpace(suiteDir)
+                ? Path.Combine(suiteDir, "engines")
+                : (!string.IsNullOrWhiteSpace(reEngineDir) ? ReEngineBootstrapHelper.ResolveEnginesRootDir(reEngineDir) : null);
+            if (!string.IsNullOrWhiteSpace(suiteCandidate) && IsPathWithinBoundary(suiteCandidate, boundary))
+            {
+                return suiteCandidate;
+            }
+
+            string localCandidate = ReEngineBootstrapHelper.ResolveEnginesRootDir(appRoot);
+            if (Directory.Exists(localCandidate) && IsPathWithinBoundary(localCandidate, boundary))
+            {
+                return localCandidate;
+            }
+
             return Path.Combine(sandbox.DataDirectory, "engines");
         }
+
+        if (!string.IsNullOrWhiteSpace(suiteDir))
+        {
+            return Path.Combine(suiteDir, "engines");
+        }
+        if (!string.IsNullOrWhiteSpace(reEngineDir))
+        {
+            return ReEngineBootstrapHelper.ResolveEnginesRootDir(reEngineDir);
+        }
+
+        string installedCandidate = ReEngineBootstrapHelper.ResolveEnginesRootDir(appRoot);
+        if (Directory.Exists(installedCandidate) ||
+            File.Exists(Path.Combine(appRoot, "reEngine.exe")) ||
+            File.Exists(Path.Combine(appRoot, "version.txt")))
+        {
+            return installedCandidate;
+        }
+
         string root = ReEngineBootstrapHelper.ResolveDefaultReEngineInstallDir(testMode: false);
         return ReEngineBootstrapHelper.ResolveEnginesRootDir(root);
+    }
+
+    private static bool IsPathWithinBoundary(string candidatePath, string boundaryPath)
+    {
+        string fullCandidate = Path.GetFullPath(candidatePath).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        string fullBoundary = Path.GetFullPath(boundaryPath).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        return string.Equals(fullCandidate, fullBoundary, StringComparison.OrdinalIgnoreCase) ||
+               fullCandidate.StartsWith(fullBoundary + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
     }
 
     private static string ResolveSandboxBoundary(SandboxEnvironment sandbox)
@@ -305,7 +299,7 @@ internal static class Program
         SandboxEnvironment.AssertPathContained(enginesDir, sandboxBoundary);
     }
 
-    private static string ResolveLauncherExecutablePath()
+    internal static string ResolveLauncherExecutablePath()
     {
         string baseDir = AppContext.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
         string? parentDir = Path.GetDirectoryName(baseDir);
@@ -319,8 +313,9 @@ internal static class Program
 
     private static void PrintUsage()
     {
-        Console.WriteLine("reEngine - Zero-Daemon .recomp Suite Router");
+        Console.WriteLine("reEngine - Zero-Daemon .recomp & .decomp Suite Router");
         Console.WriteLine("Usage: reEngine.exe [--open <path> | <file.recomp>] [--wait] [--register-assoc] [--check-updates [--strict]] [--feed <urlOrPath>]");
+        Console.WriteLine("       reEngine.exe decomp --module <file.decomp> [--stage D0..D5] [--engine-dir <dir>] [--toolchain-dir <dir>] [--output-dir <dir>]");
         Console.WriteLine("                    [--engines-dir <dir>] [--data-dir <dir>] [--log-dir <dir>] [--config <path>] [--test-mode] [--dry-run] [--headless] [--visible-test]");
         Console.WriteLine("                    [--enable-logs] [--frames <n>] [--fixture <path>] [--dump-screenshot <path>] [--dump-audio <path>] [--input-script <path>]");
         Console.WriteLine("                    [--version] [--help]");

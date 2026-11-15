@@ -24,7 +24,7 @@ public sealed record FileAssociationRecord(
     [property: JsonPropertyName("updatedAtUtc")] string UpdatedAtUtc);
 
 /// <summary>
-/// Abstracts <c>.recomp</c> file association registration across live HKCU and sandbox virtual storage.
+/// Abstracts <c>.recomp</c> and <c>.decomp</c> file association registration across live HKCU and sandbox virtual storage.
 /// </summary>
 public interface IFileAssociationStore
 {
@@ -36,6 +36,15 @@ public interface IFileAssociationStore
 
     /// <summary>Removes the <c>.recomp</c> association if present.</summary>
     bool UnregisterRecompAssociation();
+
+    /// <summary>Registers the <c>.decomp</c> open handler pointing to <paramref name="executablePath"/>.</summary>
+    FileAssociationRecord RegisterDecompAssociation(string executablePath, string? iconPath = null);
+
+    /// <summary>Reads the currently registered <c>.decomp</c> association, or returns <see langword="null"/>.</summary>
+    FileAssociationRecord? ReadDecompAssociation();
+
+    /// <summary>Removes the <c>.decomp</c> association if present.</summary>
+    bool UnregisterDecompAssociation();
 }
 
 /// <summary>
@@ -45,6 +54,8 @@ public sealed class VirtualRegistryAssociationStore : IFileAssociationStore
 {
     private const string RecompExtension = ".recomp";
     private const string RecompProgId = "reEngine.RecompModule";
+    private const string DecompExtension = ".decomp";
+    private const string DecompProgId = "reEngine.DecompModule";
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -71,50 +82,122 @@ public sealed class VirtualRegistryAssociationStore : IFileAssociationStore
     }
 
     /// <inheritdoc />
-    public FileAssociationRecord RegisterRecompAssociation(string executablePath, string? iconPath = null)
+    public FileAssociationRecord RegisterRecompAssociation(string executablePath, string? iconPath = null) =>
+        RegisterExtension(RecompExtension, RecompProgId, $"\"{Path.GetFullPath(executablePath)}\" --open \"%1\"", executablePath, iconPath);
+
+    /// <inheritdoc />
+    public FileAssociationRecord? ReadRecompAssociation() => ReadExtension(RecompExtension);
+
+    /// <inheritdoc />
+    public bool UnregisterRecompAssociation() => UnregisterExtension(RecompExtension);
+
+    /// <inheritdoc />
+    public FileAssociationRecord RegisterDecompAssociation(string executablePath, string? iconPath = null) =>
+        RegisterExtension(DecompExtension, DecompProgId, $"\"{Path.GetFullPath(executablePath)}\" decomp --module \"%1\"", executablePath, iconPath);
+
+    /// <inheritdoc />
+    public FileAssociationRecord? ReadDecompAssociation() => ReadExtension(DecompExtension);
+
+    /// <inheritdoc />
+    public bool UnregisterDecompAssociation() => UnregisterExtension(DecompExtension);
+
+    private FileAssociationRecord RegisterExtension(
+        string extension,
+        string progId,
+        string commandTemplate,
+        string executablePath,
+        string? iconPath)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(executablePath);
         string fullExe = Path.GetFullPath(executablePath);
         string resolvedIcon = string.IsNullOrWhiteSpace(iconPath) ? $"{fullExe},0" : Path.GetFullPath(iconPath);
         var record = new FileAssociationRecord(
             SchemaVersion: 1,
-            Extension: RecompExtension,
-            ProgId: RecompProgId,
-            CommandTemplate: $"\"{fullExe}\" --open \"%1\"",
+            Extension: extension,
+            ProgId: progId,
+            CommandTemplate: commandTemplate,
             IconPath: resolvedIcon,
             UpdatedAtUtc: DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ss.fffZ"));
 
-        WriteAtomically(record);
+        Dictionary<string, FileAssociationRecord> records = ReadAllRecords();
+        records[extension] = record;
+        WriteAtomically(records);
         return record;
     }
 
-    /// <inheritdoc />
-    public FileAssociationRecord? ReadRecompAssociation()
-    {
-        if (!File.Exists(_registryFilePath))
-        {
-            return null;
-        }
-        string raw = File.ReadAllText(_registryFilePath, Encoding.UTF8);
-        return string.IsNullOrWhiteSpace(raw) ? null : JsonSerializer.Deserialize<FileAssociationRecord>(raw, JsonOptions);
-    }
+    private FileAssociationRecord? ReadExtension(string extension) =>
+        ReadAllRecords().TryGetValue(extension, out FileAssociationRecord? record) ? record : null;
 
-    /// <inheritdoc />
-    public bool UnregisterRecompAssociation()
+    private bool UnregisterExtension(string extension)
     {
         if (!File.Exists(_registryFilePath))
         {
             return false;
         }
-        File.Delete(_registryFilePath);
+
+        Dictionary<string, FileAssociationRecord> records = ReadAllRecords();
+        if (!records.Remove(extension))
+        {
+            return false;
+        }
+
+        if (records.Count == 0)
+        {
+            File.Delete(_registryFilePath);
+        }
+        else
+        {
+            WriteAtomically(records);
+        }
         return true;
     }
 
-    private void WriteAtomically(FileAssociationRecord record)
+    private Dictionary<string, FileAssociationRecord> ReadAllRecords()
+    {
+        var map = new Dictionary<string, FileAssociationRecord>(StringComparer.OrdinalIgnoreCase);
+        if (!File.Exists(_registryFilePath))
+        {
+            return map;
+        }
+
+        string raw = File.ReadAllText(_registryFilePath, Encoding.UTF8);
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            return map;
+        }
+
+        using JsonDocument doc = JsonDocument.Parse(raw);
+        if (doc.RootElement.ValueKind != JsonValueKind.Object)
+        {
+            return map;
+        }
+
+        if (doc.RootElement.TryGetProperty("extension", out _))
+        {
+            FileAssociationRecord? single = JsonSerializer.Deserialize<FileAssociationRecord>(raw, JsonOptions);
+            if (single is not null && !string.IsNullOrWhiteSpace(single.Extension))
+            {
+                map[single.Extension] = single;
+            }
+            return map;
+        }
+
+        foreach (JsonProperty prop in doc.RootElement.EnumerateObject())
+        {
+            FileAssociationRecord? rec = prop.Value.Deserialize<FileAssociationRecord>(JsonOptions);
+            if (rec is not null)
+            {
+                map[prop.Name] = rec;
+            }
+        }
+        return map;
+    }
+
+    private void WriteAtomically(Dictionary<string, FileAssociationRecord> records)
     {
         string tempPath = $"{_registryFilePath}.{Guid.NewGuid():N}.tmp";
         string bakPath = _registryFilePath + ".bak";
-        string json = JsonSerializer.Serialize(record, JsonOptions);
+        string json = JsonSerializer.Serialize(records, JsonOptions);
 
         try
         {
@@ -142,6 +225,8 @@ public sealed class WindowsRegistryAssociationStore : IFileAssociationStore
 {
     private const string RecompExtension = ".recomp";
     private const string RecompProgId = "reEngine.RecompModule";
+    private const string DecompExtension = ".decomp";
+    private const string DecompProgId = "reEngine.DecompModule";
     private const string ClassesRoot = @"Software\Classes";
 
     /// <summary>
@@ -157,7 +242,47 @@ public sealed class WindowsRegistryAssociationStore : IFileAssociationStore
     }
 
     /// <inheritdoc />
-    public FileAssociationRecord RegisterRecompAssociation(string executablePath, string? iconPath = null)
+    public FileAssociationRecord RegisterRecompAssociation(string executablePath, string? iconPath = null) =>
+        RegisterExtension(
+            RecompExtension,
+            RecompProgId,
+            "application/vnd.reengine.recomp+json",
+            "reEngine Recompiled Module",
+            $"\"{Path.GetFullPath(executablePath)}\" --open \"%1\"",
+            executablePath,
+            iconPath);
+
+    /// <inheritdoc />
+    public FileAssociationRecord? ReadRecompAssociation() => ReadExtension(RecompExtension);
+
+    /// <inheritdoc />
+    public bool UnregisterRecompAssociation() => UnregisterExtension(RecompExtension, RecompProgId);
+
+    /// <inheritdoc />
+    public FileAssociationRecord RegisterDecompAssociation(string executablePath, string? iconPath = null) =>
+        RegisterExtension(
+            DecompExtension,
+            DecompProgId,
+            "application/vnd.reengine.decomp+json",
+            "reEngine Decompilation Module",
+            $"\"{Path.GetFullPath(executablePath)}\" decomp --module \"%1\"",
+            executablePath,
+            iconPath);
+
+    /// <inheritdoc />
+    public FileAssociationRecord? ReadDecompAssociation() => ReadExtension(DecompExtension);
+
+    /// <inheritdoc />
+    public bool UnregisterDecompAssociation() => UnregisterExtension(DecompExtension, DecompProgId);
+
+    private static FileAssociationRecord RegisterExtension(
+        string extension,
+        string progId,
+        string contentType,
+        string description,
+        string command,
+        string executablePath,
+        string? iconPath)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(executablePath);
         if (!OperatingSystem.IsWindows())
@@ -167,17 +292,16 @@ public sealed class WindowsRegistryAssociationStore : IFileAssociationStore
 
         string fullExe = Path.GetFullPath(executablePath);
         string resolvedIcon = string.IsNullOrWhiteSpace(iconPath) ? $"{fullExe},0" : Path.GetFullPath(iconPath);
-        string command = $"\"{fullExe}\" --open \"%1\"";
 
-        using (RegistryKey extKey = Registry.CurrentUser.CreateSubKey($@"{ClassesRoot}\{RecompExtension}", writable: true))
+        using (RegistryKey extKey = Registry.CurrentUser.CreateSubKey($@"{ClassesRoot}\{extension}", writable: true))
         {
-            extKey.SetValue(null, RecompProgId);
-            extKey.SetValue("Content Type", "application/vnd.reengine.recomp+json");
+            extKey.SetValue(null, progId);
+            extKey.SetValue("Content Type", contentType);
         }
 
-        using (RegistryKey progKey = Registry.CurrentUser.CreateSubKey($@"{ClassesRoot}\{RecompProgId}", writable: true))
+        using (RegistryKey progKey = Registry.CurrentUser.CreateSubKey($@"{ClassesRoot}\{progId}", writable: true))
         {
-            progKey.SetValue(null, "reEngine Recompiled Module");
+            progKey.SetValue(null, description);
             using RegistryKey iconKey = progKey.CreateSubKey("DefaultIcon", writable: true);
             iconKey.SetValue(null, resolvedIcon);
             using RegistryKey cmdKey = progKey.CreateSubKey(@"shell\open\command", writable: true);
@@ -186,22 +310,21 @@ public sealed class WindowsRegistryAssociationStore : IFileAssociationStore
 
         return new FileAssociationRecord(
             SchemaVersion: 1,
-            Extension: RecompExtension,
-            ProgId: RecompProgId,
+            Extension: extension,
+            ProgId: progId,
             CommandTemplate: command,
             IconPath: resolvedIcon,
             UpdatedAtUtc: DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ss.fffZ"));
     }
 
-    /// <inheritdoc />
-    public FileAssociationRecord? ReadRecompAssociation()
+    private static FileAssociationRecord? ReadExtension(string extension)
     {
         if (!OperatingSystem.IsWindows())
         {
             return null;
         }
 
-        using RegistryKey? extKey = Registry.CurrentUser.OpenSubKey($@"{ClassesRoot}\{RecompExtension}", writable: false);
+        using RegistryKey? extKey = Registry.CurrentUser.OpenSubKey($@"{ClassesRoot}\{extension}", writable: false);
         string? progId = extKey?.GetValue(null) as string;
         if (string.IsNullOrWhiteSpace(progId))
         {
@@ -220,15 +343,14 @@ public sealed class WindowsRegistryAssociationStore : IFileAssociationStore
 
         return new FileAssociationRecord(
             SchemaVersion: 1,
-            Extension: RecompExtension,
+            Extension: extension,
             ProgId: progId,
             CommandTemplate: command,
             IconPath: iconPath,
             UpdatedAtUtc: DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ss.fffZ"));
     }
 
-    /// <inheritdoc />
-    public bool UnregisterRecompAssociation()
+    private static bool UnregisterExtension(string extension, string progId)
     {
         if (!OperatingSystem.IsWindows())
         {
@@ -242,14 +364,14 @@ public sealed class WindowsRegistryAssociationStore : IFileAssociationStore
             {
                 return false;
             }
-            if (classes.OpenSubKey(RecompExtension) is not null)
+            if (classes.OpenSubKey(extension) is not null)
             {
-                classes.DeleteSubKeyTree(RecompExtension, throwOnMissingSubKey: false);
+                classes.DeleteSubKeyTree(extension, throwOnMissingSubKey: false);
                 removed = true;
             }
-            if (classes.OpenSubKey(RecompProgId) is not null)
+            if (classes.OpenSubKey(progId) is not null)
             {
-                classes.DeleteSubKeyTree(RecompProgId, throwOnMissingSubKey: false);
+                classes.DeleteSubKeyTree(progId, throwOnMissingSubKey: false);
                 removed = true;
             }
         }
