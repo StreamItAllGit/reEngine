@@ -1,6 +1,6 @@
 # reEngine — Interfaces & Contracts
 
-**Synced Version:** `0.2.0` (`2026-11-15`)  
+**Synced Version:** `0.2.1` (`2026-11-15`)  
 **Owner:** `reEngine` Core (`@devv` / `@dean`)  
 **Schema Discipline:** Canonical `camelCase` JSON keys per [`18_DATA_DICTIONARY_AND_SCHEMA_LOOKUP.md`](<PROJECTS_ROOT>/Personal/_DevBible/18_DATA_DICTIONARY_AND_SCHEMA_LOOKUP.md)
 
@@ -16,7 +16,7 @@ Parsed by `RecompPackageReader.Load(string packagePath)` (UTF-8 JSON or ZIP arch
 | `schemaVersion` | `int` | Yes | `>= 1` (`1`) | Manifest schema revision. |
 | `moduleId` | `string` | Yes | `^[a-z0-9][a-z0-9-]*$` | Lowercase kebab slug isolating `<dataDir>\modules\<moduleId>\`. |
 | `title` | `string` | Yes | Non-empty | Human-facing game/module display title. |
-| `version` | `string` | Yes | SemVer (`"0.2.0"`) | Packaged module semantic version. |
+| `version` | `string` | Yes | SemVer (`"0.2.1"`) | Packaged module semantic version. |
 | `engineId` | `string` | Yes | Non-empty | Target platform engine folder (`"reStation"`, `"reNes"`, `"re64"`, `"reCube"`). |
 | `engineVersion` | `string` | Yes | Valid `SemVer` | Minimum compatible engine version required (`>=`). |
 | `compatibleEngineTrack` | `string` | Yes | Track selector | Compatibility track (`X.Y.x`, `X.Y.*`, `X.Y`, `X.x`, `X.*`, `X.Y.Z`). |
@@ -99,15 +99,15 @@ Persisted under `HKCU\Software\Classes` (`WindowsRegistryAssociationStore`, thro
 - UI button **Register Associations** registers both `.recomp` and `.decomp` via `Program.ResolveLauncherExecutablePath()`.
 
 ### 3.3 Suite App Manifest (`Dev\app.manifest.json`), Bootstrap SDK & Installer CLI
-- **`Dev\app.manifest.json`:** `schemaVersion = 2`, `appId = "reengine"`, `version = "0.2.0"`, `activeMilestone = "0.2.0"`, `goalMajorVersion = "1.0.0"`, `sdkVersion = "0.4.0"`, `downstreamProjects = ["Personal/reStation", "Personal/KingsFieldRecomp", "Personal/HMBackToNature-Recomp"]`.
-- **Bootstrap SDK (`ReEngineBootstrapHelper` -> `<SHARED_LIBS>\reEngine\v0.2.0\`):**
-  - `ReEnginePackagingConstants`: `Version = "0.2.0"`, `StudioName = "StreamItAll"`, `SuiteName = "reEngine"`, `UmbrellaSubpath = "StreamItAll\\reEngine\\reEngine"`, `DefaultInstallProfile = "lightweight"`, `AllowAutoStart = false`.
+- **`Dev\app.manifest.json`:** `schemaVersion = 2`, `appId = "reengine"`, `version = "0.2.1"`, `activeMilestone = "0.2.0"`, `goalMajorVersion = "1.0.0"`, `sdkVersion = "0.4.0"`, `downstreamProjects = ["Personal/reStation", "Personal/KingsFieldRecomp", "Personal/HMBackToNature-Recomp"]`.
+- **Bootstrap SDK (`ReEnginePackagingConstants` & `ReEngineBootstrapHelper` -> `<SHARED_LIBS>\reEngine\v0.2.1\`):**
+  - `ReEnginePackagingConstants`: `Version = "0.2.1"`, `StudioName = "StreamItAll"`, `SuiteName = "reEngine"`, `UmbrellaSubpath = "StreamItAll\\reEngine\\reEngine"`, `DefaultInstallProfile = "lightweight"`, `AllowAutoStart = false`.
   - `ResolveDefaultReEngineInstallDir(explicitDir, sandboxDataDir, testMode)` enforces `sandboxDataDir` containment in `--test-mode` or resolves `explicitDir` -> `REENGINE_HOME` -> `%LOCALAPPDATA%\Programs\StreamItAll\reEngine\reEngine`.
   - `ResolveDefaultSuiteInstallDir(...)` resolves `%LOCALAPPDATA%\Programs\StreamItAll\reEngine`.
   - `ResolveToolchainDir(reEngineInstallDir)` / `ResolveEnginesRootDir(reEngineInstallDir)` resolve peer `..\toolchain` and `..\engines` under `suiteInstallDir` (non-drive-root parent) as primary, falling back to `.\toolchain` and `.\engines` for isolated Sandbox/portable installs.
-- **Installer (`reEngine.Installer` & `LegacyMigrationHelper`):**
+- **Installer (`reEngine.Installer` & `ReEngineWizardPathNormalizer` / `LegacyMigrationHelper`):**
   - `Program`: `AllowAutoStart = false`, `BootstrapSharedSuiteDaemon = false`, `AllowLegacyMigration = true`, strips `--autostart` (`SanitizeArgs`), supports `--profile Lightweight|Full`, `--suite-dir` (`<dir>\reEngine` when `--install-dir` and `--reengine-dir` omitted), `--reengine-dir` (mapped to `--install-dir` when omitted), `--migrate-legacy`, `--confirm-legacy-cleanup`.
-  - Interactive GUI mode (`InstallerWizardForm`) wires `CreateThemeOptions()` and reads `SelectedProfileId`, `SecondaryInstallDir`, `MigrateLegacyChecked`, and `InstallDirTextBox.Text` on exit to execute opt-in migration and `PersistInstallProfileSettings`.
+  - Interactive GUI mode (`InstallerWizardForm`) wires `ReEngineWizardPathNormalizer.WireWizardAutoSortHandlers(wizard)` to auto-sort non-leaf parent picks into `<parent>\reEngine`, sync `SecondaryDirTextBox` via `ResolvePreferredSuiteInstallDir`, and ensure `<preferredEnginesRoot>` exists on post-install.
   - `LegacyMigrationHelper`: copies `data\settings.json` and preserves `data\rom\*` from `<LEGACY_PROGRAMS_DIR>\reEngine` (or contained `legacy-programs\reEngine` in `--test-mode`), and gates cleanup of stranded `engines\reStation\v0.1.1\app\` + `logs\crashes\crash_*.json` behind explicit human confirmation.
 
 ---

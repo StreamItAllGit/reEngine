@@ -214,7 +214,7 @@ $installerReleaseNotesPath = Join-Path $installersDir "RELEASE_NOTES.md"
 Write-Utf8Text $installerReleaseNotesPath $endUserReleaseNotes
 Assert-NoEndUserLeaks @($installerReleaseNotesPath)
 
-$auditScript = Join-Path $env:USERPROFILE ".gemini\config\skills\release-packaging\scripts\audit_installer.ps1"
+$auditScript = Join-Path $env:USERPROFILE ".gemini\config\skills\dev\scripts\audit_installer.ps1"
 if (Test-Path $auditScript) {
     & powershell -NoProfile -ExecutionPolicy Bypass -File $auditScript -InstallerPath $installersDir -StagingDir $stageDir -ExpectedVersion $Version
     if ($LASTEXITCODE -ne 0) { throw "audit_installer.ps1 failed ($LASTEXITCODE)" }

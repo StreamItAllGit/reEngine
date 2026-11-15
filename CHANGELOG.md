@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-11-15
+
+### Added
+- Added Setup Wizard directory normalization so selecting a generic parent folder automatically sorts `reEngine` into `<parent>\reEngine\` without double-nesting and keeps companion `engines\` inside `<reEngineDir>\engines\` unless an umbrella `reEngine\engines\` folder already exists.
+- Added 3 regression tests verifying wizard folder sorting, companion `engines\` root selection, and live suite picker synchronization (`53/53` passing).
+
+### Changed
+- Extracted `ReEnginePackagingConstants` and `ReEngineBootstrapResult` into their own `reEngine.Core` source file and bumped `reEngine` and its SDK release metadata to `v0.2.1`.
+- Synchronized the Setup Wizard suite directory field and post-install `engines\` creation for custom non-umbrella folders while preserving explicit CLI `--install-dir` and `--suite-dir` overrides.
+
 ## [0.2.0] - 2026-11-15
 
 ### Added

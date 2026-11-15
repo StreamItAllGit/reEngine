@@ -1,6 +1,6 @@
-# reEngine (`v0.2.0`)
+# reEngine (`v0.2.1`)
 
-- **Active Version:** `v0.2.0` (`2026-11-15`)
+- **Active Version:** `v0.2.1` (`2026-11-15`)
 - **Lifecycle State:** `active` ([`active.state`](active.state))
 - **Group / Path:** `<PROJECTS_ROOT>\Personal\reEngine\`
 - **Logo Assets:** [`Dev\assets\reEngine.svg`](Dev/assets/reEngine.svg) | [`Dev\assets\reEngine.png`](Dev/assets/reEngine.png) | [`Dev\assets\reEngine.ico`](Dev/assets/reEngine.ico)
@@ -10,14 +10,14 @@
 ## 1. What It Is & Core Goal
 `reEngine` is the lightweight, **zero-daemon top-level router, `.decomp` pipeline coordinator, and suite manager** (`0 MB` background RAM, `AllowAutoStart = false`) for static recompilation modules (`.recomp`), clean-room decompilation packages (`.decomp`), and on-demand per-architecture **4-Tier Recomp / Shared-IR RyuJIT / Clean-Room HLE** engines (`reStation`, `re64`, `reCube`, `rePS2`, `reAdvance`, plus optional `reNes`/`reSnes`/`reBoy` spawned on demand for `R1–R3` `.recomp` tracks; graduated `R4`/`R5` full native ports ship as standalone game EXEs/installers and do not use `reEngine`). Rather than chasing generic cycle-accurate emulation—which already lives in standalone emulators and `uStation`—the `reEngine` + `re*` suite delivers **native C# gameplay/interpolation hooks, ahead-of-time static `.recomp` translation, shared `<dataDir>\cache\` AOT assembly management, and runtime CoreCLR RyuJIT dynamic translation**, keeping interpretation strictly as a `[WARN]`-logged safety-net fallback.
 
-`reEngine v0.2.0` installs per-user by default under `%LOCALAPPDATA%\Programs\StreamItAll\reEngine\reEngine\` (suite root `%LOCALAPPDATA%\Programs\StreamItAll\reEngine\`) with peer `toolchain\` (optional offline Apache-2.0 headless Ghidra + `jlink` OpenJDK under `--profile Full`), `engines\re<Platform>\v<Ver>\`, and `games\` folders. Any `re*` or `<Game>Recomp` installer auto-bootstraps/updates `reEngine`, preserves user `data\rom\` media across upgrades, and lets double-clicked `.recomp`/`.decomp` files (or `uStation` delegations via `reEngine --open <pkg> --wait`) route straight to the compatible engine track—building toward **`v1.0.0` (`win-x64` Going Gold)** and **`v2.0.0` (Full 10-Platform Compatibility North Star)**.
+`reEngine v0.2.1` installs per-user by default under `%LOCALAPPDATA%\Programs\StreamItAll\reEngine\reEngine\` (suite root `%LOCALAPPDATA%\Programs\StreamItAll\reEngine\`), auto-sorts generic parent folder picks in Setup into `<parent>\reEngine\` with companion `<parent>\reEngine\engines\`, preserves user `data\rom\` media across upgrades, and lets double-clicked `.recomp`/`.decomp` files (or `uStation` delegations via `reEngine --open <pkg> --wait`) route straight to the compatible engine track—building toward **`v1.0.0` (`win-x64` Going Gold)** and **`v2.0.0` (Full 10-Platform Compatibility North Star)**.
 
 ---
 
 ## 2. Quickstart & CLI Flags
 
 ```powershell
-reEngine-Setup-v0.2.0-win-x64.exe --silent --no-launch --profile Lightweight
+reEngine-Setup-v0.2.1-win-x64.exe --silent --no-launch --profile Lightweight
 reEngine.exe --open "D:\Games\KingsField\module.recomp.json" --wait
 reEngine.exe decomp --module ".\sample-re64.decomp" --stage D3 --test-mode --data-dir .\Sandbox\data --log-dir .\Sandbox\logs
 reEngine.exe --check-updates --strict
@@ -34,14 +34,14 @@ reEngine.exe --test-mode --visible-test --data-dir .\Sandbox\data --log-dir .\Sa
 | `--profile <Lightweight\|Full>` / `--suite-dir` / `--reengine-dir` | Installer & bootstrap profile selection (compact router vs. `<= 160 MB` offline Ghidra + OpenJDK `toolchain\`) and peer suite directory overrides. |
 | `--migrate-legacy` (`--confirm-legacy-cleanup`) | Opt-in migration helper for older pre-suite installs, preserving `data\rom\` files safely. |
 | `--check-updates` (`--strict`) | Sweep all installed `(engineId, track)` engines side-by-side; offline socket drops log `[WARN]` (`Exit 0`, or `Exit 4` with `--strict`, `0` crash dumps). |
-| `--data-dir` / `--config` / `--log-dir` | Redirect writable runtime data, `settings.json` (see `Dev\settings.example.json`), shared `<dataDir>\cache\` AOT index, and Standard 15 `[v0.2.0] [PID/T]` telemetry logs (`--test-mode` fail-closed). |
+| `--data-dir` / `--config` / `--log-dir` | Redirect writable runtime data, `settings.json` (see `Dev\settings.example.json`), shared `<dataDir>\cache\` AOT index, and Standard 15 `[v0.2.1] [PID/T]` telemetry logs (`--test-mode` fail-closed). |
 | `--headless` / `--visible-test` | Automated CI mode (`--headless`) or short dark-UI foreground showcase (`--visible-test`). |
 | `--frames`, `--fixture`, `--dump-screenshot`, `--dump-audio`, `--input-script`, `--enable-logs` | Containment-checked runtime, diagnostic, and automated test-capture flags forwarded cleanly to resolved `re*` child engines. |
 
 ---
 
 ## 3. Architecture At a Glance
-- **Application Archetype:** Zero-Daemon Suite Router, `.decomp` Orchestrator & Dark Slate Manager (`Tier A`, `net8.0` Core + `net8.0-windows` App/Launcher/Installer consuming `Foundation.Core`, `Foundation.Retro`, `Foundation.Launcher`, and `Foundation.Installer` from `Foundation v0.4.0`; `50/50` passing xUnit tests with `0` warnings at `v0.2.0`; migrating to a cross-platform `SDL3` shell across `v1.1.0–v2.0.0`).
+- **Application Archetype:** Zero-Daemon Suite Router, `.decomp` Orchestrator & Dark Slate Manager (`Tier A`, `net8.0` Core + `net8.0-windows` App/Launcher/Installer consuming `Foundation.Core`, `Foundation.Retro`, `Foundation.Launcher`, and `Foundation.Installer` from `Foundation v0.4.0`; `53/53` passing xUnit tests with `0` warnings at `v0.2.1`; migrating to a cross-platform `SDL3` shell across `v1.1.0–v2.0.0`).
 - **4-Tier Recomp Routing & Sister-App Boundary:** Targets `.recomp` modules and clean-room `.decomp` pipelines first (plus developer `--jit-bringup` raw-disc seeding in `re*` engines). `uStation` never builds a competing recompiler and delegates `.recomp` launches through `reEngine.exe --open <pkg> --wait`.
 - **Shared `<dataDir>\cache\` AOT Manager & Offline Toolchain:** `AotCacheManager` indexes compiled AOT assemblies inside `<dataDir>\cache\aot-index.json` with cross-process locking, SHA-256 tamper invalidation, and clean-room `.recomp` validation, while `OfflineToolchainLocator` + `Dev\scripts\stage_offline_toolchain.ps1` stage stripped Apache-2.0 headless Ghidra + `jlink` OpenJDK under `toolchain\` (`<= 160 MB`, zero runtime internet calls).
 - **Engine Track Resolution, Isolation & Canonical Media Preload:** Matches `compatibleEngineTrack` and `>= engineVersion` across `engines\re<Platform>\v<Ver>\`, resolves `app\<Module>.recomp` parent `<InstallRoot>\data\rom\` via `RecompPackageReader.ResolveModuleRootDirectory`, isolates child `--data-dir`/`--config`/`--log-dir` inside `<dataDir>\modules\<moduleId>\`, and auto-detects gitignored user optical/ROM media in `<module>\data\rom\` before prompting media pickers.

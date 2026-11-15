@@ -1,6 +1,6 @@
 # Project Context: reEngine
 
-- **Role:** Zero-daemon `.decomp` / `.recomp` suite router & UI (`v0.2.0`, Tier A, `MPL-2.0`).
+- **Role:** Zero-daemon `.decomp` / `.recomp` suite router & UI (`v0.2.1`, Tier A, `MPL-2.0`).
 - **Boundaries:** `Foundation\`, `_DevBible\` & `<WORKSPACE_ROOT>\Research\*` (no `Corpus\` copy) RO; `SharedLibs\reEngine\v<Ver>\`; fail-closed `--test-mode` in `Sandbox\`.
 
 ## 1. Root Quartet & State

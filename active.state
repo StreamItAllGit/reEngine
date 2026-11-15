@@ -7,16 +7,16 @@
   "containerTier": "Tier A (6-Folder)",
   "ecosystemTier": "Tier1_Infrastructure",
   "appArchetype": "ENGINE",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "activeMilestone": "0.2.0",
   "goalMajorVersion": "1.0.0",
-  "stateChangedDate": "2026-11-13",
+  "stateChangedDate": "2026-11-15",
   "lastVersionDate": "2026-11-15",
   "productionSubpath": null,
   "supersededBy": null,
   "tasklistDetailLevel": 3,
   "openTaskCount": 0,
-  "completedTaskCount": 8,
+  "completedTaskCount": 9,
   "openReportCount": 0,
   "gates": {
     "isGate0ScopePassed": true,
@@ -25,6 +25,6 @@
     "isInspecterVerified": true,
     "isTessaSynced": true
   },
-  "notes": "Wave 2 v0.2.0 shipped and Phase 5 synced: .decomp orchestrator, offline Ghidra Full bundle, shared <dataDir>\\cache\\ AOT cache manager, peer StreamItAll\\reEngine\\ suite layout, Foundation v0.4.0 installer wiring, and T8 PII/history scrub complete.",
-  "updatedAtUtc": "2026-11-15T10:13:00.000Z"
+  "notes": "Patch v0.2.1: Setup Wizard parent-folder auto-sorting into <parent>\\reEngine, companion <reEngineDir>\\engines creation for custom non-umbrella folders, and ReEnginePackagingConstants extraction (53/53 tests).",
+  "updatedAtUtc": "2026-11-15T20:23:00.000Z"
 }

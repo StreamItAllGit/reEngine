@@ -145,17 +145,18 @@ internal static class Program
             wizard.MigrateLegacyCheckBox.Checked = migrateLegacy || (ctx.ConfigOverride?.MigrateLegacy ?? false);
         }
 
+        ReEngineWizardPathNormalizer.WireWizardAutoSortHandlers(wizard);
         Application.Run(wizard);
         if (wizard.ExitCode == 0 && !cli.Uninstall)
         {
             string chosenInstallDir = string.IsNullOrWhiteSpace(wizard.InstallDirTextBox.Text)
                 ? theme.DefaultInstallDir
-                : Path.GetFullPath(wizard.InstallDirTextBox.Text.Trim());
+                : ReEngineWizardPathNormalizer.NormalizeWizardReEngineDir(wizard.InstallDirTextBox.Text);
             string chosenProfile = LegacyMigrationHelper.NormalizeProfileId(wizard.SelectedProfileId);
             string chosenSecondary = wizard.SecondaryInstallDir.Trim();
             string chosenReEngineDir = string.Equals(secondaryFlag, "--reengine-dir", StringComparison.OrdinalIgnoreCase) &&
                                        !string.IsNullOrWhiteSpace(chosenSecondary)
-                ? Path.GetFullPath(chosenSecondary)
+                ? ReEngineWizardPathNormalizer.NormalizeWizardReEngineDir(chosenSecondary)
                 : chosenInstallDir;
             string? chosenSuiteDir = string.Equals(secondaryFlag, "--reengine-dir", StringComparison.OrdinalIgnoreCase)
                 ? ResolveEffectiveSuiteDir(suiteDir, chosenReEngineDir)
@@ -187,6 +188,11 @@ internal static class Program
         {
             return;
         }
+
+        string enginesRoot = ReEngineWizardPathNormalizer.ResolvePreferredEnginesRootDir(
+            !string.IsNullOrWhiteSpace(reEngineDir) ? reEngineDir : installDir,
+            suiteDir);
+        Directory.CreateDirectory(enginesRoot);
 
         if (migrateLegacy)
         {
@@ -365,20 +371,6 @@ internal static class Program
         return ReEngineBootstrapHelper.ResolveDefaultReEngineInstallDir();
     }
 
-    private static string? ResolveEffectiveSuiteDir(string? explicitSuiteDir, string installDir)
-    {
-        if (!string.IsNullOrWhiteSpace(explicitSuiteDir))
-        {
-            return Path.GetFullPath(explicitSuiteDir.Trim());
-        }
-
-        string? parent = Path.GetDirectoryName(Path.GetFullPath(installDir).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
-        if (!string.IsNullOrWhiteSpace(parent) &&
-            !string.Equals(parent, Path.GetPathRoot(parent), StringComparison.OrdinalIgnoreCase))
-        {
-            return parent;
-        }
-
-        return null;
-    }
+    private static string? ResolveEffectiveSuiteDir(string? explicitSuiteDir, string installDir) =>
+        ReEngineWizardPathNormalizer.ResolvePreferredSuiteInstallDir(installDir, explicitSuiteDir);
 }

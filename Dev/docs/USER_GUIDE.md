@@ -1,6 +1,6 @@
 # reEngine — User Guide
 
-**Synced Version:** `0.2.0` (`2026-11-15`)  
+**Synced Version:** `0.2.1` (`2026-11-15`)  
 **Scope:** End-User Installation, Suite Topology, Launching `.recomp` / `.decomp` Modules, AOT Cache & Licensing
 
 ---
@@ -9,17 +9,17 @@
 
 `reEngine` is the lightweight, zero-daemon suite router, `.decomp` pipeline coordinator, and engine manager for `.recomp` and `.decomp` packages. When closed, `reEngine` leaves zero background services running (`0 MB` idle RAM) and never adds Windows Startup entries (`AllowAutoStart = false`).
 
-1. **Standalone Setup:** Run `reEngine-Setup-v0.2.0-win-x64.exe` (the `v0.2.0` single-EXE installer) interactively to choose your profile and directories, or pass CLI flags (`--silent --no-launch --profile Lightweight|Full`) for unattended setup.
+1. **Standalone Setup:** Run `reEngine-Setup-v0.2.1-win-x64.exe` (the `v0.2.1` single-EXE installer) interactively to choose your profile and directories (choosing a parent folder such as `Misc` automatically sorts `reEngine` into `Misc\reEngine\` with companion `Misc\reEngine\engines\` created automatically), or pass CLI flags (`--silent --no-launch --profile Lightweight|Full`) for unattended exact-path setup.
 2. **Peer Suite Layout (`StreamItAll\reEngine\`):** Installs by default into `%LOCALAPPDATA%\Programs\StreamItAll\reEngine\` with peer folders side-by-side:
    - `%LOCALAPPDATA%\Programs\StreamItAll\reEngine\reEngine\` — router executables, `settings.example.json`, and license files (`--reengine-dir`).
    - `%LOCALAPPDATA%\Programs\StreamItAll\reEngine\toolchain\` — optional offline headless Ghidra + OpenJDK + `THIRDPARTY_LICENSES.txt` installed under `--profile Full`.
-   - `%LOCALAPPDATA%\Programs\StreamItAll\reEngine\engines\` — side-by-side platform engines (`reStation\v0.2.0\`, `reNes\v0.1.0\`).
+   - `%LOCALAPPDATA%\Programs\StreamItAll\reEngine\engines\` — side-by-side platform engines (`reStation\v0.2.4\`, `reNes\v0.1.0\`).
    - `%LOCALAPPDATA%\Programs\StreamItAll\reEngine\games\` — slim game packages and preserved `data\rom\` preload media.
 3. **Install Profiles & Directory Flags:**
    - **Lightweight (`--profile Lightweight`, default):** Installs the compact router and engine manager without bundled decompilation tools.
    - **Full (`--profile Full`):** Includes the offline Apache-2.0 headless Ghidra + OpenJDK toolchain (`toolchain\`) with zero internet calls required during decompilation.
    - **Path Overrides:** Override the suite root with `--suite-dir <path>`, override the router folder with `--reengine-dir <path>` or `REENGINE_HOME`, or opt into one-time migration from older installs via the unchecked **Migrate legacy installation** checkbox (`--migrate-legacy`).
-4. **Automatic Game-Suite Bootstrap:** Installing any compatible `re*` platform engine or `<Game>Recomp` title checks the installed `reEngine` version and silently installs or upgrades `reEngine` to at least `v0.2.0` without touching existing side-by-side engine tracks.
+4. **Automatic Game-Suite Bootstrap:** Installing any compatible `re*` platform engine or `<Game>Recomp` title checks the installed `reEngine` version and silently installs or upgrades `reEngine` to at least `v0.2.1` without touching existing side-by-side engine tracks.
 
 ---
 
@@ -51,7 +51,7 @@
 | `--headless` / `--dry-run` | Run automated headless diagnostics or log planned child actions without spawning. |
 | `--enable-logs` / `--frames <n>` / `--fixture <path>` | Forward diagnostic logging, frame caps, or fixture overrides to the child engine. |
 | `--dump-screenshot <path>` / `--dump-audio <path>` / `--input-script <path>` | Forward capture and deterministic input playback options to the child engine. |
-| `--version` / `--help` | Print the active router version (`0.2.0`) or CLI usage summary. |
+| `--version` / `--help` | Print the active router version (`0.2.1`) or CLI usage summary. |
 
 5. **Exit Code Reference:**
    - `0`: Success (or non-strict offline `--check-updates` warning).
@@ -92,7 +92,7 @@ Launch `reEngine.exe` without CLI flags to open the Dark Slate suite manager win
   - **Open .recomp Package**, **Register Associations**, **Check For Updates**, and **Save Settings**
   - A clean template `settings.example.json` ships in `<InstallRoot>\` showing all supported personal overlay keys (`installProfile`, `reEngineInstallDir`, `suiteInstallDir`, `umbrellaSubpath`, `decompSchemaVersion`, `goalDecompTier`, `targetDecompTier`).
 - **Offline & Multi-Engine Sweeps:** Every distinct `(engineId, track)` pair is checked independently. Compatible track patches are downloaded and SHA-256 verified without touching older breaking tracks, while offline feeds log `[WARN]` and show `OFFLINE / SKIPPED` with zero crash dumps.
-- **Logs & Crash Diagnostics:** Telemetry logs write with `[v0.2.0] [PID:<id>/T:<tid>]` headers to `<LogDir>\reengine.log`, and unexpected failures record structured JSON crash bundles (including recent log lines) under `<LogDir>\crashes\crash_reengine_*.json`.
+- **Logs & Crash Diagnostics:** Telemetry logs write with `[v0.2.1] [PID:<id>/T:<tid>]` headers to `<LogDir>\reengine.log`, and unexpected failures record structured JSON crash bundles (including recent log lines) under `<LogDir>\crashes\crash_reengine_*.json`.
 
 ---
 
@@ -115,10 +115,10 @@ Launch `reEngine.exe` without CLI flags to open the Dark Slate suite manager win
 - **Offline Update Failure (Exit `4`):** Occurs only when `--check-updates --strict` is passed while offline; omit `--strict` during normal interactive sessions so `reEngine` degrades safely to `OFFLINE / SKIPPED`.
 - **Media Picker Still Appears:** Verify your personal disc/ROM dump sits directly inside `<GameInstallRoot>\data\rom\` with a supported extension (`.cue`, `.chd`, `.iso`, `.gcm`, `.rvz`, `.n64`, `.z64`, `.v64`, `.sfc`, `.smc`, `.nes`, `.gb`, `.gbc`, `.gba`, `.7z`, `.zip`, `.img`, `.bin`).
 - **Corrupt Settings or Cache Index:** Both `<DataDir>\settings.json` and `<DataDir>\cache\aot-index.json` retain `.bak` backups alongside atomic writes.
-- **Uninstalling `reEngine`:** Run `reEngine-Setup-v0.2.0-win-x64.exe --uninstall --install-dir <InstallRoot>` to remove router files cleanly without deleting user game saves or preloaded media inside game directories.
+- **Uninstalling `reEngine`:** Run `reEngine-Setup-v0.2.1-win-x64.exe --uninstall --install-dir <InstallRoot>` to remove router files cleanly without deleting user game saves or preloaded media inside game directories.
 
 ### 5.3 Support & Diagnostics Checklist
-- Run `reEngine.exe --version` to verify the active router build (`0.2.0`).
+- Run `reEngine.exe --version` to verify the active router build (`0.2.1`).
 - Run `reEngine.exe --headless` to verify active `profile`, `toolchain`, `aotAssemblies`, discovered engines, and association status in a single line.
 - Attach `<LogDir>\reengine.log` and any matching `<LogDir>\crashes\crash_reengine_*.json` bundle when reporting issues.
 

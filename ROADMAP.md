@@ -1,6 +1,6 @@
 # reEngine — Roadmap & Milestones
 
-**Current Active Version:** `0.2.0`  
+**Current Active Version:** `0.2.1`  
 **Lifecycle State:** `active.state`  
 **Last Updated:** 2026-11-15
 
@@ -14,7 +14,7 @@ Provide a lightweight, **zero-daemon top-level `.recomp`/`.decomp` suite router 
 ---
 
 ## 2. Active & Next Milestone
-- **Shipped Baseline (`0.2.0`):** `v0.2.0` (`2026-11-15`) — Platform-agnostic `.decomp` manifest & `D0`–`D5` pipeline orchestrator (`Exit 3` 3-part unbuilt-engine diagnostics), `HKCU` `.decomp` association, offline Apache-2.0 headless Ghidra + `jlink` OpenJDK `Full` stager (`<= 160 MB`, `THIRDPARTY_LICENSES.txt`), `<dataDir>\cache\` `AotCacheManager` + clean-room `.recomp` guard, `%LOCALAPPDATA%\Programs\StreamItAll\reEngine\` peer suite layout (`--profile Lightweight|Full`, `--suite-dir`, `--reengine-dir`, opt-in `--migrate-legacy`), `Dev\settings.example.json`, `Foundation v0.4.0` SDK sync, `50/50` xUnit tests (`0` warnings), `@dean` Gate 2 `PASS`, `@inspecter` live `Sandbox\` + `--visible-test` `PASS` ([`0.2.0.2026-11-15_1004.-.sandbox-and-visible-test-verify.md`](Dev/docs/reports/archive/0.2.0.2026-11-15_1004.-.sandbox-and-visible-test-verify.md)), and `git-filter-repo` history scrub (`T8`).
+- **Shipped Baseline (`0.2.1`):** `v0.2.1` (`2026-11-15`) — Adds live Setup Wizard parent-folder auto-sorting into `<parent>\reEngine\` with synced suite/companion `<reEngineDir>\engines\` creation (`ReEngineWizardPathNormalizer`, `53/53` passing tests), building atop `v0.2.0`'s `.decomp` orchestrator, offline Ghidra + OpenJDK `Full` stager, `<dataDir>\cache\` `AotCacheManager`, and `%LOCALAPPDATA%\Programs\StreamItAll\reEngine\` peer suite layout.
 - **Next Active Milestone:** `v0.3.0` — Resumable `.part` Staging Decoupling & Atomic Apply (`staged_updates\` $\rightarrow$ `engines\`), `"supportedEngineTracks"` Runtime Compatibility Matcher, `--jit-bringup` / 4-Backend Routing, Upstream `Foundation.Launcher`, and Library Shelf UI.
 
 ---
@@ -99,6 +99,7 @@ flowchart LR
 ---
 
 ## 4. Completed Milestones
+- `0.2.1` *(2026-11-15)*: Added `ReEngineWizardPathNormalizer` for Setup Wizard `<parent>\reEngine` auto-sorting, synced suite field selection, companion `<reEngineDir>\engines\` creation for custom non-umbrella folders, extracted `ReEnginePackagingConstants.cs`, bumped SDK/installer metadata (`53/53` passing tests, `0` warnings), and fixed `build_release.ps1` `audit_installer.ps1` path.
 - `0.2.0` *(2026-11-15)*: Delivered platform-agnostic `.decomp` routing & `D0`–`D5` pipeline coordination (`DecompPackageManifest`, `IDecompPlatformProvider`, `DecompPipelineCoordinator`, 3-part `Exit 3` unbuilt-engine diagnostics, `HKCU` `.decomp` association), `OfflineToolchainLocator` + `stage_offline_toolchain.ps1` (`<= 160 MB` stripped Apache-2.0 headless Ghidra + `jlink` OpenJDK + `THIRDPARTY_LICENSES.txt`), `<dataDir>\cache\` `AotCacheManager` + clean-room `.recomp` guard, `%LOCALAPPDATA%\Programs\StreamItAll\reEngine\` peer suite layout (`--profile Lightweight|Full`, `--suite-dir`, `--reengine-dir`, opt-in `--migrate-legacy`), `Dev\settings.example.json`, `Foundation v0.4.0` SDK sync, `50/50` xUnit tests (`0` warnings), `@dean` Gate 2 `PASS`, `audit_installer.ps1` (`0` findings), `@inspecter` live `Sandbox\` + `--visible-test` `PASS` ([`0.2.0.2026-11-15_1004.-.sandbox-and-visible-test-verify.md`](Dev/docs/reports/archive/0.2.0.2026-11-15_1004.-.sandbox-and-visible-test-verify.md)), and `git-filter-repo` history scrub (`T8`, [`0.2.0.2026-11-14.md`](Dev/docs/plans/0.2.0.2026-11-14.md)).
   - [x] `T1`–`T7`: `.decomp` contracts & HKCU association, offline Ghidra + OpenJDK `Full` stager, `D0`–`D5` orchestrator + `Exit 3` diagnostics, `<dataDir>\cache\` AOT cache manager, `SharedLibs\reEngine\v0.2.0\`, `%LOCALAPPDATA%\Programs\StreamItAll\reEngine\` suite defaults, `--migrate-legacy`, and UI `.decomp` / `Profile:` / AOT status integration.
   - [x] `T8`: `Archive\pre-scrub-v0.2.0.7z` snapshot, working-tree + `git-filter-repo` history scrub (`0` PII/path/UUID leaks across `git log --all`), single-pass release sync, and GitHub Release `v0.2.0`.
