@@ -1,11 +1,10 @@
 // @module: reEngine.App.ReEngineMainForm
-// @purpose: Dark Slate WinForms Suite Manager interaction logic, settings persistence, association triggers, and --visible-test showcase capture.
-// @depends-on: System, System.Drawing, System.Drawing.Imaging, System.IO, System.Linq, System.Reflection, System.Runtime.InteropServices, System.Windows.Forms, Foundation.Core, reEngine.Core
+// @purpose: Dark Slate WinForms Suite Manager interaction logic, settings persistence, and association triggers.
+// @depends-on: System, System.ComponentModel, System.Drawing, System.IO, System.Linq, System.Reflection, System.Runtime.InteropServices, System.Windows.Forms, Foundation.Core, reEngine.Core
 // @exports: ReEngineMainForm
 
 using System.ComponentModel;
 using System.Drawing;
-using System.Drawing.Imaging;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using Foundation.Core;
@@ -23,35 +22,31 @@ internal sealed partial class ReEngineMainForm : Form
     [DllImport("dwmapi.dll", ExactSpelling = true)]
     private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int attrValue, int attrSize);
 
-    private readonly SandboxEnvironment _sandbox;
+    private readonly AppEnvironment _appEnv;
     private readonly string _enginesDir;
     private readonly UpdateCoordinator _updateCoordinator;
     private readonly IFileAssociationStore _assocStore;
     private readonly Action<string, string> _log;
-    private readonly bool _visibleTestShowcase;
-    private readonly string? _sandboxBoundary;
+    private readonly string? _containmentRoot;
 
     private ReEngineSettings _settings;
-    private System.Windows.Forms.Timer? _showcaseTimer;
 
     public int ExitCode { get; private set; }
 
     public ReEngineMainForm(
-        SandboxEnvironment sandbox,
+        AppEnvironment appEnv,
         string enginesDir,
         UpdateCoordinator updateCoordinator,
         IFileAssociationStore assocStore,
         Action<string, string> log,
-        bool visibleTestShowcase = false,
-        string? sandboxBoundary = null)
+        string? containmentRoot = null)
     {
-        _sandbox = sandbox ?? throw new ArgumentNullException(nameof(sandbox));
+        _appEnv = appEnv ?? throw new ArgumentNullException(nameof(appEnv));
         _enginesDir = enginesDir ?? throw new ArgumentNullException(nameof(enginesDir));
         _updateCoordinator = updateCoordinator ?? throw new ArgumentNullException(nameof(updateCoordinator));
         _assocStore = assocStore ?? throw new ArgumentNullException(nameof(assocStore));
         _log = log ?? throw new ArgumentNullException(nameof(log));
-        _visibleTestShowcase = visibleTestShowcase;
-        _sandboxBoundary = sandboxBoundary;
+        _containmentRoot = containmentRoot;
         _settings = _updateCoordinator.LoadSettings().Value;
 
         Text = $"reEngine — Suite Router & Engine Manager (v{ReEnginePackagingConstants.Version})";
@@ -65,11 +60,6 @@ internal sealed partial class ReEngineMainForm : Form
         TryApplyEmbeddedIcon();
         InitializeControls();
         RefreshAllState();
-
-        if (_visibleTestShowcase)
-        {
-            ConfigureVisibleTestShowcase();
-        }
     }
 
     protected override void OnHandleCreated(EventArgs e)
@@ -92,9 +82,6 @@ internal sealed partial class ReEngineMainForm : Form
     {
         if (disposing)
         {
-            _showcaseTimer?.Stop();
-            _showcaseTimer?.Dispose();
-            _showcaseTimer = null;
             _tooltip?.Dispose();
         }
         base.Dispose(disposing);
@@ -131,7 +118,7 @@ internal sealed partial class ReEngineMainForm : Form
         }
 
         FileAssociationRecord? assoc = _assocStore.ReadRecompAssociation();
-        if (_sandbox.TestMode || _sandbox.IsContainedSandbox)
+        if (_assocStore is VirtualRegistryAssociationStore)
         {
             _lblAssocPill.Text = assoc is not null ? "VIRTUALIZED" : "UNREGISTERED";
             _lblAssocPill.ForeColor = assoc is not null ? AccentCyan : AccentWarning;
@@ -150,7 +137,7 @@ internal sealed partial class ReEngineMainForm : Form
             : "Lightweight";
 
         DecompDispatchStatusSummary decompStatus = ReEngineAppStatusHelper.InspectDecompStatus(_enginesDir, _settings, engines.Count);
-        AotCacheStatusSummary aotStatus = ReEngineAppStatusHelper.InspectAotCache(_sandbox.DataDirectory);
+        AotCacheStatusSummary aotStatus = ReEngineAppStatusHelper.InspectAotCache(_appEnv.DataDirectory);
         _lblDecompPill.Text = decompStatus.FormatPillText();
         _lblDecompPill.ForeColor = decompStatus.ToolchainAvailable ? AccentSuccess : AccentCyan;
         _lblDecompAotStatus.Text = $"{decompStatus.FormatSummary()} | {aotStatus.FormatSummary()}";
@@ -188,7 +175,7 @@ internal sealed partial class ReEngineMainForm : Form
                 _settings,
                 engines,
                 _settings.LastUpdateFeedUrl,
-                allowedLocalFeedRoot: _sandboxBoundary);
+                allowedLocalFeedRoot: _containmentRoot);
 
             ApplySweepStatus(sweep);
         }
@@ -265,8 +252,8 @@ internal sealed partial class ReEngineMainForm : Form
                 dlg.FileName,
                 _enginesDir,
                 _settings,
-                _sandbox,
-                _sandboxBoundary,
+                _appEnv,
+                _containmentRoot,
                 new RecompLaunchOptions(),
                 CancellationToken.None);
             _lblStatusText.Text = code == 0 ? $"Launched '{Path.GetFileName(dlg.FileName)}' cleanly." : $"Launch failed with exit code {code}.";
@@ -289,36 +276,5 @@ internal sealed partial class ReEngineMainForm : Form
         RefreshAllState();
         _log("INFO", "Saved reEngine settings.json.");
         _lblStatusText.Text = "Settings saved atomically.";
-    }
-
-    private void ConfigureVisibleTestShowcase()
-    {
-        _showcaseTimer = new System.Windows.Forms.Timer { Interval = 2200 };
-        _showcaseTimer.Tick += (_, _) =>
-        {
-            _showcaseTimer?.Stop();
-            CaptureShowcaseScreenshot();
-            ExitCode = 0;
-            Close();
-        };
-        Shown += (_, _) => _showcaseTimer.Start();
-    }
-
-    private void CaptureShowcaseScreenshot()
-    {
-        try
-        {
-            string shotsDir = Path.Combine(_sandbox.LogDirectory, "screenshots");
-            Directory.CreateDirectory(shotsDir);
-            string shotPath = Path.Combine(shotsDir, "reengine_visible_test.png");
-            using var bmp = new Bitmap(Width, Height);
-            DrawToBitmap(bmp, new Rectangle(0, 0, Width, Height));
-            bmp.Save(shotPath, ImageFormat.Png);
-            _log("INFO", $"Captured --visible-test screenshot to '{shotPath}'.");
-        }
-        catch (Exception ex)
-        {
-            _log("WARN", $"Failed to capture --visible-test screenshot: {ex.Message}");
-        }
     }
 }

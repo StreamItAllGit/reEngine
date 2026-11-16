@@ -182,7 +182,7 @@ public static class RecompPackageReader
             .Replace('/', Path.DirectorySeparatorChar)
             .Replace('\\', Path.DirectorySeparatorChar);
         string candidateDir = Path.GetFullPath(Path.Combine(fullRoot, normalizedRel));
-        string containedDir = SandboxEnvironment.AssertPathContained(candidateDir, fullRoot);
+        string containedDir = AppEnvironment.AssertPathContained(candidateDir, fullRoot);
 
         if (!Directory.Exists(containedDir))
         {
@@ -236,7 +236,7 @@ public static class RecompPackageReader
             }
 
             string candidatePath = Path.GetFullPath(Path.Combine(virtualRoot, entryName));
-            SandboxEnvironment.AssertPathContained(candidatePath, virtualRoot);
+            AppEnvironment.AssertPathContained(candidatePath, virtualRoot);
 
             if (string.Equals(entry.FullName, "module.recomp.json", StringComparison.OrdinalIgnoreCase))
             {

@@ -236,7 +236,7 @@ public sealed class UpdateCoordinator
         string localPath = Path.GetFullPath(source);
         if (!string.IsNullOrWhiteSpace(allowedLocalFeedRoot))
         {
-            localPath = SandboxEnvironment.AssertPathContained(localPath, allowedLocalFeedRoot);
+            localPath = AppEnvironment.AssertPathContained(localPath, allowedLocalFeedRoot);
         }
         if (!File.Exists(localPath))
         {

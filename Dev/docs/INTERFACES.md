@@ -1,6 +1,6 @@
 # reEngine — Interfaces & Contracts
 
-**Synced Version:** `0.2.1` (`2026-11-15`)  
+**Synced Version:** `0.2.1-hf.1` (`2026-11-15`)  
 **Owner:** `reEngine` Core (`@devv` / `@dean`)  
 **Schema Discipline:** Canonical `camelCase` JSON keys per [`18_DATA_DICTIONARY_AND_SCHEMA_LOOKUP.md`](<PROJECTS_ROOT>/Personal/_DevBible/18_DATA_DICTIONARY_AND_SCHEMA_LOOKUP.md)
 
@@ -16,7 +16,7 @@ Parsed by `RecompPackageReader.Load(string packagePath)` (UTF-8 JSON or ZIP arch
 | `schemaVersion` | `int` | Yes | `>= 1` (`1`) | Manifest schema revision. |
 | `moduleId` | `string` | Yes | `^[a-z0-9][a-z0-9-]*$` | Lowercase kebab slug isolating `<dataDir>\modules\<moduleId>\`. |
 | `title` | `string` | Yes | Non-empty | Human-facing game/module display title. |
-| `version` | `string` | Yes | SemVer (`"0.2.1"`) | Packaged module semantic version. |
+| `version` | `string` | Yes | SemVer (`"0.2.1-hf.1"`) | Packaged module semantic version. |
 | `engineId` | `string` | Yes | Non-empty | Target platform engine folder (`"reStation"`, `"reNes"`, `"re64"`, `"reCube"`). |
 | `engineVersion` | `string` | Yes | Valid `SemVer` | Minimum compatible engine version required (`>=`). |
 | `compatibleEngineTrack` | `string` | Yes | Track selector | Compatibility track (`X.Y.x`, `X.Y.*`, `X.Y`, `X.x`, `X.*`, `X.Y.Z`). |
@@ -42,7 +42,7 @@ Parsed by `DecompPipelineCoordinator.ParseManifest(string packagePath)` (UTF-8 J
 | `goalDecompTier` | `string` | `"D3"` | Goal decompilation tier (`none`, `D0`–`D5`). |
 | `packageVersion` | `string?` | `null` | Optional SemVer of this `.decomp` package. |
 | `upstreamResearchPath` | `string?` | `null` | Optional read-only Tier R research repository path/id. |
-| `ghidraProjectName` | `string?` | `null` | Optional headless Ghidra project name. |
+| `ghidraProjectName` | `string?` | `null` | Optional CLI Ghidra project name. |
 | `toolchainRequirements` | `DecompToolchainRequirements?` | `null` | `minimumGhidraVersion` (`"11.2"`), `requiresHeadlessJdk` (`true`), `requiredExtensions` (`string[]`). |
 | `preloadRomDir` | `string` | `"data/rom"` | Relative preload media directory inside module root. |
 | `recipeEntryPoint` | `string?` | `null` | Optional clean-room recipe/script path relative to package root. |
@@ -65,7 +65,7 @@ Parsed by `DecompPipelineCoordinator.ParseManifest(string packagePath)` (UTF-8 J
 
 ### 2.2 `OfflineToolchainLocator` (`ReEngineInstallProfile`)
 - **`ReEngineInstallProfile`:** `Lightweight` (`0`) vs `Full` (`1`), `MaxToolchainBudgetMb = 160`, `ThirdPartyLicensesFileName = "THIRDPARTY_LICENSES.txt"`.
-- **`OfflineToolchainLocator.ResolveToolchainDirectory(baseOrInstallDir, explicitToolchainDir)`:** Checks explicit override first, then sibling peer `..\toolchain\` (primary under `suiteInstallDir`), then falls back to `.\toolchain\` for portable/Sandbox layouts.
+- **`OfflineToolchainLocator.ResolveToolchainDirectory(baseOrInstallDir, explicitToolchainDir)`:** Checks explicit override first, then sibling peer `..\toolchain\` (primary under `suiteInstallDir`), then falls back to `.\toolchain\` for portable layouts.
 - **`OfflineToolchainLocator.Locate(baseOrInstallDir, profile, explicitToolchainDir, requirements)`:** Zero-network probe checking `ghidra\support\analyzeHeadless(.bat)`, `jdk\bin\java(.exe)` (when `RequiresHeadlessJdk`), `THIRDPARTY_LICENSES.txt`, and absence of `ghidra\GPL\`. Under `Lightweight` without `toolchain\`, returns `IsAvailable = false` guiding `--profile Full` or `--toolchain-dir <path>`.
 
 ### 2.3 `IAotCacheManager` & `AotCacheManager`
@@ -93,22 +93,22 @@ Parsed by `DecompPipelineCoordinator.ParseManifest(string packagePath)` (UTF-8 J
 - **`ReEngineAppStatusHelper` (`reEngine.App`):** Reads/writes `installProfile` (`GetInstallProfile`/`SetInstallProfile`), summarizes `<dataDir>\cache\*.Generated.dll` (`InspectAotCache`), and resolves peer `..\toolchain` (via `OfflineToolchainLocator`) + `enginesDir` parent/local fallbacks to report `DECOMP: FULL` vs `DECOMP: ROUTER` (`InspectDecompStatus`).
 
 ### 3.2 File Associations (`FileAssociationRecord` — `IFileAssociationStore`)
-Persisted under `HKCU\Software\Classes` (`WindowsRegistryAssociationStore`, throws when `testMode: true`) or `<dataDir>\virtual_registry.json` (`VirtualRegistryAssociationStore`):
+Persisted under `HKCU\Software\Classes` (`WindowsRegistryAssociationStore`, throws when `suppressHostMutations: true` or `APP_ISOLATED_TEST=1`) or `<dataDir>\virtual_registry.json` (`VirtualRegistryAssociationStore`):
 - **`.recomp` (`reEngine.RecompModule`):** `"\"<exe>\" --open \"%1\""`
 - **`.decomp` (`reEngine.DecompModule`):** `"\"<exe>\" decomp --module \"%1\""`
 - UI button **Register Associations** registers both `.recomp` and `.decomp` via `Program.ResolveLauncherExecutablePath()`.
 
 ### 3.3 Suite App Manifest (`Dev\app.manifest.json`), Bootstrap SDK & Installer CLI
-- **`Dev\app.manifest.json`:** `schemaVersion = 2`, `appId = "reengine"`, `version = "0.2.1"`, `activeMilestone = "0.2.0"`, `goalMajorVersion = "1.0.0"`, `sdkVersion = "0.4.0"`, `downstreamProjects = ["Personal/reStation", "Personal/KingsFieldRecomp", "Personal/HMBackToNature-Recomp"]`.
-- **Bootstrap SDK (`ReEnginePackagingConstants` & `ReEngineBootstrapHelper` -> `<SHARED_LIBS>\reEngine\v0.2.1\`):**
-  - `ReEnginePackagingConstants`: `Version = "0.2.1"`, `StudioName = "StreamItAll"`, `SuiteName = "reEngine"`, `UmbrellaSubpath = "StreamItAll\\reEngine\\reEngine"`, `DefaultInstallProfile = "lightweight"`, `AllowAutoStart = false`.
-  - `ResolveDefaultReEngineInstallDir(explicitDir, sandboxDataDir, testMode)` enforces `sandboxDataDir` containment in `--test-mode` or resolves `explicitDir` -> `REENGINE_HOME` -> `%LOCALAPPDATA%\Programs\StreamItAll\reEngine\reEngine`.
+- **`Dev\app.manifest.json`:** `schemaVersion = 2`, `appId = "reengine"`, `version = "0.2.1-hf.1"`, `activeMilestone = "0.2.1-hf.1"`, `goalMajorVersion = "1.0.0"`, `sdkVersion = "0.4.1-hf.1"`, `downstreamProjects = ["Personal/reStation", "Personal/KingsFieldRecomp", "Personal/HMBackToNature-Recomp"]`.
+- **Bootstrap SDK (`ReEnginePackagingConstants` & `ReEngineBootstrapHelper` -> `<SHARED_LIBS>\reEngine\v0.2.1-hf.1\`):**
+  - `ReEnginePackagingConstants`: `Version = "0.2.1-hf.1"`, `StudioName = "StreamItAll"`, `SuiteName = "reEngine"`, `UmbrellaSubpath = "StreamItAll\\reEngine\\reEngine"`, `DefaultInstallProfile = "lightweight"`, `AllowAutoStart = false`.
+  - `ResolveDefaultReEngineInstallDir(explicitDir, isolatedDataDir, isolatedTest)` enforces `isolatedDataDir` containment under `isolatedTest` / `APP_ISOLATED_TEST=1` or resolves `explicitDir` -> `REENGINE_HOME` -> `%LOCALAPPDATA%\Programs\StreamItAll\reEngine\reEngine`.
   - `ResolveDefaultSuiteInstallDir(...)` resolves `%LOCALAPPDATA%\Programs\StreamItAll\reEngine`.
-  - `ResolveToolchainDir(reEngineInstallDir)` / `ResolveEnginesRootDir(reEngineInstallDir)` resolve peer `..\toolchain` and `..\engines` under `suiteInstallDir` (non-drive-root parent) as primary, falling back to `.\toolchain` and `.\engines` for isolated Sandbox/portable installs.
+  - `ResolveToolchainDir(reEngineInstallDir)` / `ResolveEnginesRootDir(reEngineInstallDir)` resolve peer `..\toolchain` and `..\engines` under `suiteInstallDir` (non-drive-root parent) as primary, falling back to `.\toolchain` and `.\engines` for isolated/portable installs.
 - **Installer (`reEngine.Installer` & `ReEngineWizardPathNormalizer` / `LegacyMigrationHelper`):**
   - `Program`: `AllowAutoStart = false`, `BootstrapSharedSuiteDaemon = false`, `AllowLegacyMigration = true`, strips `--autostart` (`SanitizeArgs`), supports `--profile Lightweight|Full`, `--suite-dir` (`<dir>\reEngine` when `--install-dir` and `--reengine-dir` omitted), `--reengine-dir` (mapped to `--install-dir` when omitted), `--migrate-legacy`, `--confirm-legacy-cleanup`.
   - Interactive GUI mode (`InstallerWizardForm`) wires `ReEngineWizardPathNormalizer.WireWizardAutoSortHandlers(wizard)` to auto-sort non-leaf parent picks into `<parent>\reEngine`, sync `SecondaryDirTextBox` via `ResolvePreferredSuiteInstallDir`, and ensure `<preferredEnginesRoot>` exists on post-install.
-  - `LegacyMigrationHelper`: copies `data\settings.json` and preserves `data\rom\*` from `<LEGACY_PROGRAMS_DIR>\reEngine` (or contained `legacy-programs\reEngine` in `--test-mode`), and gates cleanup of stranded `engines\reStation\v0.1.1\app\` + `logs\crashes\crash_*.json` behind explicit human confirmation.
+  - `LegacyMigrationHelper`: copies `data\settings.json` and preserves `data\rom\*` from `<LEGACY_PROGRAMS_DIR>\reEngine` (or contained `legacy-programs\reEngine` under `isolatedTest` / `APP_ISOLATED_TEST=1`), and gates cleanup of stranded `engines\reStation\v0.1.1\app\` + `logs\crashes\crash_*.json` behind explicit human confirmation.
 
 ---
 
@@ -117,12 +117,12 @@ Persisted under `HKCU\Software\Classes` (`WindowsRegistryAssociationStore`, thro
 ### 4.1 CLI Flags & Launcher Argument Rules
 - **Subcommands & Package Flags:** `decomp --module <file.decomp> [--stage D0..D5] [--engine-dir <dir>] [--toolchain-dir <dir>] [--output-dir <dir>]`, `--open <path>` (or positional `*.recomp`/`*.recomp.json`), `--wait`, `--register-assoc`.
 - **Update & Directory Flags:** `--check-updates`, `--strict`, `--feed <urlOrPath>`, `--engines-dir <dir>`, `--data-dir <dir>`, `--config <path>`, `--log-dir <dir>`.
-- **Mode & Test Passthrough Flags:** `--test-mode`, `--dry-run`, `--headless`, `--visible-test`, `--enable-logs`, `--frames <n>`, `--fixture <path>`, `--dump-screenshot <path>`, `--dump-audio <path>`, `--input-script <path>`, `--version` (`-v`), `--help` (`-h`, `/?`, `help`).
-- **Launcher Rules (`LauncherArgsHelper`):** Normalizes caller-CWD relative paths for `PathOptions` and positional file args (while preserving `decomp`, `help`, `/?`, and `http://`/`https://` `--feed` URIs), skips value tokens for `--port` / `--ui` / `--frames` / `--stage`, and sync-waits on CLI/`decomp`/test flags.
+- **Mode & Diagnostic Flags:** `--tray-only`, `--window`, `--browser`, `--suite-tab <tab>`, `--port <n>`, `--dry-run`, `--enable-logs`, `--frames <n>`, `--fixture <path>`, `--dump-screenshot <path>`, `--dump-audio <path>`, `--version` (`-v`), `--help` (`-h`, `/?`, `help`).
+- **Launcher Rules (`LauncherArgsHelper`):** Normalizes caller-CWD relative paths for `PathOptions` and positional file args (while preserving `decomp`, `help`, `/?`, and `http://`/`https://` `--feed` URIs), skips value tokens for `--port` / `--ui` / `--frames` / `--stage` / `--suite-tab`, and sync-waits on CLI/`decomp`/diagnostic flags.
 
 ### 4.2 Per-Module Child Isolation (`RecompLaunchCoordinator.BuildChildLaunchPlan`)
 1. Isolates `--data-dir` to `<dataDir>\modules\<moduleId>\`, `--config` to `<moduleDataDir>\settings.json` (accepting explicit `--config` only inside `<moduleDataDir>`), and `--log-dir` to `<moduleDataDir>\logs` (or containment-checked `--log-dir`).
-2. Forwards `--module <fullPkgPath>`, optional `--preload-media <PrimaryMediaPath>`, plus active wait/mode/test flags.
+2. Forwards `--module <fullPkgPath>`, optional `--preload-media <PrimaryMediaPath>`, plus active wait/mode/diagnostic flags.
 
 ### 4.3 Propagated Exit Codes (`reEngine.Launcher` <-> `reEngine.App`)
 

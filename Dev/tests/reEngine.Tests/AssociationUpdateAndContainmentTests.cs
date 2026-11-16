@@ -42,7 +42,7 @@ public sealed class AssociationUpdateAndContainmentTests : IDisposable
     [Fact]
     public void VirtualRegistryAssociationStore_PersistsToVirtualRegistryJsonWithoutTouchingHostRegistry()
     {
-        string dataDir = Path.Combine(_tempRoot, "sandbox_data");
+        string dataDir = Path.Combine(_tempRoot, "isolated_data");
         var store = new VirtualRegistryAssociationStore(dataDir, _tempRoot);
         string dummyExe = Path.Combine(_tempRoot, "reEngine.exe");
 
@@ -61,7 +61,7 @@ public sealed class AssociationUpdateAndContainmentTests : IDisposable
     [Fact]
     public void VirtualRegistryAssociationStore_RegistersReadsAndUnregistersDecompAssociation_CoexistingWithRecomp()
     {
-        string dataDir = Path.Combine(_tempRoot, "sandbox_decomp_assoc");
+        string dataDir = Path.Combine(_tempRoot, "isolated_decomp_assoc");
         var store = new VirtualRegistryAssociationStore(dataDir, _tempRoot);
         string dummyExe = Path.Combine(_tempRoot, "reEngine.exe");
 
@@ -87,9 +87,9 @@ public sealed class AssociationUpdateAndContainmentTests : IDisposable
     }
 
     [Fact]
-    public void WindowsRegistryAssociationStore_ThrowsWhenConstructedInTestMode()
+    public void WindowsRegistryAssociationStore_ThrowsWhenHostMutationsSuppressed()
     {
-        Assert.Throws<InvalidOperationException>(() => new WindowsRegistryAssociationStore(testMode: true));
+        Assert.Throws<InvalidOperationException>(() => new WindowsRegistryAssociationStore(suppressHostMutations: true));
     }
 
     [Fact]
@@ -220,7 +220,7 @@ public sealed class AssociationUpdateAndContainmentTests : IDisposable
     public void ReEnginePackagingConstants_EnforcesAllowAutoStartFalse_AndZeroPiiDefaultPath()
     {
         Assert.False(ReEnginePackagingConstants.AllowAutoStart);
-        Assert.Equal("0.2.1", ReEnginePackagingConstants.Version);
+        Assert.Equal("0.2.1-hf.1", ReEnginePackagingConstants.Version);
         Assert.Equal("StreamItAll", ReEnginePackagingConstants.StudioName);
         Assert.Equal("reEngine", ReEnginePackagingConstants.SuiteName);
         Assert.Equal("StreamItAll\\reEngine\\reEngine", ReEnginePackagingConstants.UmbrellaSubpath);
@@ -242,8 +242,8 @@ public sealed class AssociationUpdateAndContainmentTests : IDisposable
 
             string expectedSuite = Path.GetFullPath(Path.Combine(localAppData, "Programs", "StreamItAll", "reEngine"));
             string expectedDefault = Path.GetFullPath(Path.Combine(expectedSuite, "reEngine"));
-            string resolved = ReEngineBootstrapHelper.ResolveDefaultReEngineInstallDir(testMode: false);
-            string resolvedSuite = ReEngineBootstrapHelper.ResolveDefaultSuiteInstallDir(testMode: false);
+            string resolved = ReEngineBootstrapHelper.ResolveDefaultReEngineInstallDir(isolatedTest: false);
+            string resolvedSuite = ReEngineBootstrapHelper.ResolveDefaultSuiteInstallDir(isolatedTest: false);
 
             Assert.Equal(expectedDefault, resolved);
             Assert.Equal(expectedSuite, resolvedSuite);
@@ -262,7 +262,7 @@ public sealed class AssociationUpdateAndContainmentTests : IDisposable
             Assert.Equal(peerToolchain, ReEngineBootstrapHelper.ResolveToolchainDir(peerReEngine));
             Assert.Equal(peerEngines, ReEngineBootstrapHelper.ResolveEnginesRootDir(peerReEngine));
 
-            // Isolated portable/Sandbox installs fall back to .\toolchain and .\engines when peers do not exist.
+            // Isolated portable installs fall back to .\toolchain and .\engines when peers do not exist.
             string portableRoot = Path.Combine(_tempRoot, "portable_suite");
             string portableReEngine = Path.Combine(portableRoot, "reEngine");
             string portableToolchain = Path.Combine(portableReEngine, "toolchain");
@@ -279,26 +279,26 @@ public sealed class AssociationUpdateAndContainmentTests : IDisposable
     }
 
     [Fact]
-    public void SandboxEnvironment_RejectsHostPathTraversalOutsideSandboxRoot()
+    public void AppEnvironment_RejectsHostPathTraversalOutsideIsolatedRoot()
     {
-        string sandboxDir = Path.Combine(_tempRoot, "sandbox");
-        Directory.CreateDirectory(sandboxDir);
+        string isolatedDir = Path.Combine(_tempRoot, "isolated");
+        Directory.CreateDirectory(isolatedDir);
 
         string contained = ReEngineBootstrapHelper.ResolveDefaultReEngineInstallDir(
-            explicitDir: Path.Combine(sandboxDir, "reEngine"),
-            sandboxDataDir: sandboxDir,
-            testMode: true);
-        Assert.Equal(Path.Combine(sandboxDir, "reEngine"), contained);
+            explicitDir: Path.Combine(isolatedDir, "reEngine"),
+            isolatedDataDir: isolatedDir,
+            isolatedTest: true);
+        Assert.Equal(Path.Combine(isolatedDir, "reEngine"), contained);
 
         string escapedTarget = Path.GetFullPath(Path.Combine(_tempRoot, "outside_host"));
-        Assert.Throws<InvalidOperationException>(() => SandboxEnvironment.AssertPathContained(escapedTarget, sandboxDir));
+        Assert.Throws<InvalidOperationException>(() => AppEnvironment.AssertPathContained(escapedTarget, isolatedDir));
         Assert.Throws<InvalidOperationException>(() => ReEngineBootstrapHelper.ResolveDefaultReEngineInstallDir(
             explicitDir: escapedTarget,
-            sandboxDataDir: sandboxDir,
-            testMode: true));
+            isolatedDataDir: isolatedDir,
+            isolatedTest: true));
         Assert.Throws<InvalidOperationException>(() => ReEngineBootstrapHelper.ResolveDefaultReEngineInstallDir(
-            sandboxDataDir: null,
-            testMode: true));
+            isolatedDataDir: null,
+            isolatedTest: true));
     }
 
     private sealed class StubHttpMessageHandler : HttpMessageHandler

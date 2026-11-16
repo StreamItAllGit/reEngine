@@ -17,28 +17,37 @@ namespace reEngine.Core.Bootstrap;
 public static class ReEngineBootstrapHelper
 {
     /// <summary>
-    /// Resolves the target <c>reEngine</c> installation root while enforcing fail-closed containment in <c>--test-mode</c>
-    /// and zero literal host paths in compiled binaries.
+    /// Resolves the target <c>reEngine</c> installation root while enforcing fail-closed containment under
+    /// <paramref name="isolatedTest"/> / <c>APP_ISOLATED_TEST=1</c> and zero literal host paths in compiled binaries.
     /// </summary>
     public static string ResolveDefaultReEngineInstallDir(
         string? explicitDir = null,
-        string? sandboxDataDir = null,
-        bool testMode = false)
+        string? isolatedDataDir = null,
+        bool isolatedTest = false)
     {
-        if (testMode)
+        if (isolatedTest)
         {
-            if (string.IsNullOrWhiteSpace(sandboxDataDir))
+            if (string.IsNullOrWhiteSpace(isolatedDataDir))
             {
                 throw new InvalidOperationException(
-                    "Fail-Closed Sandbox Violation: --test-mode requires a sandboxDataDir when resolving reEngine install root.");
+                    "Fail-Closed Isolation Violation: isolated test mode requires isolatedDataDir when resolving reEngine install root.");
             }
 
-            string fullSandbox = Path.GetFullPath(sandboxDataDir);
+            string fullIsolatedRoot = Path.GetFullPath(isolatedDataDir);
             string candidate = string.IsNullOrWhiteSpace(explicitDir)
-                ? Path.Combine(fullSandbox, ReEnginePackagingConstants.DisplayName)
+                ? Path.Combine(fullIsolatedRoot, ReEnginePackagingConstants.DisplayName)
                 : Path.GetFullPath(explicitDir);
 
-            return SandboxEnvironment.AssertPathContained(candidate, fullSandbox);
+            return AppEnvironment.AssertPathContained(candidate, fullIsolatedRoot);
+        }
+
+        if (!string.IsNullOrWhiteSpace(isolatedDataDir))
+        {
+            string fullIsolatedRoot = Path.GetFullPath(isolatedDataDir);
+            string candidate = string.IsNullOrWhiteSpace(explicitDir)
+                ? Path.Combine(fullIsolatedRoot, ReEnginePackagingConstants.DisplayName)
+                : Path.GetFullPath(explicitDir);
+            return AppEnvironment.AssertPathContained(candidate, fullIsolatedRoot);
         }
 
         if (!string.IsNullOrWhiteSpace(explicitDir))
@@ -71,27 +80,36 @@ public static class ReEngineBootstrapHelper
 
     /// <summary>
     /// Resolves the canonical suite umbrella directory (<c>%LOCALAPPDATA%\Programs\StreamItAll\reEngine\</c>)
-    /// while enforcing fail-closed containment in <c>--test-mode</c>.
+    /// while enforcing fail-closed containment under <paramref name="isolatedTest"/> / <c>APP_ISOLATED_TEST=1</c>.
     /// </summary>
     public static string ResolveDefaultSuiteInstallDir(
         string? explicitSuiteDir = null,
-        string? sandboxDataDir = null,
-        bool testMode = false)
+        string? isolatedDataDir = null,
+        bool isolatedTest = false)
     {
-        if (testMode)
+        if (isolatedTest)
         {
-            if (string.IsNullOrWhiteSpace(sandboxDataDir))
+            if (string.IsNullOrWhiteSpace(isolatedDataDir))
             {
                 throw new InvalidOperationException(
-                    "Fail-Closed Sandbox Violation: --test-mode requires a sandboxDataDir when resolving suite root.");
+                    "Fail-Closed Isolation Violation: isolated test mode requires isolatedDataDir when resolving suite root.");
             }
 
-            string fullSandbox = Path.GetFullPath(sandboxDataDir);
+            string fullIsolatedRoot = Path.GetFullPath(isolatedDataDir);
             string candidate = string.IsNullOrWhiteSpace(explicitSuiteDir)
-                ? Path.Combine(fullSandbox, ReEnginePackagingConstants.SuiteName)
+                ? Path.Combine(fullIsolatedRoot, ReEnginePackagingConstants.SuiteName)
                 : Path.GetFullPath(explicitSuiteDir);
 
-            return SandboxEnvironment.AssertPathContained(candidate, fullSandbox);
+            return AppEnvironment.AssertPathContained(candidate, fullIsolatedRoot);
+        }
+
+        if (!string.IsNullOrWhiteSpace(isolatedDataDir))
+        {
+            string fullIsolatedRoot = Path.GetFullPath(isolatedDataDir);
+            string candidate = string.IsNullOrWhiteSpace(explicitSuiteDir)
+                ? Path.Combine(fullIsolatedRoot, ReEnginePackagingConstants.SuiteName)
+                : Path.GetFullPath(explicitSuiteDir);
+            return AppEnvironment.AssertPathContained(candidate, fullIsolatedRoot);
         }
 
         if (!string.IsNullOrWhiteSpace(explicitSuiteDir))
@@ -117,14 +135,14 @@ public static class ReEngineBootstrapHelper
 
     /// <summary>
     /// Returns the offline Ghidra + OpenJDK <c>toolchain\</c> sibling directory under <c>suiteInstallDir</c>
-    /// (falling back to <paramref name="reEngineInstallDir"/>\toolchain for isolated portable/sandbox runs).
+    /// (falling back to <paramref name="reEngineInstallDir"/>\toolchain for isolated portable runs).
     /// </summary>
     public static string ResolveToolchainDir(string reEngineInstallDir) =>
         ResolveSuiteSiblingDir(reEngineInstallDir, "toolchain");
 
     /// <summary>
     /// Returns the side-by-side <c>engines\</c> sibling directory under <c>suiteInstallDir</c>
-    /// (falling back to <paramref name="reEngineInstallDir"/>\engines for isolated portable/sandbox runs).
+    /// (falling back to <paramref name="reEngineInstallDir"/>\engines for isolated portable runs).
     /// </summary>
     public static string ResolveEnginesRootDir(string reEngineInstallDir) =>
         ResolveSuiteSiblingDir(reEngineInstallDir, "engines");
@@ -177,11 +195,12 @@ public static class ReEngineBootstrapHelper
         string? bundledInstallerPath,
         string? targetReEngineDir,
         bool registerAssociation,
-        bool testMode,
-        string? sandboxDataDir,
+        bool isolatedTest,
+        string? isolatedDataDir,
         CancellationToken ct = default)
     {
-        string installDir = ResolveDefaultReEngineInstallDir(targetReEngineDir, sandboxDataDir, testMode);
+        bool effectiveIsolation = isolatedTest || IsIsolatedTestEnv();
+        string installDir = ResolveDefaultReEngineInstallDir(targetReEngineDir, isolatedDataDir, effectiveIsolation);
         string enginesDir = ResolveEnginesRootDir(installDir);
 
         SemVer.TryParse(ReEnginePackagingConstants.Version, out SemVer targetVersion);
@@ -203,7 +222,7 @@ public static class ReEngineBootstrapHelper
             }
 
             int installerExit = await RunInstallerAsync(
-                bundledInstallerPath, installDir, testMode, sandboxDataDir, ct).ConfigureAwait(false);
+                bundledInstallerPath, installDir, effectiveIsolation, isolatedDataDir, ct).ConfigureAwait(false);
             if (installerExit != 0)
             {
                 return new ReEngineBootstrapResult(
@@ -220,7 +239,7 @@ public static class ReEngineBootstrapHelper
         bool assocRegistered = false;
         if (registerAssociation)
         {
-            assocRegistered = await TryRegisterAssociationAsync(installDir, testMode, sandboxDataDir, ct).ConfigureAwait(false);
+            assocRegistered = await TryRegisterAssociationAsync(installDir, effectiveIsolation, isolatedDataDir, ct).ConfigureAwait(false);
         }
 
         string summary = installedOrUpgraded
@@ -290,8 +309,8 @@ public static class ReEngineBootstrapHelper
     private static async Task<int> RunInstallerAsync(
         string installerPath,
         string installDir,
-        bool testMode,
-        string? sandboxDataDir,
+        bool isolatedTest,
+        string? isolatedDataDir,
         CancellationToken ct)
     {
         var psi = new ProcessStartInfo
@@ -305,11 +324,14 @@ public static class ReEngineBootstrapHelper
         psi.ArgumentList.Add("--no-shortcuts");
         psi.ArgumentList.Add("--install-dir");
         psi.ArgumentList.Add(installDir);
-        if (testMode && !string.IsNullOrWhiteSpace(sandboxDataDir))
+        if (isolatedTest)
         {
-            psi.ArgumentList.Add("--test-mode");
+            psi.Environment["APP_ISOLATED_TEST"] = "1";
+        }
+        if (!string.IsNullOrWhiteSpace(isolatedDataDir))
+        {
             psi.ArgumentList.Add("--data-dir");
-            psi.ArgumentList.Add(Path.GetFullPath(sandboxDataDir));
+            psi.ArgumentList.Add(Path.GetFullPath(isolatedDataDir));
         }
 
         return await RunGuardedProcessAsync(psi, ct).ConfigureAwait(false);
@@ -317,8 +339,8 @@ public static class ReEngineBootstrapHelper
 
     private static async Task<bool> TryRegisterAssociationAsync(
         string installDir,
-        bool testMode,
-        string? sandboxDataDir,
+        bool isolatedTest,
+        string? isolatedDataDir,
         CancellationToken ct)
     {
         string exe = Path.Combine(installDir, "reEngine.exe");
@@ -338,15 +360,25 @@ public static class ReEngineBootstrapHelper
             CreateNoWindow = true
         };
         psi.ArgumentList.Add("--register-assoc");
-        psi.ArgumentList.Add("--headless");
-        if (testMode && !string.IsNullOrWhiteSpace(sandboxDataDir))
+        if (isolatedTest)
         {
-            psi.ArgumentList.Add("--test-mode");
+            psi.Environment["APP_ISOLATED_TEST"] = "1";
+        }
+        if (!string.IsNullOrWhiteSpace(isolatedDataDir))
+        {
             psi.ArgumentList.Add("--data-dir");
-            psi.ArgumentList.Add(Path.GetFullPath(sandboxDataDir));
+            psi.ArgumentList.Add(Path.GetFullPath(isolatedDataDir));
         }
 
         return await RunGuardedProcessAsync(psi, ct).ConfigureAwait(false) == 0;
+    }
+
+    private static bool IsIsolatedTestEnv()
+    {
+        string? value = Environment.GetEnvironmentVariable("APP_ISOLATED_TEST");
+        return string.Equals(value, "1", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(value, "true", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(value, "yes", StringComparison.OrdinalIgnoreCase);
     }
 
     private static async Task<int> RunGuardedProcessAsync(ProcessStartInfo psi, CancellationToken ct)

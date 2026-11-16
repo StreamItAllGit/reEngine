@@ -20,6 +20,10 @@ function Write-Utf8Text([string]$Path, [string]$Content) {
 }
 
 $root = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
+# Scrub OS/Drive junk before packaging or testing
+Get-ChildItem -Path $root -Recurse -Force -ErrorAction SilentlyContinue |
+    Where-Object { -not $_.PSIsContainer -and ($_.Name -match '^(?:desktop\.ini.*|Thumbs\.db.*|ehthumbs\.db|\.DS_Store.*|\._.*)$') } |
+    ForEach-Object { Remove-Item -LiteralPath $_.FullName -Force -ErrorAction SilentlyContinue }
 $devDir = Join-Path $root "Dev"
 if ([string]::IsNullOrWhiteSpace($Version)) {
     $Version = (Read-Utf8Text (Join-Path $devDir "version.txt")).Trim()
@@ -49,7 +53,7 @@ function Get-EndUserLeakPattern {
     if (-not [string]::IsNullOrWhiteSpace($env:USERNAME)) {
         $userPart = "|" + [regex]::Escape($env:USERNAME)
     }
-    return "(?i)(?:file:///|@(?:pland|dean|devv|inspecter|tessa|nora|milo|simon|julian|holly|rowan|coordinator|monitor)[a-z0-9-]*|\bStandards?\s+\d+|$([regex]::Escape($mojibake))|Dev\\(?:src|tests|docs|scripts|lib|assets)|Sandbox\\|SharedLibs\\|--test-mode|--visible-test|audit_installer\.ps1|[CD]:[\\/](?:Projects|Users)|_DevBible|\bDev Bible\b$userPart)"
+    return "(?i)(?:file:///|@(?:pland|dean|devv|inspecter|tessa|nora|milo|simon|julian|holly|rowan|coordinator|monitor)[a-z0-9-]*|\bStandards?\s+\d+|$([regex]::Escape($mojibake))|Dev\\(?:src|tests|docs|scripts|lib|assets)|SharedLibs\\|audit_installer\.ps1|[CD]:[\\/](?:Projects|Users)|_DevBible|\bDev Bible\b$userPart)"
 }
 
 function Sanitize-MarkdownForEndUser([string]$Text) {
@@ -63,7 +67,7 @@ function Sanitize-MarkdownForEndUser([string]$Text) {
     $clean = [regex]::Replace($clean, 'file:///[^\s`)\]]+', '')
 
     $userPart = if ([string]::IsNullOrWhiteSpace($env:USERNAME)) { "" } else { "|" + [regex]::Escape($env:USERNAME) }
-    $dropRegex = "(?i)Dev\\(?:src|tests|docs|scripts|lib|assets)|Sandbox\\|SharedLibs\\|--test-mode|--visible-test|audit_installer\.ps1|[CD]:[\\/](?:Projects|Users)|_DevBible|\bDev Bible\b$userPart"
+    $dropRegex = "(?i)Dev\\(?:src|tests|docs|scripts|lib|assets)|SharedLibs\\|audit_installer\.ps1|[CD]:[\\/](?:Projects|Users)|_DevBible|\bDev Bible\b$userPart"
     $handleBacktick = '`@(?:pland|dean|devv|inspecter|tessa|nora|milo|simon|julian|holly|rowan|coordinator|monitor)[a-z0-9-]*`'
     $handleBare = '@(?:pland|dean|devv|inspecter|tessa|nora|milo|simon|julian|holly|rowan|coordinator|monitor)[a-z0-9-]*'
     $stdBacktick = "(?i)``(?:per\s+)?\bStandards?\s+\d+(?:\s*(?:$enDash|-)\s*\d+)?(?:\s*$sectionSign[\d.]+)?``"
@@ -98,9 +102,15 @@ function Assert-NoEndUserLeaks([string[]]$FilePaths) {
 }
 
 if (-not $SkipTests) {
-    Write-Host "[1/7] Running Release tests with /warnaserror..."
-    & dotnet test (Join-Path $devDir "reEngine.slnx") -c Release /warnaserror
-    if ($LASTEXITCODE -ne 0) { throw "dotnet test failed ($LASTEXITCODE)" }
+    Write-Host "[1/7] Running Release tests with /warnaserror (APP_ISOLATED_TEST=1)..."
+    $prevIsolated = $env:APP_ISOLATED_TEST
+    $env:APP_ISOLATED_TEST = "1"
+    try {
+        & dotnet test (Join-Path $devDir "reEngine.slnx") -c Release /warnaserror
+        if ($LASTEXITCODE -ne 0) { throw "dotnet test failed ($LASTEXITCODE)" }
+    } finally {
+        if ($null -eq $prevIsolated) { Remove-Item Env:APP_ISOLATED_TEST -ErrorAction SilentlyContinue } else { $env:APP_ISOLATED_TEST = $prevIsolated }
+    }
 }
 
 Write-Host "[2/7] Staging portable build in Builds\v$Version..."
@@ -137,7 +147,7 @@ $runtimeAgents = (@'
 # Runtime Context: reEngine (v__VER__)
 
 - **Launcher:** `reEngine.exe` (forwards to `app\reEngine.exe`)
-- **Suite Layout:** Peer `..\engines\re<Platform>\v<Ver>\` and `..\toolchain\` under `suiteInstallDir` (fallback to local `.\engines\` / `.\toolchain\` for isolated portable/sandbox runs).
+- **Suite Layout:** Peer `..\engines\re<Platform>\v<Ver>\` and `..\toolchain\` under `suiteInstallDir` (fallback to local `.\engines\` / `.\toolchain\` for isolated portable runs).
 - **Data & Logs:** `data\settings.json` and `logs\` unless overridden by `--data-dir`, `--config`, `--log-dir` (or `REENGINE_{DATA_DIR,CONFIG,LOG_DIR}`).
 - **Daemon Policy:** Zero background daemons; `AllowAutoStart = false`.
 '@).Replace('__VER__', $Version)
@@ -276,7 +286,7 @@ if (-not $SkipSourceArchive) {
     if (Test-Path $srcArchive) { Remove-Item $srcArchive -Force }
     Push-Location $root
     try {
-        Invoke-7z @("a", "-t7z", "-mx=9", "-xr!bin", "-xr!obj", "-xr!*.user", $srcArchive, "Dev", "README.md", "FEATURES.md", "ROADMAP.md", "CHANGELOG.md", "AGENTS.md", "LICENSE", "active.state")
+        Invoke-7z @("a", "-t7z", "-mx=9", "-xr!bin", "-xr!obj", "-xr!TestResults", "-xr!*.user", $srcArchive, "Dev", "README.md", "FEATURES.md", "ROADMAP.md", "CHANGELOG.md", "AGENTS.md", "LICENSE", "active.state")
     } finally {
         Pop-Location
     }

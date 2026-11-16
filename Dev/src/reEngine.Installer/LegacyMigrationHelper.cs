@@ -36,18 +36,18 @@ internal static class LegacyMigrationHelper
         };
     }
 
-    public static string? ResolveLegacyRoot(bool testMode, string? sandboxDataDir)
+    public static string? ResolveLegacyRoot(bool isolatedTest, string? isolatedDataDir)
     {
-        if (testMode)
+        if (isolatedTest)
         {
-            if (string.IsNullOrWhiteSpace(sandboxDataDir))
+            if (string.IsNullOrWhiteSpace(isolatedDataDir))
             {
                 return null;
             }
 
-            string fullSandbox = Path.GetFullPath(sandboxDataDir);
-            string candidate = Path.Combine(fullSandbox, "legacy-programs", ReEnginePackagingConstants.DisplayName);
-            return SandboxEnvironment.AssertPathContained(candidate, fullSandbox);
+            string fullIsolatedRoot = Path.GetFullPath(isolatedDataDir);
+            string candidate = Path.Combine(fullIsolatedRoot, "legacy-programs", ReEnginePackagingConstants.DisplayName);
+            return AppEnvironment.AssertPathContained(candidate, fullIsolatedRoot);
         }
 
         string? envLegacy = Environment.GetEnvironmentVariable("REENGINE_LEGACY_DIR");
@@ -94,14 +94,13 @@ internal static class LegacyMigrationHelper
 
     public static LegacyMigrationResult TryMigrateLegacyInstall(
         string targetInstallDir,
-        bool testMode,
-        string? sandboxDataDir,
+        bool isolatedTest,
+        string? isolatedDataDir,
         bool silent,
-        bool headless,
         bool dryRun,
         bool confirmCleanupFlag)
     {
-        string? legacyRoot = ResolveLegacyRoot(testMode, sandboxDataDir);
+        string? legacyRoot = ResolveLegacyRoot(isolatedTest, isolatedDataDir);
         if (string.IsNullOrWhiteSpace(legacyRoot) || !Directory.Exists(legacyRoot))
         {
             return new LegacyMigrationResult(false, 0, Array.Empty<string>(), false, "No legacy installation found.");
@@ -146,7 +145,7 @@ internal static class LegacyMigrationHelper
         if (stranded.Count > 0 && !dryRun)
         {
             bool allowCleanup = false;
-            if (!silent && !headless && !testMode && OperatingSystem.IsWindows())
+            if (!silent && !isolatedTest && OperatingSystem.IsWindows())
             {
                 DialogResult choice = MessageBox.Show(
                     $"Found {stranded.Count} stranded legacy v0.1.1 artifact(s) under '{legacyRoot}'.\n\n" +

@@ -324,7 +324,7 @@ public sealed class EngineVersionResolver
                     if (!string.IsNullOrWhiteSpace(relExe))
                     {
                         string candidate = Path.GetFullPath(Path.Combine(versionDir, relExe.Trim()));
-                        string contained = SandboxEnvironment.AssertPathContained(candidate, versionDir);
+                        string contained = AppEnvironment.AssertPathContained(candidate, versionDir);
                         if (File.Exists(contained))
                         {
                             return contained;

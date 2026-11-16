@@ -88,10 +88,10 @@ public sealed class UpdateSweepAndTelemetryTests : IDisposable
     }
 
     [Fact]
-    public async Task CheckAllInstalledEnginesAsync_DegradesGracefullyOnNetworkFault_ButThrowsOnSandboxEscape()
+    public async Task CheckAllInstalledEnginesAsync_DegradesGracefullyOnNetworkFault_ButThrowsOnContainmentEscape()
     {
-        string sandboxRoot = Path.Combine(_tempRoot, "Sandbox");
-        string dataDir = Path.Combine(sandboxRoot, "data");
+        string isolatedRoot = Path.Combine(_tempRoot, "isolated");
+        string dataDir = Path.Combine(isolatedRoot, "data");
         Directory.CreateDirectory(dataDir);
 
         using var failingHandler = new RouteStubHandler(_ =>
@@ -107,7 +107,7 @@ public sealed class UpdateSweepAndTelemetryTests : IDisposable
         MultiEngineUpdateSweepResult offlineResult = await coordinator.CheckAllInstalledEnginesAsync(
             settings,
             installed,
-            "http://127.0.0.1:15931/feed.json",
+            "http://127.0.0.1:5931/feed.json",
             customHandler: failingHandler);
 
         Assert.False(offlineResult.SweepExecuted);
@@ -122,7 +122,7 @@ public sealed class UpdateSweepAndTelemetryTests : IDisposable
                 settings,
                 installed,
                 outsideFeed,
-                allowedLocalFeedRoot: sandboxRoot));
+                allowedLocalFeedRoot: isolatedRoot));
     }
 
     [Fact]

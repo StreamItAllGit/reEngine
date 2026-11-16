@@ -187,7 +187,7 @@ internal sealed partial class ReEngineMainForm
         };
 
         SetTwoLineTooltip(_btnOpenPackage, "Open .recomp Package [Ctrl+O]", "Resolves the highest compatible engine track and detects data\\rom preload media.");
-        SetTwoLineTooltip(_btnRegisterAssoc, "Register Associations [Ctrl+R]", "Writes .recomp and .decomp open handlers to HKCU or virtual_registry.json in --test-mode.");
+        SetTwoLineTooltip(_btnRegisterAssoc, "Register Associations [Ctrl+R]", "Writes .recomp and .decomp open handlers to per-user HKCU Registry (or virtual_registry.json under APP_ISOLATED_TEST).");
         SetTwoLineTooltip(_btnCheckUpdates, "Check For Updates [F5]", "Checks for compatible track patches while preserving older breaking engine tracks.");
         SetTwoLineTooltip(_btnSaveSettings, "Save Settings [Ctrl+S]", "Saves update and manager preferences atomically to settings.json.");
         SetTwoLineTooltip(_chkCheckUpdates, "Launch Update Checks", "Toggles non-blocking compatible update checks when launching .recomp modules.");

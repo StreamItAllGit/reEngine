@@ -4,10 +4,10 @@
   "name": "reEngine",
   "projectGroup": "Personal",
   "relativePath": "Personal/reEngine",
-  "containerTier": "Tier A (6-Folder)",
+  "containerTier": "Tier A (5-Folder)",
   "ecosystemTier": "Tier1_Infrastructure",
   "appArchetype": "ENGINE",
-  "version": "0.2.1",
+  "version": "0.2.1-hf.1",
   "activeMilestone": "0.2.0",
   "goalMajorVersion": "1.0.0",
   "stateChangedDate": "2026-11-15",
@@ -25,6 +25,6 @@
     "isInspecterVerified": true,
     "isTessaSynced": true
   },
-  "notes": "Patch v0.2.1: Setup Wizard parent-folder auto-sorting into <parent>\\reEngine, companion <reEngineDir>\\engines creation for custom non-umbrella folders, and ReEnginePackagingConstants extraction (53/53 tests).",
-  "updatedAtUtc": "2026-11-15T20:23:00.000Z"
+  "notes": "Hotfix v0.2.1-hf.1: Synced Foundation v0.4.1-hf.1 (AppEnvironment, UiPresentationMode.TrayOrBackground, InstallerRuntimeContext), retired sibling test folder, obsolete test-harness flags & smoke scripts across code/tests/scripts/docs, upgraded Tier A layout to 5-Folder.",
+  "updatedAtUtc": "2026-11-16T00:00:00.000Z"
 }

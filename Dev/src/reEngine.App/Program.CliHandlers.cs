@@ -1,7 +1,7 @@
 // @module: reEngine.App.Program.CliHandlers
-// @purpose: CLI handler routines (--check-updates, --headless diagnostics, decomp --module) for Program.
+// @purpose: CLI handler routines (--check-updates, --tray-only diagnostics, decomp --module) for Program.
 // @depends-on: System, System.Collections.Generic, System.IO, System.Threading, System.Threading.Tasks, Foundation.Core, reEngine.Core
-// @exports: Program (partial: RunUpdateCheckCliAsync, RunHeadlessDiagnostics, RunDecompCliAsync)
+// @exports: Program (partial: RunUpdateCheckCliAsync, RunTrayDiagnostics, RunDecompCliAsync)
 
 using Foundation.Core;
 using reEngine.Core.Associations;
@@ -18,7 +18,7 @@ internal static partial class Program
         ReEngineSettings settings,
         string enginesDir,
         string? feedOverride,
-        string? sandboxBoundary,
+        string? containmentRoot,
         bool strict,
         Action<string, string> log,
         CancellationToken ct)
@@ -32,7 +32,7 @@ internal static partial class Program
             settings,
             engines,
             feedOverride,
-            allowedLocalFeedRoot: sandboxBoundary,
+            allowedLocalFeedRoot: containmentRoot,
             ct: ct).ConfigureAwait(false);
 
         hb.Complete(2, sweep.SummaryMessage);
@@ -53,22 +53,23 @@ internal static partial class Program
         return 0;
     }
 
-    private static int RunHeadlessDiagnostics(
+    private static int RunTrayDiagnostics(
         string enginesDir,
         ReEngineSettings settings,
         IFileAssociationStore assocStore,
-        SandboxEnvironment sandbox,
+        AppEnvironment appEnv,
+        bool isIsolatedTest,
         Action<string, string> log)
     {
-        var hb = new HeartbeatLogger("reEngine Headless", line => log("HEARTBEAT", line), Console.Out);
+        var hb = new HeartbeatLogger("reEngine Diagnostics", line => log("HEARTBEAT", line), Console.Out);
         hb.ReportProgress(1, 3, "Inspecting side-by-side engines", forceEmit: true);
         var resolver = new EngineVersionResolver();
         IReadOnlyList<InstalledEngineCandidate> discovered = resolver.DiscoverInstalledEngines(enginesDir);
         hb.ReportProgress(2, 3, "Inspecting .recomp/.decomp association & AOT cache", forceEmit: true);
         FileAssociationRecord? assoc = assocStore.ReadRecompAssociation();
         DecompDispatchStatusSummary decomp = ReEngineAppStatusHelper.InspectDecompStatus(enginesDir, settings, discovered.Count);
-        AotCacheStatusSummary aot = ReEngineAppStatusHelper.InspectAotCache(sandbox.DataDirectory);
-        string summary = $"Headless sweep OK | testMode={sandbox.TestMode} | profile={decomp.InstallProfile} | toolchain={decomp.ToolchainAvailable} | aotAssemblies={aot.AssemblyCount} | engines={discovered.Count} | assoc={(assoc is not null ? "ACTIVE" : "NONE")} | autoCheck={settings.ShouldCheckUpdates}";
+        AotCacheStatusSummary aot = ReEngineAppStatusHelper.InspectAotCache(appEnv.DataDirectory);
+        string summary = $"Diagnostics sweep OK | isolated={isIsolatedTest} | profile={decomp.InstallProfile} | toolchain={decomp.ToolchainAvailable} | aotAssemblies={aot.AssemblyCount} | engines={discovered.Count} | assoc={(assoc is not null ? "ACTIVE" : "NONE")} | autoCheck={settings.ShouldCheckUpdates}";
         hb.Complete(3, summary);
         log("INFO", summary);
         Console.WriteLine(summary);
@@ -78,8 +79,8 @@ internal static partial class Program
     private static async Task<int> RunDecompCliAsync(
         string[] args,
         string enginesDir,
-        SandboxEnvironment sandbox,
-        string? sandboxBoundary,
+        AppEnvironment appEnv,
+        string? containmentRoot,
         Action<string, string> log,
         CancellationToken ct)
     {
@@ -94,11 +95,11 @@ internal static partial class Program
         string slug = Path.GetFileNameWithoutExtension(fullModulePath);
         string? outputOverride = RecompLaunchOptions.GetOptionValue(args, "--output-dir", requiredIfPresent: true);
         string outputDir = string.IsNullOrWhiteSpace(outputOverride)
-            ? Path.Combine(sandbox.DataDirectory, "decomp-output", string.IsNullOrWhiteSpace(slug) ? "module" : slug)
+            ? Path.Combine(appEnv.DataDirectory, "decomp-output", string.IsNullOrWhiteSpace(slug) ? "module" : slug)
             : Path.GetFullPath(outputOverride);
-        if ((sandbox.TestMode || sandbox.IsContainedSandbox) && !string.IsNullOrWhiteSpace(sandboxBoundary))
+        if (!string.IsNullOrWhiteSpace(containmentRoot))
         {
-            SandboxEnvironment.AssertPathContained(outputDir, sandboxBoundary);
+            AppEnvironment.AssertPathContained(outputDir, containmentRoot);
         }
 
         string? stageRaw = RecompLaunchOptions.GetOptionValue(args, "--stage", requiredIfPresent: true);
@@ -111,12 +112,12 @@ internal static partial class Program
         var options = new DecompRunOptions(
             PackagePath: fullModulePath,
             OutputDirectory: outputDir,
-            DataDirectory: sandbox.DataDirectory,
+            DataDirectory: appEnv.DataDirectory,
             TargetStage: stage,
             EngineDirectoryOverride: RecompLaunchOptions.GetOptionValue(args, "--engine-dir", requiredIfPresent: true),
             ToolchainDirectory: RecompLaunchOptions.GetOptionValue(args, "--toolchain-dir", requiredIfPresent: true),
-            DryRun: sandbox.DryRun,
-            Headless: sandbox.Headless || CliArgumentHelper.HasFlag(args, "--headless"));
+            DryRun: appEnv.DryRun,
+            Headless: true);
 
         var coordinator = new DecompPipelineCoordinator();
         DecompDispatchResult result = await coordinator.DispatchAsync(options, enginesDir, ct).ConfigureAwait(false);

@@ -1,7 +1,7 @@
 # Project Context: reEngine
 
-- **Role:** Zero-daemon `.decomp` / `.recomp` suite router & UI (`v0.2.1`, Tier A, `MPL-2.0`).
-- **Boundaries:** `Foundation\`, `_DevBible\` & `<WORKSPACE_ROOT>\Research\*` (no `Corpus\` copy) RO; `SharedLibs\reEngine\v<Ver>\`; fail-closed `--test-mode` in `Sandbox\`.
+- **Role:** Zero-daemon `.decomp` / `.recomp` suite router & UI (`v0.2.1-hf.1`, Tier A, `MPL-2.0`).
+- **Boundaries:** `Foundation\`, `_DevBible\` & `<WORKSPACE_ROOT>\Research\*` (no `Corpus\` copy) RO; `SharedLibs\reEngine\v<Ver>\`; isolated test runs via `APP_ISOLATED_TEST=1`.
 
 ## 1. Root Quartet & State
 - [README.md](README.md) | [FEATURES.md](FEATURES.md) | [ROADMAP.md](ROADMAP.md) | [CHANGELOG.md](CHANGELOG.md) | [active.state](active.state)
@@ -11,5 +11,5 @@
 
 ## 3. Governance & Notion
 - **Assets & Docs:** `LICENSE` (`MPL-2.0`) | `Dev\assets\reEngine.{svg,png,ico}` | `Dev\docs\{plans,reports}\`
-- **Rules & QA:** Standards `00`–`19` | `@dean` Gatekeeper | `@inspecter` Sandbox QA | `@tessa` Notion
+- **Rules & QA:** Standards `00`–`19` | `@dean` Gatekeeper | `@inspecter` Unit & Log QA | `@tessa` Notion
 - **Notion:** Synced via local Notion hub (`The Me Hub`)

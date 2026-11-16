@@ -43,8 +43,8 @@ internal static class Program
         InstallerThemeOptions theme = CreateThemeOptions();
         InstallerAppDescriptor descriptor = CreateDescriptor(theme);
         string[] hostArgs = ExtractHostArgs(args, out string profileId, out string? suiteDir, out string? reEngineDir,
-            out bool migrateLegacy, out bool confirmLegacyCleanup, out bool testMode, out bool silent,
-            out bool headless, out bool dryRun, out bool verifyOnly, out bool uninstall,
+            out bool migrateLegacy, out bool confirmLegacyCleanup, out bool silent,
+            out bool dryRun, out bool verifyOnly, out bool uninstall,
             out string? installDir, out string? dataDir);
 
         InstallerCliOptions? cli = null;
@@ -57,12 +57,11 @@ internal static class Program
             return StandardInstallerHost.Run(descriptor, hostArgs, typeof(Program).Assembly);
         }
 
+        bool isIsolatedTest = IsIsolatedTestEnv();
         bool isInteractiveGui = !cli.ShowVersion &&
                                 !cli.ShowHelp &&
-                                !cli.VisibleTest &&
                                 !cli.Silent &&
-                                !cli.Headless &&
-                                !cli.TestMode &&
+                                !isIsolatedTest &&
                                 !cli.DryRun &&
                                 !cli.VerifyOnly &&
                                 string.IsNullOrWhiteSpace(cli.InstallDir) &&
@@ -74,18 +73,27 @@ internal static class Program
         }
 
         int exitCode = StandardInstallerHost.Run(descriptor, hostArgs, typeof(Program).Assembly);
-        if (exitCode == 0 && !verifyOnly && !uninstall && !dryRun && !cli.VisibleTest)
+        if (exitCode == 0 && !verifyOnly && !uninstall && !dryRun)
         {
-            string resolvedInstallDir = ResolveEffectiveInstallDir(installDir, dataDir, testMode);
+            string resolvedInstallDir = ResolveEffectiveInstallDir(installDir, dataDir, isIsolatedTest);
             string? effectiveSuiteDir = ResolveEffectiveSuiteDir(suiteDir, resolvedInstallDir);
             string effectiveReEngineDir = !string.IsNullOrWhiteSpace(reEngineDir)
                 ? Path.GetFullPath(reEngineDir.Trim())
                 : resolvedInstallDir;
             ApplyPostInstallActions(resolvedInstallDir, profileId, effectiveSuiteDir, effectiveReEngineDir,
-                migrateLegacy, confirmLegacyCleanup, testMode, dataDir, silent, headless);
+                migrateLegacy, confirmLegacyCleanup, isIsolatedTest, dataDir, silent);
         }
 
         return exitCode;
+    }
+
+    private static bool IsIsolatedTestEnv()
+    {
+        string? value = Environment.GetEnvironmentVariable("APP_ISOLATED_TEST");
+        return string.Equals(value, "1", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(value, "true", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(value, "yes", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(value, "on", StringComparison.OrdinalIgnoreCase);
     }
 
     private static int RunInteractiveWizard(
@@ -97,17 +105,12 @@ internal static class Program
         bool migrateLegacy,
         bool confirmLegacyCleanup)
     {
-        var ctx = new InstallerSandboxContext(
+        var ctx = new InstallerRuntimeContext(
             cliDataDir: cli.DataDir,
             cliConfigPath: cli.ConfigPath,
             cliLogDir: cli.LogDir,
-            testMode: cli.TestMode,
             dryRun: cli.DryRun,
-            headless: cli.Headless,
-            envPrefix: descriptor.EnvPrefix,
-            fallbackTestInstallDir: cli.InstallDir,
-            visibleTest: cli.VisibleTest,
-            cliSandboxRoot: cli.SandboxRoot);
+            envPrefix: descriptor.EnvPrefix);
 
         var guiEngine = new InstallerEngine(descriptor, ctx, typeof(Program).Assembly);
         Application.EnableVisualStyles();
@@ -165,8 +168,8 @@ internal static class Program
                     : ResolveEffectiveSuiteDir(suiteDir, chosenInstallDir));
 
             ApplyPostInstallActions(chosenInstallDir, chosenProfile, chosenSuiteDir, chosenReEngineDir,
-                wizard.MigrateLegacyChecked, confirmLegacyCleanup, testMode: false, dataDir: cli.DataDir,
-                silent: false, headless: false);
+                wizard.MigrateLegacyChecked, confirmLegacyCleanup, isolatedTest: ctx.IsIsolatedTestProcess, dataDir: cli.DataDir,
+                silent: false);
         }
 
         return wizard.ExitCode;
@@ -179,10 +182,9 @@ internal static class Program
         string? reEngineDir,
         bool migrateLegacy,
         bool confirmLegacyCleanup,
-        bool testMode,
+        bool isolatedTest,
         string? dataDir,
-        bool silent,
-        bool headless)
+        bool silent)
     {
         if (!Directory.Exists(installDir))
         {
@@ -197,7 +199,7 @@ internal static class Program
         if (migrateLegacy)
         {
             LegacyMigrationResult migration = LegacyMigrationHelper.TryMigrateLegacyInstall(
-                installDir, testMode, dataDir, silent, headless, dryRun: false, confirmLegacyCleanup);
+                installDir, isolatedTest, dataDir, silent, dryRun: false, confirmLegacyCleanup);
             Console.WriteLine(migration.Summary);
         }
 
@@ -275,9 +277,7 @@ internal static class Program
         out string? reEngineDir,
         out bool migrateLegacy,
         out bool confirmLegacyCleanup,
-        out bool testMode,
         out bool silent,
-        out bool headless,
         out bool dryRun,
         out bool verifyOnly,
         out bool uninstall,
@@ -290,9 +290,7 @@ internal static class Program
         reEngineDir = null;
         migrateLegacy = false;
         confirmLegacyCleanup = false;
-        testMode = false;
         silent = false;
-        headless = false;
         dryRun = false;
         verifyOnly = false;
         uninstall = false;
@@ -329,10 +327,8 @@ internal static class Program
                     if (i + 1 < clean.Length) dataDir = clean[i + 1];
                     break;
                 case "--migrate-legacy": migrateLegacy = true; break;
-                case "--test-mode": testMode = true; break;
                 case "--silent":
                 case "--quiet": silent = true; break;
-                case "--headless": headless = true; break;
                 case "--dry-run": dryRun = true; break;
                 case "--verify": verifyOnly = true; break;
                 case "--uninstall": uninstall = true; break;
@@ -358,13 +354,13 @@ internal static class Program
         return forwarded.ToArray();
     }
 
-    private static string ResolveEffectiveInstallDir(string? installDir, string? dataDir, bool testMode)
+    private static string ResolveEffectiveInstallDir(string? installDir, string? dataDir, bool isolatedTest)
     {
         if (!string.IsNullOrWhiteSpace(installDir))
         {
             return Path.GetFullPath(installDir);
         }
-        if (testMode && !string.IsNullOrWhiteSpace(dataDir))
+        if (isolatedTest && !string.IsNullOrWhiteSpace(dataDir))
         {
             return Path.GetFullPath(Path.Combine(dataDir, "installed-app"));
         }

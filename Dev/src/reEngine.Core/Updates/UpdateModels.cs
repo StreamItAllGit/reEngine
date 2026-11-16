@@ -33,7 +33,7 @@ public sealed class ReEngineSettings
     [JsonPropertyName("shouldAutoStagePatches")]
     public bool ShouldAutoStagePatches { get; set; } = true;
 
-    /// <summary>Optional feed URL or local sandbox feed path used for update checks.</summary>
+    /// <summary>Optional feed URL or local feed file path used for update checks.</summary>
     [JsonPropertyName("lastUpdateFeedUrl")]
     public string? LastUpdateFeedUrl { get; set; }
 

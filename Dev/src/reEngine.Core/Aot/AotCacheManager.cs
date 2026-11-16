@@ -190,7 +190,7 @@ public sealed class AotCacheManager : IAotCacheManager
             AotCacheEntry stale = index.Entries[staleKey];
             if (!string.IsNullOrWhiteSpace(stale.CacheDirectory) && Directory.Exists(stale.CacheDirectory))
             {
-                string containedDir = SandboxEnvironment.AssertPathContained(stale.CacheDirectory, _cacheRoot);
+                string containedDir = AppEnvironment.AssertPathContained(stale.CacheDirectory, _cacheRoot);
                 Directory.Delete(containedDir, recursive: true);
             }
 

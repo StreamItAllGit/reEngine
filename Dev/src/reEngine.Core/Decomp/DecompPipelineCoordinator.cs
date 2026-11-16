@@ -287,7 +287,7 @@ public sealed class DecompPipelineCoordinator
         }
 
         string tempRoot = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "reengine_decomp_check"));
-        _ = SandboxEnvironment.AssertPathContained(Path.GetFullPath(Path.Combine(tempRoot, entry.FullName)), tempRoot);
+        _ = AppEnvironment.AssertPathContained(Path.GetFullPath(Path.Combine(tempRoot, entry.FullName)), tempRoot);
         using var reader = new StreamReader(entry.Open());
         return reader.ReadToEnd();
     }

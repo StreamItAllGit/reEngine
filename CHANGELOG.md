@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.1-hf.1] - 2026-11-15
+
+### Changed
+- Synced `Foundation v0.4.1-hf.1` SDK drop (`Dev\lib\`) and migrated call sites from legacy test-context types to `Foundation.Core.AppEnvironment`, `Foundation.Core.UiPresentationMode.TrayOrBackground`, and `Foundation.Installer.InstallerRuntimeContext` (`IsIsolatedTestEnv()`).
+- Retired the legacy test-harness CLI flags, external smoke `.bat` wrappers, and stale standalone verification reports in favor of standard `APP_ISOLATED_TEST=1` isolation (`51/51` passing xUnit tests with `0` warnings and `0` skipped) and production `--tray-only` / `--window` / `--browser` / `--port` diagnostic flags.
+- Bumped `reEngine` to `v0.2.1-hf.1` across `Dev\version.txt`, `Dev\Directory.Build.props`, `Dev\app.manifest.json`, `active.state` (`Tier A (5-Folder)`), Root Quartet, `AGENTS.md`, Manual Shelf docs, and `Dev\scripts\build_release.ps1` (zero-leak verification, OS junk scrub, and `SharedLibs\reEngine\v0.2.1-hf.1\`).
+
 ## [0.2.1] - 2026-11-15
 
 ### Added
@@ -21,7 +28,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - Added platform-agnostic `.decomp` package and `D0`–`D5` pipeline contracts in `reEngine.Core`: `DecompPackageManifest`, `DecompToolchainRequirements`, `IDecompPlatformProvider`, `DecompStage` (`D0`–`D5`), `DecompPipelineCoordinator`, and deterministic 3-part `DecompUnbuiltEngineError` diagnostics (`[1/3 What Failed]`, `[2/3 Missing]`, `[3/3 Remediation]`) for unbuilt engines (`re64`, `reCube`, `reGenesis`).
-- Added `OfflineToolchainLocator` (`ReEngineInstallProfile.Lightweight` / `Full`, `MaxToolchainBudgetMb = 160`, `THIRDPARTY_LICENSES.txt`) and `Dev\scripts\stage_offline_toolchain.ps1` + `Dev\scripts\THIRDPARTY_LICENSES.txt` to stage and validate stripped Apache-2.0 headless Ghidra (`GPL/`, `docs/`, and Swing modules removed) + `jlink` OpenJDK with zero runtime internet access.
+- Added `OfflineToolchainLocator` (`ReEngineInstallProfile.Lightweight` / `Full`, `MaxToolchainBudgetMb = 160`, `THIRDPARTY_LICENSES.txt`) and `Dev\scripts\stage_offline_toolchain.ps1` + `Dev\scripts\THIRDPARTY_LICENSES.txt` to stage and validate stripped Apache-2.0 CLI Ghidra (`GPL/`, `docs/`, and Swing modules removed) + `jlink` OpenJDK with zero runtime internet access.
 - Added shared `<dataDir>\cache\` AOT cache contracts and manager (`IAotCacheManager`, `AotCacheManager`, `AotCacheKey`, `AotCacheEntry`, `AotCompileResult`, `CleanRoomRecompCheckResult`) backed by `Foundation.Retro.AotCacheLayoutHelper`, cross-process index locking (`aot-index.json`), SHA-256 tamper invalidation, stale eviction, and strict clean-room `.recomp` rejection of `*.Generated.dll` and `*.g.cs` artifacts.
 - Added `.decomp` file association support (`RegisterDecompAssociation`, `ReadDecompAssociation`, `UnregisterDecompAssociation` under `HKCU\Software\Classes\.decomp` / `reEngine.DecompModule` and `<dataDir>\virtual_registry.json`), CLI subcommand routing (`reEngine.exe decomp --module <file.decomp> [--stage D0..D5] [--engine-dir <dir>] [--toolchain-dir <dir>] [--output-dir <dir>]`, returning Exit `3` on unbuilt engines), and `ReEngineAppStatusHelper` + Dark Slate UI `Profile:` (`Lightweight`/`Full`) and `.decomp`/AOT status indicators.
 - Added `LegacyMigrationHelper` (`--profile Lightweight|Full`, `--suite-dir`, `--reengine-dir`, opt-in `--migrate-legacy`, and human-gated `--confirm-legacy-cleanup` for stranded `v0.1.1` artifacts) preserving user `data\rom\` files safely.
@@ -64,17 +71,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.1.1] - 2026-11-14
 
 ### Added
-- Implemented `LauncherArgsHelper` (`reEngine.Launcher`) for standalone synchronous-wait detection (`--open`, `--wait`, `--check-updates`, `--register-assoc`, `--visible-test`, `--test-mode`, `--headless`, `--dry-run`, `--help`, `--version`, and non-flag positional paths while preserving `--port`/`--ui`/`--frames` value pairs) and caller-CWD relative path normalization (preserving `http://`/`https://` `--feed` URIs).
+- Implemented `LauncherArgsHelper` (`reEngine.Launcher`) for standalone synchronous-wait detection (`--open`, `--wait`, `--check-updates`, `--register-assoc`, `--tray-only`, `--dry-run`, `--help`, `--version`, and non-flag positional paths while preserving `--port`/`--ui`/`--frames` value pairs) and caller-CWD relative path normalization (preserving `http://`/`https://` `--feed` URIs).
 - Added `MultiEngineUpdateSweepResult` (`SweepExecuted`, `NetworkUnavailable`, `Outcomes`, `SummaryMessage`) and `UpdateCoordinator.CheckAllInstalledEnginesAsync` to sweep every distinct `(EngineId, Track)` pair side-by-side (`reEngine.Core`).
-- Added `RecompLaunchOptions` (`ShouldWaitForExit`, `ShouldRunHeadless`, `ShouldShowVisibleTest`, `ShouldEnableRuntimeLogs`, `--frames`, `--fixture`, `--dump-screenshot`, `--dump-audio`, `--input-script`) and `ChildLaunchPlan` per-module isolation (`<dataDir>\modules\<moduleId>\`) in `reEngine.App`.
+- Added `RecompLaunchOptions` (`ShouldWaitForExit`, `PresentationMode`, `ShouldEnableRuntimeLogs`, `--frames`, `--fixture`, `--dump-screenshot`, `--dump-audio`) and `ChildLaunchPlan` per-module isolation (`<dataDir>\modules\<moduleId>\`) in `reEngine.App`.
 - Added `ReEngineTelemetryFormatter` (`reEngine.Core`) enforcing Standard 15 `[v0.1.1] [PID:<id>/T:<tid>] [<LEVEL>]` lines and single `[HEARTBEAT]` prefixes, plus synthetic xUnit coverage in `LauncherAndLaunchPlanTests.cs` and `UpdateSweepAndTelemetryTests.cs` (`33/33` passing, `0` warnings).
 - Logged Standard 15 read-only upstream proposal report `0.3.1.20261114-022857.-.rootlauncher-shouldwait-proposal.md` in `Foundation\Dev\docs\reports\`.
 
 ### Changed
 - Propagated child CLI exit codes `(0, 1, 2, 3, 4, 5, 6, 130)` synchronously through root `reEngine.exe` (including `Console.CancelKeyPress` `130` cleanup) and mapped Zip-Slip/manifest `InvalidDataException`, `JsonException`, `ArgumentException`, and fail-closed containment violations to Exit `2`.
-- Threaded `sandboxBoundary` into `ReEngineMainForm` (`OnCheckUpdatesClicked`, `OnOpenPackageClicked`) and invoked `LayoutControls()` on status pill text transitions (`OFFLINE / SKIPPED`, `BREAKING AVAILABLE`, `PATCH STAGED`) to prevent label clipping.
+- Threaded `APP_ISOLATED_TEST` containment gating into `ReEngineMainForm` (`OnCheckUpdatesClicked`, `OnOpenPackageClicked`) and invoked `LayoutControls()` on status pill text transitions (`OFFLINE / SKIPPED`, `BREAKING AVAILABLE`, `PATCH STAGED`) to prevent label clipping.
 - Locked strategic scope & horizon docs (`README.md`, `FEATURES.md`, `ROADMAP.md`, `"supportedEngineTracks"` manifest handshake) for `v0.2.0` $\rightarrow$ `v1.0.0` (`win-x64` Gold, gated on `>= 2` `R1–R3` `.recomp` modules across `>= 2` `re*` engines and `uStation` `--open --wait` delegation) $\rightarrow$ `v2.0.0` (`SDL3`/XDG/macOS/mobile/WASM/console Zero-RWX 10-Platform North Star), promoted `CORE-08`, and narrowed `ROUTE-08`/`ROUTE-09` cards to remaining `v0.2.0`/`v0.3.0` work.
-- Synchronized `AGENTS.md`, `Program.PrintUsage()`, Manual Shelf (`Dev\docs\ARCHITECTURE.md`, `Dev\docs\INTERFACES.md`, `Dev\docs\USER_GUIDE.md`, `Dev\docs\OPERATIONS.md`), signed `reEngine-Setup-v0.1.1-win-x64.exe`, `SharedLibs\reEngine\v0.1.1\`, and `@inspecter-reengine` live `Sandbox\` + `--visible-test` verification (`0.1.1.20261114-025555.-.sandbox-verify.md`).
+- Synchronized `AGENTS.md`, `Program.PrintUsage()`, Manual Shelf (`Dev\docs\ARCHITECTURE.md`, `Dev\docs\INTERFACES.md`, `Dev\docs\USER_GUIDE.md`, `Dev\docs\OPERATIONS.md`), signed `reEngine-Setup-v0.1.1-win-x64.exe`, `SharedLibs\reEngine\v0.1.1\`, and `@inspecter-reengine` release verification.
 
 ### Fixed
 - Eliminated unhandled `HttpRequestException`/`SocketException` crashes during offline/dropped-socket `--check-updates` (`[WARN]` return with `ExitCode = 0`, or `4` under `--strict`, writing `0` crash bundles).
@@ -84,9 +91,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.1.0] - 2026-11-13
 
 ### Added
-- Initialized Tier A 6-folder repository scaffold (`Archive\`, `Builds\`, `Dev\`, `Installers\`, `Releases\`, `Sandbox\`), outer Git repository, Root Documentation Quartet, `AGENTS.md`, Manual Shelf docs, `Foundation v0.3.1` SDK sync (`Dev\lib\`), and original [`Dev\assets\reEngine.{svg,png,ico}`](Dev/assets/reEngine.svg) brand artwork.
+- Initialized Tier A 5-folder repository scaffold (`Archive\`, `Builds\`, `Dev\`, `Installers\`, `Releases\`), outer Git repository, Root Documentation Quartet, `AGENTS.md`, Manual Shelf docs, `Foundation v0.3.1` SDK sync (`Dev\lib\`), and original [`Dev\assets\reEngine.{svg,png,ico}`](Dev/assets/reEngine.svg) brand artwork.
 - Implemented `reEngine.slnx` (`Dev\Directory.Build.props`, `Dev\version.txt`) with `TreatWarningsAsErrors` and Release Zero-PII `<PathMap>` + `<DebugType>none</DebugType>`.
 - Implemented `reEngine.Core` (`net8.0`, `Foundation.Core`-only): `RecompPackageManifest` + `RecompPackageReader` (JSON/ZIP + Zip-Slip guard + `data\rom\` preload discovery), `EngineVersionResolver` + `EngineTrackMatcher` (side-by-side track resolution), `IFileAssociationStore` + `VirtualRegistryAssociationStore` + `WindowsRegistryAssociationStore`, `UpdateCoordinator` (`GranularSettingsManager` + `SafeNetworkTransfer`), and `ReEngineBootstrapHelper` (`AllowAutoStart = false`).
-- Implemented `reEngine.App` (`net8.0-windows`): CLI dispatcher (`--open`, `--register-assoc`, `--check-updates`, `--engines-dir`, `--data-dir`, `--config`, `--log-dir`, `--test-mode`, `--dry-run`, `--headless`, `--visible-test`), `RecompLaunchCoordinator`, and Dark Slate `ReEngineMainForm` (`#0E0E10` / `#18181B` / `#38BDF8`).
-- Authored `reEngine.Launcher` (`RootLauncherHost` + `AssemblyResolve`), `reEngine.Installer` (`StandardInstallerHost` + compressed `AssemblyResolve` + `AllowAutoStart = false`), `.bat` helper scripts, and `Dev\scripts\build_release.ps1`; passed `@dean` Gate 2 and packaged `Builds\v0.1.0\`, signed zero-PII `Installers\reEngine-Setup-v0.1.0-win-x64.exe` + `<PROJECTS_ROOT>\Installers\` (`0` audit findings), 6-file `Releases\Latest\` + `.7z`, `Archive\reEngine-v0.1.0-src.7z`, and immutable `<PROJECTS_ROOT>\SharedLibs\reEngine\v0.1.0\` (`+ Latest\`).
-- Added `reEngine.Tests` (`14/14` passing xUnit tests) and passed `@inspecter` live `Sandbox\` + `--visible-test` verification (`virtual_registry.json`, `reStation` `0.1.x` resolution, `data\rom\` preload auto-detect, SHA-256 patch staging, and screenshot capture).
+- Implemented `reEngine.App` (`net8.0-windows`): CLI dispatcher (`--open`, `--register-assoc`, `--check-updates`, `--engines-dir`, `--data-dir`, `--config`, `--log-dir`, `--tray-only`, `--dry-run`), `RecompLaunchCoordinator`, and Dark Slate `ReEngineMainForm` (`#0E0E10` / `#18181B` / `#38BDF8`).
+- Authored `reEngine.Launcher` (`RootLauncherHost` + `AssemblyResolve`), `reEngine.Installer` (`StandardInstallerHost` + compressed `AssemblyResolve` + `AllowAutoStart = false`), packaging scripts, and `Dev\scripts\build_release.ps1`; passed `@dean` Gate 2 and packaged `Builds\v0.1.0\`, signed zero-PII `Installers\reEngine-Setup-v0.1.0-win-x64.exe` + `<PROJECTS_ROOT>\Installers\` (`0` audit findings), 6-file `Releases\Latest\` + `.7z`, `Archive\reEngine-v0.1.0-src.7z`, and immutable `<PROJECTS_ROOT>\SharedLibs\reEngine\v0.1.0\` (`+ Latest\`).
+- Added `reEngine.Tests` (`14/14` passing xUnit tests) and verified isolated containment, `virtual_registry.json`, `reStation` `0.1.x` resolution, `data\rom\` preload auto-detect, and SHA-256 patch staging.

@@ -1,5 +1,5 @@
 // @module: reEngine.Core.Associations.FileAssociationStores
-// @purpose: File association abstraction with live HKCU Windows Registry store and fail-closed Sandbox virtual_registry.json store.
+// @purpose: File association abstraction with live HKCU Windows Registry store and fail-closed isolated virtual_registry.json store.
 // @depends-on: System, System.IO, System.Text, System.Text.Json, Microsoft.Win32, Foundation.Core, reEngine.Core.Bootstrap
 // @exports: FileAssociationRecord, IFileAssociationStore, VirtualRegistryAssociationStore, WindowsRegistryAssociationStore
 
@@ -24,7 +24,7 @@ public sealed record FileAssociationRecord(
     [property: JsonPropertyName("updatedAtUtc")] string UpdatedAtUtc);
 
 /// <summary>
-/// Abstracts <c>.recomp</c> and <c>.decomp</c> file association registration across live HKCU and sandbox virtual storage.
+/// Abstracts <c>.recomp</c> and <c>.decomp</c> file association registration across live HKCU and isolated virtual storage.
 /// </summary>
 public interface IFileAssociationStore
 {
@@ -48,7 +48,7 @@ public interface IFileAssociationStore
 }
 
 /// <summary>
-/// Fail-closed sandboxed association store persisting records atomically to <c>&lt;dataDir&gt;\virtual_registry.json</c>.
+/// Fail-closed isolated association store persisting records atomically to <c>&lt;dataDir&gt;\virtual_registry.json</c>.
 /// </summary>
 public sealed class VirtualRegistryAssociationStore : IFileAssociationStore
 {
@@ -75,10 +75,10 @@ public sealed class VirtualRegistryAssociationStore : IFileAssociationStore
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(dataDir);
         string root = string.IsNullOrWhiteSpace(allowedRootDir) ? dataDir : allowedRootDir;
-        string containedDataDir = SandboxEnvironment.AssertPathContained(dataDir, root);
+        string containedDataDir = AppEnvironment.AssertPathContained(dataDir, root);
         Directory.CreateDirectory(containedDataDir);
         string candidateFile = Path.Combine(containedDataDir, ReEnginePackagingConstants.VirtualRegistryFileName);
-        _registryFilePath = SandboxEnvironment.AssertPathContained(candidateFile, root);
+        _registryFilePath = AppEnvironment.AssertPathContained(candidateFile, root);
     }
 
     /// <inheritdoc />
@@ -230,14 +230,18 @@ public sealed class WindowsRegistryAssociationStore : IFileAssociationStore
     private const string ClassesRoot = @"Software\Classes";
 
     /// <summary>
-    /// Initializes the live HKCU association store; throws fail-closed if <paramref name="testMode"/> is <see langword="true"/>.
+    /// Initializes the live HKCU association store; throws fail-closed if host mutations are suppressed (<paramref name="suppressHostMutations"/> or <c>APP_ISOLATED_TEST=1</c>).
     /// </summary>
-    public WindowsRegistryAssociationStore(bool testMode = false)
+    public WindowsRegistryAssociationStore(bool suppressHostMutations = false)
     {
-        if (testMode)
+        string? envFlag = Environment.GetEnvironmentVariable("APP_ISOLATED_TEST");
+        bool isIsolated = suppressHostMutations ||
+                          string.Equals(envFlag, "1", StringComparison.OrdinalIgnoreCase) ||
+                          string.Equals(envFlag, "true", StringComparison.OrdinalIgnoreCase);
+        if (isIsolated)
         {
             throw new InvalidOperationException(
-                "Fail-Closed Sandbox Violation: WindowsRegistryAssociationStore cannot be instantiated when --test-mode is active.");
+                "Fail-Closed Isolation Violation: WindowsRegistryAssociationStore cannot be instantiated when host mutations are suppressed (APP_ISOLATED_TEST=1).");
         }
     }
 

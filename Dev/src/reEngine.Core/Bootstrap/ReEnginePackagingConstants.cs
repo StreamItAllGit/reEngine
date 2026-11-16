@@ -17,7 +17,7 @@ public static class ReEnginePackagingConstants
     public const string DisplayName = "reEngine";
 
     /// <summary>Current packaged SemVer version.</summary>
-    public const string Version = "0.2.1";
+    public const string Version = "0.2.1-hf.1";
 
     /// <summary>Canonical studio umbrella folder under <c>%LOCALAPPDATA%\Programs\</c>.</summary>
     public const string StudioName = "StreamItAll";
@@ -40,7 +40,7 @@ public static class ReEnginePackagingConstants
     /// <summary>Default relative preload directory inside game module roots.</summary>
     public const string DefaultPreloadRomDir = "data/rom";
 
-    /// <summary>Filename of the virtualized association store in <c>--test-mode</c>.</summary>
+    /// <summary>Filename of the isolated/non-Windows association store (<c>APP_ISOLATED_TEST=1</c>).</summary>
     public const string VirtualRegistryFileName = "virtual_registry.json";
 }
 

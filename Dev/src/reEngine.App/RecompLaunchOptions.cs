@@ -14,12 +14,11 @@ internal sealed record RecompLaunchOptions
     {
         "--open", "--module", "--engines-dir", "--engine-dir", "--toolchain-dir", "--output-dir", "--stage",
         "--data-dir", "--config", "--log-dir", "--feed", "--port", "--ui",
-        "--frames", "--fixture", "--dump-screenshot", "--dump-audio", "--input-script"
+        "--frames", "--fixture", "--dump-screenshot", "--dump-audio"
     };
 
     public bool ShouldWaitForExit { get; init; }
-    public bool ShouldRunHeadless { get; init; }
-    public bool ShouldShowVisibleTest { get; init; }
+    public bool TrayOnly { get; init; }
     public bool ShouldEnableRuntimeLogs { get; init; }
     public string? LogDirectoryOverride { get; init; }
     public string? ConfigPathOverride { get; init; }
@@ -27,12 +26,11 @@ internal sealed record RecompLaunchOptions
     public string? FixturePath { get; init; }
     public string? DumpScreenshotPath { get; init; }
     public string? DumpAudioPath { get; init; }
-    public string? InputScriptPath { get; init; }
 
-    public static RecompLaunchOptions FromArgs(string[] args, SandboxEnvironment sandbox)
+    public static RecompLaunchOptions FromArgs(string[] args, AppEnvironment appEnv)
     {
         ArgumentNullException.ThrowIfNull(args);
-        ArgumentNullException.ThrowIfNull(sandbox);
+        ArgumentNullException.ThrowIfNull(appEnv);
 
         string? framesRaw = GetOptionValue(args, "--frames", requiredIfPresent: true);
         int? frames = null;
@@ -48,16 +46,14 @@ internal sealed record RecompLaunchOptions
         return new RecompLaunchOptions
         {
             ShouldWaitForExit = CliArgumentHelper.HasFlag(args, "--wait"),
-            ShouldRunHeadless = sandbox.Headless || CliArgumentHelper.HasFlag(args, "--headless"),
-            ShouldShowVisibleTest = sandbox.VisibleTest || CliArgumentHelper.HasFlag(args, "--visible-test"),
+            TrayOnly = appEnv.TrayOnly || appEnv.PresentationMode == UiPresentationMode.TrayOrBackground || CliArgumentHelper.HasFlag(args, "--tray-only"),
             ShouldEnableRuntimeLogs = CliArgumentHelper.HasFlag(args, "--enable-logs"),
             LogDirectoryOverride = GetOptionValue(args, "--log-dir", requiredIfPresent: true),
             ConfigPathOverride = GetOptionValue(args, "--config", requiredIfPresent: true),
             Frames = frames,
             FixturePath = GetOptionValue(args, "--fixture", requiredIfPresent: true),
             DumpScreenshotPath = GetOptionValue(args, "--dump-screenshot", requiredIfPresent: true),
-            DumpAudioPath = GetOptionValue(args, "--dump-audio", requiredIfPresent: true),
-            InputScriptPath = GetOptionValue(args, "--input-script", requiredIfPresent: true)
+            DumpAudioPath = GetOptionValue(args, "--dump-audio", requiredIfPresent: true)
         };
     }
 

@@ -1,6 +1,6 @@
 # reEngine — System Architecture
 
-**Synced Version:** `0.2.1` (`2026-11-15`)  
+**Synced Version:** `0.2.1-hf.1` (`2026-11-15`)  
 **Owner:** `reEngine` Core (`@devv` / `@dean`)  
 **License:** Mozilla Public License Version 2.0 (`MPL-2.0`, root [`LICENSE`](../../LICENSE))
 
@@ -24,7 +24,7 @@ flowchart LR
     Launcher -->|CWD path norm + sync-wait| App["reEngine.App\n(app\\reEngine.exe UI & CLI)"]
     App -->|Consumes| Core["reEngine.Core.dll"]
     Suite --> ReDir["reEngine\\ (router + app\\)"]
-    Suite --> ToolDir["toolchain\\ (Full: headless Ghidra + OpenJDK)"]
+    Suite --> ToolDir["toolchain\\ (Full: CLI Ghidra + OpenJDK)"]
     Suite --> EngDir["engines\\re<Platform>\\v<Ver>\\"]
     Suite --> GameDir["games\\<GameRecomp>\\ (+ data\\rom\\)"]
     App -->|Wait + JobObjectGuard| EngineExe["Child Platform Engine\n(reStation / reNes)"]
@@ -45,7 +45,7 @@ graph TD
     FI["Dev/lib/Foundation.Installer.dll (RO)"]
     FL["Dev/lib/Foundation.Launcher.dll (RO)"]
 
-    Core["reEngine.Core (net8.0)\nSDK -> SharedLibs/reEngine/v0.2.1/"]
+    Core["reEngine.Core (net8.0)\nSDK -> SharedLibs/reEngine/v0.2.1-hf.1/"]
     App["reEngine.App (net8.0-windows)\nWinForms Manager & CLI Router"]
     Launcher["reEngine.Launcher (net8.0-windows)\nSingle-File Root Stub"]
     Setup["reEngine.Installer (net8.0-windows)\n4-Pillar Setup EXE"]
@@ -72,7 +72,7 @@ graph TD
 | `reEngine.App` | `net8.0-windows` | `reEngine.Core`, `Foundation.Core`, WinForms | Never modifies `Foundation\`, `_DevBible\`, or `Research\*` |
 | `reEngine.Launcher` | `net8.0-windows` | Embedded `Foundation.Launcher.dll` | **Zero** `reEngine.Core` ref (keeps single-file stub `< 2 MB`) |
 | `reEngine.Installer` | `net8.0-windows` | `reEngine.Core`, gzipped `Foundation.{Core,Installer,Retro}` | `AllowAutoStart = false`; zero unconfirmed `%LOCALAPPDATA%` writes in test mode |
-| `reEngine.Tests` | `net8.0-windows` | All 4 assemblies + xUnit (`InternalsVisibleTo`) | Temp sandbox isolation only; zero host registry/program mutations |
+| `reEngine.Tests` | `net8.0-windows` | All 4 assemblies + xUnit (`InternalsVisibleTo`) | Isolated `APP_ISOLATED_TEST=1` temp roots only; zero host registry/program mutations |
 
 ---
 
@@ -80,12 +80,12 @@ graph TD
 
 ### 3.1 `.recomp` Launch & Per-Module Isolation Pipeline
 1. Shell double-click or CLI invokes root `reEngine.exe` ([`reEngine.Launcher\Program.cs`](../src/reEngine.Launcher/Program.cs)), which normalizes caller-CWD relative paths via [`LauncherArgsHelper`](../src/reEngine.Launcher/LauncherArgsHelper.cs) and delegates to `app\reEngine.exe`.
-2. [`reEngine.App\Program.cs`](../src/reEngine.App/Program.cs#L75-L195) constructs `SandboxEnvironment`, enforces containment under `--test-mode` (`ResolveSandboxBoundary` / `EnforceSandboxContainment`), resolves `enginesDir` via `ResolveEnginesDir` (peer `..\engines` primary), and passes `--open` / positional target to [`RecompLaunchCoordinator`](../src/reEngine.App/RecompLaunchCoordinator.cs).
+2. [`reEngine.App\Program.cs`](../src/reEngine.App/Program.cs) constructs `AppEnvironment` (`Foundation.Core`), enforces fail-closed containment under `APP_ISOLATED_TEST=1`, resolves `enginesDir` via `ResolveEnginesDir` (peer `..\engines` primary), and passes `--open` / positional target to [`RecompLaunchCoordinator`](../src/reEngine.App/RecompLaunchCoordinator.cs).
 3. `RecompPackageReader.Load` validates Zip-Slip safety and resolves `<GameRoot>\app\<Module>.recomp` back to `<GameRoot>\` so `DiscoverPreloadMedia` detects `.cue > .chd > .iso > ... > .bin` inside `data\rom\`.
 4. `EngineVersionResolver` matches `compatibleEngineTrack` and minimum `engineVersion`; optional 3s update sweep checks `(engineId, track)` feeds; `BuildChildLaunchPlan` isolates `--data-dir`, `--config`, and `--log-dir` to `<dataDir>\modules\<moduleId>\` and launches inside `JobObjectGuard`.
 
 ### 3.2 `.decomp` Pipeline & AOT Cache Pipeline
-1. [`Program.RunDecompCliAsync`](../src/reEngine.App/Program.CliHandlers.cs#L75-L141) receives `decomp --module <file.decomp>` (`--stage D0..D5`, `--engine-dir`, `--toolchain-dir`, `--output-dir`), containment-checking `outputDir` in `--test-mode`.
+1. [`Program.RunDecompCliAsync`](../src/reEngine.App/Program.CliHandlers.cs) receives `decomp --module <file.decomp>` (`--stage D0..D5`, `--engine-dir`, `--toolchain-dir`, `--output-dir`), containment-checking `outputDir` under `APP_ISOLATED_TEST=1`.
 2. [`DecompPipelineCoordinator.DispatchAsync`](../src/reEngine.Core/Decomp/DecompPipelineCoordinator.cs) parses `DecompPackageManifest`, selects `OfflineToolchainLocator` (`..\toolchain` primary, `.\toolchain` fallback), resolves the compatible `re*` engine (returning deterministic 3-part `DecompUnbuiltEngineError` -> Exit `3` if unbuilt), invokes `IDecompPlatformProvider.RunDecompAsync`, and enforces clean-room output checks (rejecting `.bin`/`.iso`/`.sav`/`*.g.cs`/`*.Generated.dll`).
 3. Compiled host AOT outputs are stored by [`AotCacheManager`](../src/reEngine.Core/Aot/AotCacheManager.cs#L307-L332) into `<dataDir>\cache\<moduleId>\<romSha16>-<engineId>-<engineVer>-<modVer>\` using cross-process `.aot-index.lock`, `aot-index.json` (`fileSizeBytes`, `sha256Hex`), `.bak` rotation, and atomic write-rename.
 
@@ -95,34 +95,34 @@ graph TD
 
 | File (relative to repo root) | CodeSLOC | Total | Tier (`250/400/600`) | Exported Symbols & Role |
 | :--- | :---: | :---: | :---: | :--- |
+| [`Dev/src/reEngine.Core/Bootstrap/ReEnginePackagingConstants.cs`](../src/reEngine.Core/Bootstrap/ReEnginePackagingConstants.cs) | `22` | `56` | `<= 250` | `ReEnginePackagingConstants` (`0.2.1-hf.1`, `AllowAutoStart = false`), `ReEngineBootstrapResult` |
 | [`Dev/src/reEngine.Core/Bootstrap/ReEngineTelemetryFormatter.cs`](../src/reEngine.Core/Bootstrap/ReEngineTelemetryFormatter.cs) | `25` | `44` | `<= 250` | `ReEngineTelemetryFormatter` (UTC log & heartbeat prefixing) |
-| [`Dev/src/reEngine.Core/Bootstrap/ReEnginePackagingConstants.cs`](../src/reEngine.Core/Bootstrap/ReEnginePackagingConstants.cs) | `22` | `56` | `<= 250` | `ReEnginePackagingConstants` (`0.2.1`, `AllowAutoStart = false`), `ReEngineBootstrapResult` |
-| [`Dev/src/reEngine.Core/Aot/AotCacheContracts.cs`](../src/reEngine.Core/Aot/AotCacheContracts.cs) | `50` | `87` | `<= 250` | `AotCacheKey`, [`AotCacheEntry`](../src/reEngine.Core/Aot/AotCacheContracts.cs#L33-L41), `IAotCacheManager` |
+| [`Dev/src/reEngine.Core/Aot/AotCacheContracts.cs`](../src/reEngine.Core/Aot/AotCacheContracts.cs) | `50` | `87` | `<= 250` | `AotCacheKey`, `AotCacheEntry`, `IAotCacheManager` |
 | [`Dev/src/reEngine.Core/Updates/UpdateModels.cs`](../src/reEngine.Core/Updates/UpdateModels.cs) | `53` | `100` | `<= 250` | `ReEngineSettings`, `UpdateFeedManifest`, `EngineTrackUpdateOutcome` |
 | [`Dev/src/reEngine.Core/Decomp/DecompPipelineContracts.cs`](../src/reEngine.Core/Decomp/DecompPipelineContracts.cs) | `61` | `102` | `<= 250` | `DecompStage`, `IDecompPlatformProvider`, `DecompUnbuiltEngineError` |
 | [`Dev/src/reEngine.Core/Manifests/DecompPackageManifest.cs`](../src/reEngine.Core/Manifests/DecompPackageManifest.cs) | `61` | `128` | `<= 250` | `DecompPackageManifest`, `DecompToolchainRequirements` |
 | [`Dev/src/reEngine.Launcher/LauncherArgsHelper.cs`](../src/reEngine.Launcher/LauncherArgsHelper.cs) | `108` | `133` | `<= 250` | `LauncherArgsHelper` (CWD path resolution & sync-wait policy) |
 | [`Dev/src/reEngine.Launcher/Program.cs`](../src/reEngine.Launcher/Program.cs) | `112` | `132` | `<= 250` | `Program` (root launcher stub loading embedded `Foundation.Launcher`) |
 | [`Dev/scripts/stage_offline_toolchain.ps1`](../scripts/stage_offline_toolchain.ps1) | `124` | `148` | `<= 250` | Offline Apache-2.0 Ghidra + `jlink` OpenJDK `<= 160 MB` stager |
-| [`Dev/src/reEngine.App/Program.CliHandlers.cs`](../src/reEngine.App/Program.CliHandlers.cs) | `124` | `142` | `<= 250` | [`Program` partial](../src/reEngine.App/Program.CliHandlers.cs#L15-L142) (`--check-updates`, `--headless`, `decomp`) |
-| [`Dev/src/reEngine.App/RecompLaunchOptions.cs`](../src/reEngine.App/RecompLaunchOptions.cs) | `129` | `150` | `<= 250` | `RecompLaunchOptions` (CLI flag parser & passthrough carrier) |
-| [`Dev/src/reEngine.Core/Decomp/OfflineToolchainLocator.cs`](../src/reEngine.Core/Decomp/OfflineToolchainLocator.cs) | `139` | `186` | `<= 250` | `ReEngineInstallProfile`, `OfflineToolchainStatus`, [`OfflineToolchainLocator`](../src/reEngine.Core/Decomp/OfflineToolchainLocator.cs#L53-L95) |
-| [`Dev/src/reEngine.App/ReEngineAppStatusHelper.cs`](../src/reEngine.App/ReEngineAppStatusHelper.cs) | `156` | `185` | `<= 250` | [`ReEngineAppStatusHelper`](../src/reEngine.App/ReEngineAppStatusHelper.cs#L96-L185), `AotCacheStatusSummary`, `DecompDispatchStatusSummary` |
+| [`Dev/src/reEngine.App/Program.CliHandlers.cs`](../src/reEngine.App/Program.CliHandlers.cs) | `125` | `143` | `<= 250` | [`Program` partial](../src/reEngine.App/Program.CliHandlers.cs) (`--check-updates`, `--tray-only`, `decomp`) |
+| [`Dev/src/reEngine.App/RecompLaunchOptions.cs`](../src/reEngine.App/RecompLaunchOptions.cs) | `125` | `146` | `<= 250` | `RecompLaunchOptions` (CLI flag parser & passthrough carrier) |
+| [`Dev/src/reEngine.Core/Decomp/OfflineToolchainLocator.cs`](../src/reEngine.Core/Decomp/OfflineToolchainLocator.cs) | `139` | `186` | `<= 250` | `ReEngineInstallProfile`, `OfflineToolchainStatus`, `OfflineToolchainLocator` |
+| [`Dev/src/reEngine.App/ReEngineAppStatusHelper.cs`](../src/reEngine.App/ReEngineAppStatusHelper.cs) | `156` | `185` | `<= 250` | `ReEngineAppStatusHelper`, `AotCacheStatusSummary`, `DecompDispatchStatusSummary` |
 | [`Dev/src/reEngine.Installer/ReEngineWizardPathNormalizer.cs`](../src/reEngine.Installer/ReEngineWizardPathNormalizer.cs) | `159` | `194` | `<= 250` | `ReEngineWizardPathNormalizer` (Setup Wizard `<parent>\reEngine` auto-sort & `engines\` resolver) |
-| [`Dev/src/reEngine.Installer/LegacyMigrationHelper.cs`](../src/reEngine.Installer/LegacyMigrationHelper.cs) | `178` | `206` | `<= 250` | [`LegacyMigrationHelper`](../src/reEngine.Installer/LegacyMigrationHelper.cs#L70-L150) (`PersistInstallProfileSettings`, `TryMigrateLegacyInstall`) |
+| [`Dev/src/reEngine.Installer/LegacyMigrationHelper.cs`](../src/reEngine.Installer/LegacyMigrationHelper.cs) | `177` | `205` | `<= 250` | `LegacyMigrationHelper` (`PersistInstallProfileSettings`, `TryMigrateLegacyInstall`) |
 | [`Dev/src/reEngine.Core/Manifests/RecompPackageManifest.cs`](../src/reEngine.Core/Manifests/RecompPackageManifest.cs) | `215` | `289` | `<= 250` | `RecompPackageManifest`, `RecompPackageReader` |
 | [`Dev/src/reEngine.Core/Decomp/DecompPipelineCoordinator.cs`](../src/reEngine.Core/Decomp/DecompPipelineCoordinator.cs) | `238` | `294` | `<= 250` | `DecompPipelineCoordinator`, `DecompDispatchResult` |
-| [`Dev/src/reEngine.App/RecompLaunchCoordinator.cs`](../src/reEngine.App/RecompLaunchCoordinator.cs) | `245` | `283` | `<= 250` | `RecompLaunchCoordinator`, `ChildLaunchPlan` |
+| [`Dev/src/reEngine.App/RecompLaunchCoordinator.cs`](../src/reEngine.App/RecompLaunchCoordinator.cs) | `245` | `284` | `<= 250` | `RecompLaunchCoordinator`, `ChildLaunchPlan` |
+| [`Dev/src/reEngine.App/ReEngineMainForm.cs`](../src/reEngine.App/ReEngineMainForm.cs) | `246` | `280` | `<= 250` | `ReEngineMainForm` (UI handlers, `OnRegisterAssociationClicked`) |
 | [`Dev/src/reEngine.App/ReEngineMainForm.Layout.cs`](../src/reEngine.App/ReEngineMainForm.Layout.cs) | `254` | `288` | `<= 400` | `ReEngineMainForm` partial (Dark Slate layout, pills, tooltips) |
 | [`Dev/src/reEngine.Core/Resolution/EngineVersionResolver.cs`](../src/reEngine.Core/Resolution/EngineVersionResolver.cs) | `272` | `343` | `<= 400` | `SemVer`, `EngineTrackMatcher`, `EngineVersionResolver` |
-| [`Dev/scripts/build_release.ps1`](../scripts/build_release.ps1) | `276` | `322` | `<= 400` | Single-pass test, staging, installer build, release sanitize & SDK drop |
-| [`Dev/src/reEngine.App/Program.cs`](../src/reEngine.App/Program.cs) | `279` | `323` | `<= 400` | [`Program` partial](../src/reEngine.App/Program.cs#L17-L323) (CLI/GUI dispatch, `ResolveEnginesDir`, sandbox guard) |
-| [`Dev/src/reEngine.Core/Aot/AotCacheManager.cs`](../src/reEngine.Core/Aot/AotCacheManager.cs) | `283` | `346` | `<= 400` | [`AotCacheManager`](../src/reEngine.Core/Aot/AotCacheManager.cs#L307-L346) (`aot-index.json` + `.bak` + SHA-256 cache store) |
-| [`Dev/src/reEngine.Core/Associations/FileAssociationStores.cs`](../src/reEngine.Core/Associations/FileAssociationStores.cs) | `286` | `380` | `<= 400` | `IFileAssociationStore`, `WindowsRegistryAssociationStore`, `VirtualRegistryAssociationStore` |
-| [`Dev/src/reEngine.App/ReEngineMainForm.cs`](../src/reEngine.App/ReEngineMainForm.cs) | `287` | `324` | `<= 400` | `ReEngineMainForm` (UI handlers, [`OnRegisterAssociationClicked`](../src/reEngine.App/ReEngineMainForm.cs#L164-L171), showcase) |
+| [`Dev/src/reEngine.App/Program.cs`](../src/reEngine.App/Program.cs) | `279` | `323` | `<= 400` | [`Program` partial](../src/reEngine.App/Program.cs) (CLI/GUI dispatch, `ResolveEnginesDir`, containment guard) |
+| [`Dev/src/reEngine.Core/Aot/AotCacheManager.cs`](../src/reEngine.Core/Aot/AotCacheManager.cs) | `283` | `346` | `<= 400` | `AotCacheManager` (`aot-index.json` + `.bak` + SHA-256 cache store) |
+| [`Dev/scripts/build_release.ps1`](../scripts/build_release.ps1) | `286` | `332` | `<= 400` | Single-pass test, staging, installer build, release sanitize & SDK drop |
+| [`Dev/src/reEngine.Core/Associations/FileAssociationStores.cs`](../src/reEngine.Core/Associations/FileAssociationStores.cs) | `290` | `384` | `<= 400` | `IFileAssociationStore`, `WindowsRegistryAssociationStore`, `VirtualRegistryAssociationStore` |
 | [`Dev/src/reEngine.Core/Updates/UpdateCoordinator.cs`](../src/reEngine.Core/Updates/UpdateCoordinator.cs) | `312` | `370` | `<= 400` | `UpdateCoordinator`, multi-engine sweep, `.part`/`.sha256` patch staging |
-| [`Dev/src/reEngine.Core/Bootstrap/ReEngineBootstrapHelper.cs`](../src/reEngine.Core/Bootstrap/ReEngineBootstrapHelper.cs) | `291` | `364` | `<= 400` | [`ReEngineBootstrapHelper`](../src/reEngine.Core/Bootstrap/ReEngineBootstrapHelper.cs#L17-L364) |
-| [`Dev/src/reEngine.Installer/Program.cs`](../src/reEngine.Installer/Program.cs) | `337` | `376` | `<= 400` | [`Program`](../src/reEngine.Installer/Program.cs#L40-L376) (`InstallerWizardForm` GUI wiring, `--reengine-dir`/`--suite-dir`) |
+| [`Dev/src/reEngine.Core/Bootstrap/ReEngineBootstrapHelper.cs`](../src/reEngine.Core/Bootstrap/ReEngineBootstrapHelper.cs) | `320` | `396` | `<= 400` | `ReEngineBootstrapHelper` (`Install`, path resolution, `IsIsolatedTestEnv`) |
+| [`Dev/src/reEngine.Installer/Program.cs`](../src/reEngine.Installer/Program.cs) | `332` | `372` | `<= 400` | [`Program`](../src/reEngine.Installer/Program.cs) (`InstallerWizardForm` GUI wiring, `--reengine-dir`/`--suite-dir`) |
 
 ---
 
@@ -134,7 +134,7 @@ graph TD
 | :--- | :--- | :--- | :--- |
 | `settings.json` (template: [`Dev\settings.example.json`](../settings.example.json)) | `UpdateCoordinator` / `LegacyMigrationHelper` | `schemaVersion`, `appId`, `installProfile`, `reEngineInstallDir`, `suiteInstallDir`, `umbrellaSubpath`, `decompSchemaVersion`, `goalDecompTier`, `targetDecompTier`, `shouldCheckUpdates`, `shouldAutoStagePatches`, `enginesDirectoryOverride`, `preferredResolutionScale` | `GranularSettingsManager` / `.tmp` atomic rename + `.bak` recovery; `[JsonExtensionData]` preserves unknown keys |
 | `cache\aot-index.json` | `AotCacheManager` | `schemaVersion`, `entries[]` (`moduleId`, `romSha256`, `engineId`, `engineVersion`, `moduleVersion`, `fileSizeBytes`, `sha256Hex`) | `.aot-index.lock` cross-process mutex + `.bak` rotation + `.tmp.<guid>` atomic rename |
-| `virtual_registry.json` | `VirtualRegistryAssociationStore` | `.recomp` (`reEngine.RecompModule`), `.decomp` (`reEngine.DecompModule`), `commandTemplate` | `.tmp` atomic replace strictly in `--test-mode` / `Sandbox\` |
+| `virtual_registry.json` | `VirtualRegistryAssociationStore` | `.recomp` (`reEngine.RecompModule`), `.decomp` (`reEngine.DecompModule`), `commandTemplate` | `.tmp` atomic replace strictly under `APP_ISOLATED_TEST=1` |
 | `modules\<moduleId>\settings.json` | Child `re*` engine (isolated by `RecompLaunchCoordinator`) | Delegated to engine contract | Contained inside `<dataDir>\modules\<moduleId>\` |
 | `staged_updates\<engineId>\v<ver>\` | `UpdateCoordinator` | `.part` download staging + SHA-256 verification | Non-destructive track isolation |
 
@@ -156,7 +156,7 @@ graph TD
 
 - **Zero PII & Deterministic Paths:** `Directory.Build.props` enables `Deterministic = true` and `ContinuousIntegrationBuild = true` + `<PathMap>` in Release; `audit_installer.ps1` and `Assert-NoEndUserLeaks` block machine paths, usernames, Notion UUIDs, `.pdb`, `.env`, and `*secret*.json` across `Builds\`, `Installers\`, and `Releases\`.
 - **No Network Calls at Rest or Decomp:** Zero telemetry servers, zero runtime Ghidra/OpenJDK downloads (`OfflineToolchainLocator` uses staged `toolchain\` only), and zero background daemons (`AllowAutoStart = false`).
-- **Registry Isolation:** `WindowsRegistryAssociationStore` throws if constructed with `testMode: true`; all tests and `Sandbox\` probes write solely to `virtual_registry.json`.
+- **Registry Isolation:** `WindowsRegistryAssociationStore` refuses registry writes when `suppressHostMutations: true` or `APP_ISOLATED_TEST=1` is active; isolated tests write solely to `virtual_registry.json`.
 - **Apache-2.0 / GPL Separation:** `stage_offline_toolchain.ps1` and `OfflineToolchainLocator` reject unstripped `ghidra\GPL\` directories and require `THIRDPARTY_LICENSES.txt` alongside `toolchain\`.
 
 ---
@@ -165,6 +165,7 @@ graph TD
 
 Run full suite in zero-warning Release mode:
 ```powershell
+$env:APP_ISOLATED_TEST = "1"
 dotnet test Dev\reEngine.slnx -c Release -p:TreatWarningsAsErrors=true
 ```
 
@@ -175,8 +176,8 @@ dotnet test Dev\reEngine.slnx -c Release -p:TreatWarningsAsErrors=true
 | [`AotCacheManagerTests.cs`](../tests/reEngine.Tests/AotCacheManagerTests.cs) | `AotCacheManager`, `AotCacheContracts` | `<dataDir>\cache\` indexing, `fileSizeBytes`/`sha256Hex` JSON schema, tamper invalidation, `.bak` & eviction |
 | [`InstallerAndAppStatusTests.cs`](../tests/reEngine.Tests/InstallerAndAppStatusTests.cs) | `reEngine.Installer.Program`, `LegacyMigrationHelper`, `ReEngineAppStatusHelper` | `StreamItAll\reEngine\reEngine`, `--profile`, `--reengine-dir`/`--suite-dir`, opt-in migration, status badges |
 | [`InstallerWizardAutoSortTests.cs`](../tests/reEngine.Tests/InstallerWizardAutoSortTests.cs) | `ReEngineWizardPathNormalizer`, `InstallerWizardForm` | Parent-folder `<parent>\reEngine` auto-sort, companion `<reEngineDir>\engines\` selection, live suite sync |
-| [`AssociationUpdateAndContainmentTests.cs`](../tests/reEngine.Tests/AssociationUpdateAndContainmentTests.cs) | `FileAssociationStores`, `UpdateCoordinator`, `ReEngineBootstrapHelper` | `.recomp`/`.decomp` HKCU & virtual stores, track sweep, peer `..\toolchain`/`..\engines` resolution, sandbox escape reject |
-| [`LauncherAndLaunchPlanTests.cs`](../tests/reEngine.Tests/LauncherAndLaunchPlanTests.cs) | `LauncherArgsHelper`, `RecompLaunchOptions` | Relative CWD arg normalization (`decomp` preserved), `--open`/`--wait`/test flag passthrough |
+| [`AssociationUpdateAndContainmentTests.cs`](../tests/reEngine.Tests/AssociationUpdateAndContainmentTests.cs) | `FileAssociationStores`, `UpdateCoordinator`, `ReEngineBootstrapHelper` | `.recomp`/`.decomp` HKCU & virtual stores, track sweep, peer `..\toolchain`/`..\engines` resolution, path escape reject |
+| [`LauncherAndLaunchPlanTests.cs`](../tests/reEngine.Tests/LauncherAndLaunchPlanTests.cs) | `LauncherArgsHelper`, `RecompLaunchOptions` | Relative CWD arg normalization (`decomp` preserved), `--open`/`--wait`/`--tray-only`/`--window`/`--browser` passthrough |
 | [`UpdateSweepAndTelemetryTests.cs`](../tests/reEngine.Tests/UpdateSweepAndTelemetryTests.cs) | `UpdateCoordinator`, `ReEngineTelemetryFormatter` | Multi-track sweep resilience, offline `[WARN]` zero-crash guarantee, single `[HEARTBEAT]` formatting |
 
 ---
@@ -185,15 +186,16 @@ dotnet test Dev\reEngine.slnx -c Release -p:TreatWarningsAsErrors=true
 
 - **ADR-001 · `2026-11-13` · `v0.1.0` — Zero-Daemon Launcher Architecture (`AllowAutoStart = false`):** Keep `reEngine.Launcher` free of `reEngine.Core` (embedding only `Foundation.Launcher.dll`) and exit every process when work completes instead of running a background tray/service. Consequence: `0 MB` idle footprint and `< 2 MB` stub EXE.
 - **ADR-002 · `2026-11-14` · `v0.1.2` — Parent-Root `app\*.recomp` Cartridge Resolution:** When a `.recomp` lives under `<GameRoot>\app\`, resolve `ModuleRootDirectory` to `<GameRoot>\` so `data\rom\` media stays cleanly separate from executable binaries across game upgrades.
-- **ADR-003 · `2026-11-15` · `v0.2.0` — Peer Suite Directory Topology (`StreamItAll\reEngine\{reEngine,toolchain,engines,games}`):** Move default installs to non-admin `%LOCALAPPDATA%\Programs\StreamItAll\reEngine\reEngine\` (`UmbrellaSubpath = "StreamItAll\\reEngine\\reEngine"`) with peer siblings `..\toolchain\` and `..\engines\` primary and portable `.\toolchain\`/`.\engines\` fallback. Consequence: clean separation of router, optional `<= 160 MB` GPL-stripped toolchain, engines, and games while preserving portable/Sandbox runs.
+- **ADR-003 · `2026-11-15` · `v0.2.0` — Peer Suite Directory Topology (`StreamItAll\reEngine\{reEngine,toolchain,engines,games}`):** Move default installs to non-admin `%LOCALAPPDATA%\Programs\StreamItAll\reEngine\reEngine\` (`UmbrellaSubpath = "StreamItAll\\reEngine\\reEngine"`) with peer siblings `..\toolchain\` and `..\engines\` primary and portable `.\toolchain\`/`.\engines\` fallback. Consequence: clean separation of router, optional `<= 160 MB` GPL-stripped toolchain, engines, and games while preserving portable runs.
 - **ADR-004 · `2026-11-15` · `v0.2.0` — Direct `InstallerWizardForm` Hosting in `reEngine.Installer`:** Because `Foundation.Installer v0.4.0`'s `StandardInstallerHost.Run` drops `SelectedProfileId`, `SecondaryInstallDir`, and `MigrateLegacyChecked`, `reEngine.Installer` runs `InstallerWizardForm` directly in interactive GUI mode (while filing a Foundation proposal report and keeping `Foundation\` read-only).
 - **ADR-005 · `2026-11-15` · `v0.2.1` — Setup Wizard Auto-Sort (`<parent>\reEngine`) & Companion `<reEngineDir>\engines\` Creation:** Normalize generic parent picks in `InstallerWizardForm` into `<parent>\reEngine`, sync `SecondaryDirTextBox` when not overridden, and create `<reEngineDir>\engines\` for non-umbrella custom paths unless `<parent>\engines\` already exists.
+- **ADR-006 · `2026-11-15` · `v0.2.1-hf.1` — `APP_ISOLATED_TEST=1` & `Foundation v0.4.1-hf.1` Alignment:** Migrated to `AppEnvironment`, `UiPresentationMode.TrayOrBackground`, and `InstallerRuntimeContext`; retired legacy test-harness CLI flags, external smoke `.bat` wrappers, and standalone verification artifacts in favor of standard `APP_ISOLATED_TEST=1` isolation and `--tray-only` / `--window` / `--browser` / `--port` diagnostic modes.
 
 ---
 
 ## 10. Zero-Touch Extension Playbooks
 
-1. **Adding a New Platform Engine (`re64`, `reGenesis`, `reCube`):** Implement a standalone tier project consuming `<SHARED_LIBS>\reEngine\v0.2.1\reEngine.Core.dll`, implement `IDecompPlatformProvider` inside `<engineId>.dll`, and install binaries into `<SuiteRoot>\engines\<engineId>\v<Ver>\`. Zero edits needed in `reEngine`.
+1. **Adding a New Platform Engine (`re64`, `reGenesis`, `reCube`):** Implement a standalone tier project consuming `<SHARED_LIBS>\reEngine\v0.2.1-hf.1\reEngine.Core.dll`, implement `IDecompPlatformProvider` inside `<engineId>.dll`, and install binaries into `<SuiteRoot>\engines\<engineId>\v<Ver>\`. Zero edits needed in `reEngine`.
 2. **Adding a Game `.recomp` / `.decomp` Module:** Ship `module.recomp.json` (and optional `module.decomp.json`) referencing `engineId`, `engineVersion`, and `compatibleEngineTrack`, keep binaries AOT-free (`*.Generated.dll` compiled locally into `<dataDir>\cache\`), and preserve `data\rom\`.
 3. **Adding a New Persisted Settings Field:** Add nullable property or read via `ReEngineSettings.ExtensionData` (`[JsonExtensionData]`), document the canonical `camelCase` key in Standard 18 + `Dev\settings.example.json`, and preserve backward compatibility with `.bak` recovery.
-4. **Adding a CLI Subcommand/Flag:** Add option parsing in `RecompLaunchOptions` (or `Program.CliHandlers.cs` if suite-scoped), register path/value flag exemptions in `LauncherArgsHelper`, and add sandbox containment assertions if the option accepts a filesystem path.
+4. **Adding a CLI Subcommand/Flag:** Add option parsing in `RecompLaunchOptions` (or `Program.CliHandlers.cs` if suite-scoped), register path/value flag exemptions in `LauncherArgsHelper`, and add containment assertions if the option accepts a filesystem path.

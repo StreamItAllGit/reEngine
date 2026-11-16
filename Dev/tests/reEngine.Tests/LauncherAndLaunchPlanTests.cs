@@ -42,19 +42,17 @@ public sealed class LauncherAndLaunchPlanTests : IDisposable
 
     [Theory]
     [InlineData(new string[0], false)]
-    [InlineData(new[] { "--port", "15100", "--ui", "desktop" }, false)]
-    [InlineData(new[] { "--port=15100", "--ui=desktop", "--window" }, false)]
+    [InlineData(new[] { "--port", "5100", "--ui", "desktop" }, false)]
+    [InlineData(new[] { "--port=5100", "--ui=desktop", "--window" }, false)]
     [InlineData(new[] { "--wait" }, true)]
-    [InlineData(new[] { "--test-mode", "--open", "sample.recomp" }, true)]
+    [InlineData(new[] { "--tray-only", "--open", "sample.recomp" }, true)]
     [InlineData(new[] { "--open=sample.recomp" }, true)]
     [InlineData(new[] { "--check-updates" }, true)]
     [InlineData(new[] { "--register-assoc" }, true)]
-    [InlineData(new[] { "--visible-test" }, true)]
-    [InlineData(new[] { "--test-mode" }, true)]
-    [InlineData(new[] { "--port", "15100", "game.recomp" }, true)]
+    [InlineData(new[] { "--tray-only" }, true)]
+    [InlineData(new[] { "--port", "5100", "game.recomp" }, true)]
     [InlineData(new[] { "decomp", "--module", "sample.decomp" }, true)]
     [InlineData(new[] { "--dry-run" }, true)]
-    [InlineData(new[] { "--headless" }, true)]
     [InlineData(new[] { "--help" }, true)]
     [InlineData(new[] { "--version" }, true)]
     public void LauncherArgsHelper_ShouldWaitForChild_HandlesSyncFlagsAndValueOptions(string[] args, bool expected)
@@ -101,11 +99,11 @@ public sealed class LauncherAndLaunchPlanTests : IDisposable
 
         string[] input =
         [
-            "--test-mode",
-            "--port", "15100",
+            "--tray-only",
+            "--port", "5100",
             "--ui", "desktop",
             "--frames", "12",
-            "--feed", "http://127.0.0.1:15931/feed.json",
+            "--feed", "http://127.0.0.1:5931/feed.json",
             "--open", @".\pkg\module.recomp.json",
             @"--fixture=.\fixtures\room1.json",
             @"local_positional.recomp"
@@ -113,11 +111,11 @@ public sealed class LauncherAndLaunchPlanTests : IDisposable
 
         string[] normalized = LauncherArgsHelper.NormalizePathArguments(input, callerCwd);
 
-        Assert.Equal("--test-mode", normalized[0]);
-        Assert.Equal("15100", normalized[2]);
+        Assert.Equal("--tray-only", normalized[0]);
+        Assert.Equal("5100", normalized[2]);
         Assert.Equal("desktop", normalized[4]);
         Assert.Equal("12", normalized[6]);
-        Assert.Equal("http://127.0.0.1:15931/feed.json", normalized[8]);
+        Assert.Equal("http://127.0.0.1:5931/feed.json", normalized[8]);
         Assert.Equal(Path.GetFullPath(Path.Combine(callerCwd, "pkg", "module.recomp.json")), normalized[10]);
         Assert.Equal("--fixture=" + Path.GetFullPath(Path.Combine(callerCwd, "fixtures", "room1.json")), normalized[11]);
         Assert.Equal(Path.GetFullPath(Path.Combine(callerCwd, "local_positional.recomp")), normalized[12]);
@@ -130,8 +128,8 @@ public sealed class LauncherAndLaunchPlanTests : IDisposable
     [Fact]
     public void RecompLaunchCoordinator_BuildChildLaunchPlan_IsolatesModuleStorageAndForwardsFlags()
     {
-        string sandboxRoot = Path.Combine(_tempRoot, "Sandbox");
-        string dataDir = Path.Combine(sandboxRoot, "data", "audit_v011");
+        string isolatedRoot = Path.Combine(_tempRoot, "isolated");
+        string dataDir = Path.Combine(isolatedRoot, "data", "audit_v011");
         string modDir = Path.Combine(dataDir, "mod_kf");
         string romDir = Path.Combine(modDir, "data", "rom");
         Directory.CreateDirectory(romDir);
@@ -152,34 +150,32 @@ public sealed class LauncherAndLaunchPlanTests : IDisposable
             """);
 
         string fixturePath = Path.Combine(dataDir, "sample_fixture.json");
-        string screenshotPath = Path.Combine(sandboxRoot, "logs", "shot.png");
-        string audioPath = Path.Combine(sandboxRoot, "logs", "audio.wav");
-        string scriptPath = Path.Combine(dataDir, "input.txt");
-        string customLogDir = Path.Combine(sandboxRoot, "logs", "audit_v011");
+        string screenshotPath = Path.Combine(isolatedRoot, "logs", "shot.png");
+        string audioPath = Path.Combine(isolatedRoot, "logs", "audio.wav");
+        string customLogDir = Path.Combine(isolatedRoot, "logs", "audit_v011");
         string suiteConfig = Path.Combine(dataDir, "settings.json");
 
         string[] cliArgs =
         [
-            "--test-mode",
             "--open", pkgPath,
             "--wait",
-            "--headless",
+            "--tray-only",
+            "--dry-run",
             "--enable-logs",
             "--frames", "15",
             "--fixture", fixturePath,
             "--dump-screenshot", screenshotPath,
             "--dump-audio", audioPath,
-            "--input-script", scriptPath,
             "--data-dir", dataDir,
             "--config", suiteConfig,
             "--log-dir", customLogDir
         ];
 
-        var sandbox = new SandboxEnvironment("reengine", cliArgs);
-        RecompLaunchOptions opts = RecompLaunchOptions.FromArgs(cliArgs, sandbox);
+        var appEnv = new AppEnvironment("reengine", cliArgs);
+        RecompLaunchOptions opts = RecompLaunchOptions.FromArgs(cliArgs, appEnv);
         RecompPackageLoadResult loaded = RecompPackageReader.Load(pkgPath);
 
-        ChildLaunchPlan plan = RecompLaunchCoordinator.BuildChildLaunchPlan(loaded, sandbox, sandboxRoot, opts);
+        ChildLaunchPlan plan = RecompLaunchCoordinator.BuildChildLaunchPlan(loaded, appEnv, isolatedRoot, opts);
 
         string expectedModData = Path.Combine(dataDir, "modules", "kings-field-slus-00158");
         Assert.Equal(expectedModData, plan.ModuleDataDirectory);
@@ -190,8 +186,8 @@ public sealed class LauncherAndLaunchPlanTests : IDisposable
         Assert.Contains("--preload-media", plan.Arguments);
         Assert.Contains(Path.GetFullPath(cuePath), plan.Arguments);
         Assert.Contains("--wait", plan.Arguments);
-        Assert.Contains("--test-mode", plan.Arguments);
-        Assert.Contains("--headless", plan.Arguments);
+        Assert.Contains("--tray-only", plan.Arguments);
+        Assert.Contains("--dry-run", plan.Arguments);
         Assert.Contains("--enable-logs", plan.Arguments);
         Assert.Contains("--frames", plan.Arguments);
         Assert.Contains("15", plan.Arguments);
@@ -199,14 +195,13 @@ public sealed class LauncherAndLaunchPlanTests : IDisposable
         Assert.Contains(Path.GetFullPath(fixturePath), plan.Arguments);
         Assert.Contains("--dump-screenshot", plan.Arguments);
         Assert.Contains("--dump-audio", plan.Arguments);
-        Assert.Contains("--input-script", plan.Arguments);
     }
 
     [Fact]
     public void RecompLaunchCoordinator_BuildChildLaunchPlan_RejectsEscapingFixtureAndUnsafeModuleId()
     {
-        string sandboxRoot = Path.Combine(_tempRoot, "Sandbox");
-        string dataDir = Path.Combine(sandboxRoot, "data");
+        string isolatedRoot = Path.Combine(_tempRoot, "isolated");
+        string dataDir = Path.Combine(isolatedRoot, "data");
         Directory.CreateDirectory(dataDir);
 
         string pkgPath = Path.Combine(dataDir, "module.recomp.json");
@@ -223,13 +218,13 @@ public sealed class LauncherAndLaunchPlanTests : IDisposable
             """);
 
         string outsideFixture = Path.Combine(_tempRoot, "outside_host.json");
-        string[] escapingArgs = ["--test-mode", "--data-dir", dataDir, "--fixture", outsideFixture];
-        var sandbox = new SandboxEnvironment("reengine", escapingArgs);
-        RecompLaunchOptions escapingOpts = RecompLaunchOptions.FromArgs(escapingArgs, sandbox);
+        string[] escapingArgs = ["--data-dir", dataDir, "--fixture", outsideFixture];
+        var appEnv = new AppEnvironment("reengine", escapingArgs);
+        RecompLaunchOptions escapingOpts = RecompLaunchOptions.FromArgs(escapingArgs, appEnv);
         RecompPackageLoadResult loaded = RecompPackageReader.Load(pkgPath);
 
         Assert.Throws<InvalidOperationException>(() =>
-            RecompLaunchCoordinator.BuildChildLaunchPlan(loaded, sandbox, sandboxRoot, escapingOpts));
+            RecompLaunchCoordinator.BuildChildLaunchPlan(loaded, appEnv, isolatedRoot, escapingOpts));
 
         var badManifest = new RecompPackageManifest
         {
@@ -240,6 +235,6 @@ public sealed class LauncherAndLaunchPlanTests : IDisposable
         };
         var badLoaded = new RecompPackageLoadResult(badManifest, pkgPath, dataDir, new PreloadRomDiscoveryResult(dataDir, false, Array.Empty<string>(), null));
         Assert.Throws<InvalidOperationException>(() =>
-            RecompLaunchCoordinator.BuildChildLaunchPlan(badLoaded, sandbox, sandboxRoot, new RecompLaunchOptions()));
+            RecompLaunchCoordinator.BuildChildLaunchPlan(badLoaded, appEnv, isolatedRoot, new RecompLaunchOptions()));
     }
 }

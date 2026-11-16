@@ -3,7 +3,6 @@
 /Builds/
 /Installers/
 /Releases/
-/Sandbox/
 .agents/
 Dev/logs/
 Dev/data/
@@ -18,6 +17,7 @@ __pycache__/
 .ruff_cache/
 bin/
 obj/
+TestResults/
 .vs/
 Library/
 Temp/

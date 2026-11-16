@@ -1,5 +1,5 @@
 // @module: reEngine.App.Program
-// @purpose: Entry point for reEngine CLI router, fail-closed sandbox containment guard, and dark WinForms manager UI.
+// @purpose: Entry point for reEngine CLI router, fail-closed path containment guard, and dark WinForms manager UI.
 // @depends-on: System, System.Collections.Generic, System.IO, System.Linq, System.Runtime.InteropServices, System.Text.Json, System.Threading, System.Threading.Tasks, System.Windows.Forms, Foundation.Core, reEngine.Core
 // @exports: Program
 
@@ -46,9 +46,9 @@ internal static partial class Program
             return 0;
         }
 
-        var sandbox = new SandboxEnvironment("reengine", rawArgs, defaultConfigFileName: "settings.json");
+        var appEnv = new AppEnvironment("reengine", rawArgs, defaultConfigFileName: "settings.json");
         var logLines = new Queue<string>(100);
-        var logSink = new CappedSharedLogSink(Path.Combine(sandbox.LogDirectory, "reengine.log"));
+        var logSink = new CappedSharedLogSink(Path.Combine(appEnv.LogDirectory, "reengine.log"));
 
         string[] SnapshotRecentLogs()
         {
@@ -67,7 +67,7 @@ internal static partial class Program
         }
 
         CrashBundleService.RegisterGlobalHandlers(
-            sandbox.LogDirectory,
+            appEnv.LogDirectory,
             ReEnginePackagingConstants.AppId,
             ReEnginePackagingConstants.Version,
             SnapshotRecentLogs);
@@ -81,7 +81,7 @@ internal static partial class Program
 
         try
         {
-            return RunAsync(rawArgs, sandbox, Log, cts.Token).GetAwaiter().GetResult();
+            return RunAsync(rawArgs, appEnv, Log, cts.Token).GetAwaiter().GetResult();
         }
         catch (OperationCanceledException) when (cts.IsCancellationRequested)
         {
@@ -93,7 +93,7 @@ internal static partial class Program
         {
             Log("ERROR", ex.Message);
             CrashBundleService.TryWriteCrashBundle(
-                sandbox.LogDirectory,
+                appEnv.LogDirectory,
                 ReEnginePackagingConstants.AppId,
                 ReEnginePackagingConstants.Version,
                 ex,
@@ -113,31 +113,41 @@ internal static partial class Program
 
     private static bool IsContainmentViolation(string? message) =>
         !string.IsNullOrWhiteSpace(message) &&
-        (message.Contains("Fail-Closed Sandbox Violation", StringComparison.OrdinalIgnoreCase) ||
-         message.Contains("Fail-Closed Containment Violation", StringComparison.OrdinalIgnoreCase));
+        (message.Contains("Fail-Closed Isolation Violation", StringComparison.OrdinalIgnoreCase) ||
+         message.Contains("Fail-Closed Containment Violation", StringComparison.OrdinalIgnoreCase) ||
+         message.Contains("Path Traversal Guard", StringComparison.OrdinalIgnoreCase));
+
+    internal static bool IsIsolatedTestEnv()
+    {
+        string? value = Environment.GetEnvironmentVariable("APP_ISOLATED_TEST");
+        return string.Equals(value, "1", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(value, "true", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(value, "yes", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(value, "on", StringComparison.OrdinalIgnoreCase);
+    }
 
     private static async Task<int> RunAsync(
         string[] args,
-        SandboxEnvironment sandbox,
+        AppEnvironment appEnv,
         Action<string, string> log,
         CancellationToken ct)
     {
-        var updateCoordinator = new UpdateCoordinator(sandbox.DataDirectory, sandbox.ConfigFilePath);
+        var updateCoordinator = new UpdateCoordinator(appEnv.DataDirectory, appEnv.ConfigFilePath);
         ReEngineSettings settings = updateCoordinator.LoadSettings().Value;
 
+        bool isIsolatedTest = IsIsolatedTestEnv();
         string? cliEnginesDir = RecompLaunchOptions.GetOptionValue(args, "--engines-dir", requiredIfPresent: true);
-        string enginesDir = ResolveEnginesDir(cliEnginesDir, settings, sandbox);
+        string? containmentRoot = isIsolatedTest ? ResolveContainmentRoot(appEnv) : null;
+        string enginesDir = ResolveEnginesDir(cliEnginesDir, settings, appEnv, containmentRoot);
 
-        string? sandboxBoundary = null;
-        if (sandbox.TestMode || sandbox.IsContainedSandbox)
+        if (containmentRoot is not null)
         {
-            sandboxBoundary = ResolveSandboxBoundary(sandbox);
-            EnforceSandboxContainment(sandbox, enginesDir, sandboxBoundary);
+            EnforceContainment(appEnv, enginesDir, containmentRoot);
         }
 
-        IFileAssociationStore assocStore = sandbox.TestMode || sandbox.IsContainedSandbox
-            ? new VirtualRegistryAssociationStore(sandbox.DataDirectory, sandboxBoundary)
-            : new WindowsRegistryAssociationStore(testMode: false);
+        IFileAssociationStore assocStore = isIsolatedTest || !OperatingSystem.IsWindows()
+            ? new VirtualRegistryAssociationStore(appEnv.DataDirectory, containmentRoot ?? appEnv.DataDirectory)
+            : new WindowsRegistryAssociationStore(suppressHostMutations: false);
 
         string? openTarget = RecompLaunchOptions.GetOptionValue(args, "--open", requiredIfPresent: true)
             ?? RecompLaunchOptions.GetPositionalArg(args, 0);
@@ -145,16 +155,17 @@ internal static partial class Program
         bool checkUpdates = CliArgumentHelper.HasFlag(args, "--check-updates");
         bool strictUpdates = CliArgumentHelper.HasFlag(args, "--strict");
         string? feedOverride = RecompLaunchOptions.GetOptionValue(args, "--feed", requiredIfPresent: true);
+        bool trayOrBackground = appEnv.TrayOnly || appEnv.PresentationMode == UiPresentationMode.TrayOrBackground;
 
         if (registerAssoc)
         {
             string exeForAssoc = ResolveLauncherExecutablePath();
             FileAssociationRecord record = assocStore.RegisterRecompAssociation(exeForAssoc);
             FileAssociationRecord decompRecord = assocStore.RegisterDecompAssociation(exeForAssoc);
-            string modeTag = sandbox.TestMode || sandbox.IsContainedSandbox ? "VIRTUALIZED" : "HKCU";
+            string modeTag = assocStore is VirtualRegistryAssociationStore ? "VIRTUALIZED" : "HKCU";
             log("INFO", $"Registered .recomp & .decomp associations ({modeTag}): {record.CommandTemplate} | {decompRecord.CommandTemplate}");
             Console.WriteLine($"Registered .recomp & .decomp associations ({modeTag}): {record.CommandTemplate}");
-            if (sandbox.Headless || (string.IsNullOrWhiteSpace(openTarget) && !checkUpdates && !sandbox.VisibleTest))
+            if (trayOrBackground || (string.IsNullOrWhiteSpace(openTarget) && !checkUpdates))
             {
                 return 0;
             }
@@ -162,46 +173,49 @@ internal static partial class Program
 
         if (string.Equals(openTarget, "decomp", StringComparison.OrdinalIgnoreCase))
         {
-            return await RunDecompCliAsync(args, enginesDir, sandbox, sandboxBoundary, log, ct)
+            return await RunDecompCliAsync(args, enginesDir, appEnv, containmentRoot, log, ct)
                 .ConfigureAwait(false);
         }
 
         if (checkUpdates)
         {
             return await RunUpdateCheckCliAsync(
-                updateCoordinator, settings, enginesDir, feedOverride, sandboxBoundary, strictUpdates, log, ct)
+                updateCoordinator, settings, enginesDir, feedOverride, containmentRoot, strictUpdates, log, ct)
                 .ConfigureAwait(false);
         }
 
         if (!string.IsNullOrWhiteSpace(openTarget))
         {
-            RecompLaunchOptions launchOptions = RecompLaunchOptions.FromArgs(args, sandbox);
+            RecompLaunchOptions launchOptions = RecompLaunchOptions.FromArgs(args, appEnv);
             var launcher = new RecompLaunchCoordinator(updateCoordinator, log);
-            return await launcher.LaunchAsync(openTarget, enginesDir, settings, sandbox, sandboxBoundary, launchOptions, ct)
+            return await launcher.LaunchAsync(openTarget, enginesDir, settings, appEnv, containmentRoot, launchOptions, ct)
                 .ConfigureAwait(false);
         }
 
-        if (sandbox.Headless)
+        if (trayOrBackground || isIsolatedTest)
         {
-            return RunHeadlessDiagnostics(enginesDir, settings, assocStore, sandbox, log);
+            return RunTrayDiagnostics(enginesDir, settings, assocStore, appEnv, isIsolatedTest, log);
         }
 
         Application.EnableVisualStyles();
         Application.SetCompatibleTextRenderingDefault(false);
         Application.SetHighDpiMode(HighDpiMode.PerMonitorV2);
         using var form = new ReEngineMainForm(
-            sandbox,
+            appEnv,
             enginesDir,
             updateCoordinator,
             assocStore,
             log,
-            visibleTestShowcase: sandbox.VisibleTest,
-            sandboxBoundary: sandboxBoundary);
+            containmentRoot: containmentRoot);
         Application.Run(form);
         return form.ExitCode;
     }
 
-    private static string ResolveEnginesDir(string? cliEnginesDir, ReEngineSettings settings, SandboxEnvironment sandbox)
+    private static string ResolveEnginesDir(
+        string? cliEnginesDir,
+        ReEngineSettings settings,
+        AppEnvironment appEnv,
+        string? containmentRoot)
     {
         if (!string.IsNullOrWhiteSpace(cliEnginesDir))
         {
@@ -216,24 +230,23 @@ internal static partial class Program
         string? reEngineDir = ReEngineAppStatusHelper.TryReadSettingPath(settings, "reEngineInstallDir");
         string appRoot = ReEngineAppStatusHelper.ResolveAppInstallRoot();
 
-        if (sandbox.TestMode || sandbox.IsContainedSandbox)
+        if (containmentRoot is not null)
         {
-            string boundary = ResolveSandboxBoundary(sandbox);
             string? suiteCandidate = !string.IsNullOrWhiteSpace(suiteDir)
                 ? Path.Combine(suiteDir, "engines")
                 : (!string.IsNullOrWhiteSpace(reEngineDir) ? ReEngineBootstrapHelper.ResolveEnginesRootDir(reEngineDir) : null);
-            if (!string.IsNullOrWhiteSpace(suiteCandidate) && IsPathWithinBoundary(suiteCandidate, boundary))
+            if (!string.IsNullOrWhiteSpace(suiteCandidate) && IsPathWithinBoundary(suiteCandidate, containmentRoot))
             {
                 return suiteCandidate;
             }
 
             string localCandidate = ReEngineBootstrapHelper.ResolveEnginesRootDir(appRoot);
-            if (Directory.Exists(localCandidate) && IsPathWithinBoundary(localCandidate, boundary))
+            if (Directory.Exists(localCandidate) && IsPathWithinBoundary(localCandidate, containmentRoot))
             {
                 return localCandidate;
             }
 
-            return Path.Combine(sandbox.DataDirectory, "engines");
+            return Path.Combine(appEnv.DataDirectory, "engines");
         }
 
         if (!string.IsNullOrWhiteSpace(suiteDir))
@@ -253,7 +266,7 @@ internal static partial class Program
             return installedCandidate;
         }
 
-        string root = ReEngineBootstrapHelper.ResolveDefaultReEngineInstallDir(testMode: false);
+        string root = ReEngineBootstrapHelper.ResolveDefaultReEngineInstallDir(isolatedTest: false);
         return ReEngineBootstrapHelper.ResolveEnginesRootDir(root);
     }
 
@@ -265,38 +278,25 @@ internal static partial class Program
                fullCandidate.StartsWith(fullBoundary + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
     }
 
-    private static string ResolveSandboxBoundary(SandboxEnvironment sandbox)
+    private static string ResolveContainmentRoot(AppEnvironment appEnv)
     {
-        string fullData = Path.GetFullPath(sandbox.DataDirectory);
-        string? cursor = fullData;
-        while (!string.IsNullOrWhiteSpace(cursor))
+        string fullData = Path.GetFullPath(appEnv.DataDirectory);
+        string? parent = Path.GetDirectoryName(fullData);
+        if (!string.IsNullOrWhiteSpace(parent) &&
+            string.Equals(Path.GetFileName(fullData), "data", StringComparison.OrdinalIgnoreCase) &&
+            !string.Equals(Path.GetPathRoot(parent)?.TrimEnd(Path.DirectorySeparatorChar), parent.TrimEnd(Path.DirectorySeparatorChar), StringComparison.OrdinalIgnoreCase))
         {
-            if (string.Equals(Path.GetFileName(cursor), "Sandbox", StringComparison.OrdinalIgnoreCase))
-            {
-                return cursor;
-            }
-            cursor = Path.GetDirectoryName(cursor);
-        }
-
-        if (sandbox.TestMode)
-        {
-            string? parent = Path.GetDirectoryName(fullData);
-            if (!string.IsNullOrWhiteSpace(parent) &&
-                string.Equals(Path.GetFileName(fullData), "data", StringComparison.OrdinalIgnoreCase) &&
-                !string.Equals(Path.GetPathRoot(parent)?.TrimEnd(Path.DirectorySeparatorChar), parent.TrimEnd(Path.DirectorySeparatorChar), StringComparison.OrdinalIgnoreCase))
-            {
-                return parent;
-            }
+            return parent;
         }
         return fullData;
     }
 
-    private static void EnforceSandboxContainment(SandboxEnvironment sandbox, string enginesDir, string sandboxBoundary)
+    private static void EnforceContainment(AppEnvironment appEnv, string enginesDir, string containmentRoot)
     {
-        SandboxEnvironment.AssertPathContained(sandbox.DataDirectory, sandboxBoundary);
-        SandboxEnvironment.AssertPathContained(sandbox.ConfigFilePath, sandboxBoundary);
-        SandboxEnvironment.AssertPathContained(sandbox.LogDirectory, sandboxBoundary);
-        SandboxEnvironment.AssertPathContained(enginesDir, sandboxBoundary);
+        AppEnvironment.AssertPathContained(appEnv.DataDirectory, containmentRoot);
+        AppEnvironment.AssertPathContained(appEnv.ConfigFilePath, containmentRoot);
+        AppEnvironment.AssertPathContained(appEnv.LogDirectory, containmentRoot);
+        AppEnvironment.AssertPathContained(enginesDir, containmentRoot);
     }
 
     internal static string ResolveLauncherExecutablePath()
@@ -316,8 +316,8 @@ internal static partial class Program
         Console.WriteLine("reEngine - Zero-Daemon .recomp & .decomp Suite Router");
         Console.WriteLine("Usage: reEngine.exe [--open <path> | <file.recomp>] [--wait] [--register-assoc] [--check-updates [--strict]] [--feed <urlOrPath>]");
         Console.WriteLine("       reEngine.exe decomp --module <file.decomp> [--stage D0..D5] [--engine-dir <dir>] [--toolchain-dir <dir>] [--output-dir <dir>]");
-        Console.WriteLine("                    [--engines-dir <dir>] [--data-dir <dir>] [--log-dir <dir>] [--config <path>] [--test-mode] [--dry-run] [--headless] [--visible-test]");
-        Console.WriteLine("                    [--enable-logs] [--frames <n>] [--fixture <path>] [--dump-screenshot <path>] [--dump-audio <path>] [--input-script <path>]");
+        Console.WriteLine("                    [--engines-dir <dir>] [--data-dir <dir>] [--log-dir <dir>] [--config <path>] [--dry-run] [--tray-only] [--window | --browser | --suite-tab] [--port <n>]");
+        Console.WriteLine("                    [--enable-logs] [--frames <n>] [--fixture <path>] [--dump-screenshot <path>] [--dump-audio <path>]");
         Console.WriteLine("                    [--version] [--help]");
     }
 }

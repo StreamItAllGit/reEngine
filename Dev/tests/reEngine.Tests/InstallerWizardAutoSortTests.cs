@@ -82,13 +82,11 @@ public sealed class InstallerWizardAutoSortTests : IDisposable
             {
                 InstallerThemeOptions theme = reEngine.Installer.Program.CreateThemeOptions();
                 InstallerAppDescriptor descriptor = reEngine.Installer.Program.CreateDescriptor();
-                var ctx = new InstallerSandboxContext(
+                var ctx = new InstallerRuntimeContext(
                     cliDataDir: Path.Combine(_tempRoot, "data"),
                     cliConfigPath: null,
                     cliLogDir: Path.Combine(_tempRoot, "logs"),
-                    testMode: true,
                     dryRun: true,
-                    headless: true,
                     envPrefix: descriptor.EnvPrefix);
                 var engine = new InstallerEngine(descriptor, ctx, typeof(reEngine.Installer.Program).Assembly);
 

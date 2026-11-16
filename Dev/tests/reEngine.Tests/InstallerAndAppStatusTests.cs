@@ -66,9 +66,7 @@ public sealed class InstallerAndAppStatusTests : IDisposable
             "--reengine-dir", customReEngine,
             "--migrate-legacy",
             "--confirm-legacy-cleanup",
-            "--test-mode",
-            "--silent",
-            "--headless"
+            "--silent"
         ];
 
         string[] forwarded = reEngine.Installer.Program.ExtractHostArgs(
@@ -78,9 +76,7 @@ public sealed class InstallerAndAppStatusTests : IDisposable
             out string? reEngineDir,
             out bool migrateLegacy,
             out bool confirmCleanup,
-            out bool testMode,
             out bool silent,
-            out bool headless,
             out bool dryRun,
             out bool verifyOnly,
             out bool uninstall,
@@ -92,9 +88,7 @@ public sealed class InstallerAndAppStatusTests : IDisposable
         Assert.Equal(customReEngine, reEngineDir);
         Assert.True(migrateLegacy);
         Assert.True(confirmCleanup);
-        Assert.True(testMode);
         Assert.True(silent);
-        Assert.True(headless);
         Assert.False(dryRun);
         Assert.False(verifyOnly);
         Assert.False(uninstall);
@@ -111,8 +105,6 @@ public sealed class InstallerAndAppStatusTests : IDisposable
             out _,
             out string? suiteOnlyDir,
             out string? reEngineOnlyDir,
-            out _,
-            out _,
             out _,
             out _,
             out _,
@@ -137,9 +129,9 @@ public sealed class InstallerAndAppStatusTests : IDisposable
     [Fact]
     public void LegacyMigrationHelper_PreservesDataRom_AndGatesStrandedV011CleanupOnConfirmation()
     {
-        string sandboxDir = Path.Combine(_tempRoot, "Sandbox");
-        string legacyRoot = Path.Combine(sandboxDir, "legacy-programs", "reEngine");
-        string targetInstallDir = Path.Combine(sandboxDir, "installed-reEngine");
+        string isolatedDir = Path.Combine(_tempRoot, "isolated");
+        string legacyRoot = Path.Combine(isolatedDir, "legacy-programs", "reEngine");
+        string targetInstallDir = Path.Combine(isolatedDir, "installed-reEngine");
 
         string legacyData = Path.Combine(legacyRoot, "data");
         string legacyRom = Path.Combine(legacyData, "rom");
@@ -156,12 +148,12 @@ public sealed class InstallerAndAppStatusTests : IDisposable
         File.WriteAllBytes(strandedAppFile, [0x01]);
         File.WriteAllText(strandedCrashFile, "{}");
 
-        LegacyMigrationHelper.PersistInstallProfileSettings(targetInstallDir, "Full", sandboxDir, targetInstallDir);
+        LegacyMigrationHelper.PersistInstallProfileSettings(targetInstallDir, "Full", isolatedDir, targetInstallDir);
         string persistedJson = File.ReadAllText(Path.Combine(targetInstallDir, "data", "settings.json"));
         using (JsonDocument doc = JsonDocument.Parse(persistedJson))
         {
             Assert.Equal("full", doc.RootElement.GetProperty("installProfile").GetString());
-            Assert.Equal(Path.GetFullPath(sandboxDir), doc.RootElement.GetProperty("suiteInstallDir").GetString());
+            Assert.Equal(Path.GetFullPath(isolatedDir), doc.RootElement.GetProperty("suiteInstallDir").GetString());
             Assert.Equal(Path.GetFullPath(targetInstallDir), doc.RootElement.GetProperty("reEngineInstallDir").GetString());
         }
 
@@ -170,10 +162,9 @@ public sealed class InstallerAndAppStatusTests : IDisposable
 
         LegacyMigrationResult firstPass = LegacyMigrationHelper.TryMigrateLegacyInstall(
             targetInstallDir,
-            testMode: true,
-            sandboxDataDir: sandboxDir,
+            isolatedTest: true,
+            isolatedDataDir: isolatedDir,
             silent: true,
-            headless: true,
             dryRun: false,
             confirmCleanupFlag: false);
 
@@ -187,10 +178,9 @@ public sealed class InstallerAndAppStatusTests : IDisposable
 
         LegacyMigrationResult confirmedPass = LegacyMigrationHelper.TryMigrateLegacyInstall(
             targetInstallDir,
-            testMode: true,
-            sandboxDataDir: sandboxDir,
+            isolatedTest: true,
+            isolatedDataDir: isolatedDir,
             silent: true,
-            headless: true,
             dryRun: false,
             confirmCleanupFlag: true);
 
