@@ -37,7 +37,7 @@ Lightweight, zero-daemon package router, shared SDL3 host runtime (`reEngine.Hos
 
 ### Releases & Downloads
 
-Every release on [GitHub Releases](https://github.com/StreamItAllGit/reEngine/releases) provides both distribution formats:
+Every release is published on both [GitHub Releases](https://github.com/StreamItAllGit/reEngine/releases) and the [Google Drive Releases Mirror](https://drive.google.com/drive/folders/1bI_mpdk0Ve_ksT9IxOokBcWDzp2lOpPR) in both formats:
 
 - **`reEngine-Setup-v0.3.0-win-x64.exe`** — Signed Setup Wizard & silent CLI installer (detects existing install directories and settings automatically on upgrade).
 - **`reEngine-v0.3.0-win-x64-Portable.zip`** — Standalone no-installer portable bundle containing `reEngine.exe`, `app\`, scripts, and sanitized release docs.
