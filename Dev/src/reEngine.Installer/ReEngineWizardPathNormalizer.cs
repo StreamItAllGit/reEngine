@@ -72,9 +72,15 @@ internal static class ReEngineWizardPathNormalizer
 
     public static void WireWizardAutoSortHandlers(InstallerWizardForm wizard)
     {
+        DisableLabelMnemonics(wizard);
+
         bool updating = false;
         bool userCustomizedSuiteDir = false;
+        bool userCustomizedProfile = false;
         string lastSyncedSuite = NormalizeTrimmedFullPath(wizard.SecondaryDirTextBox.Text);
+
+        wizard.LightweightProfileRadioButton.Click += (_, _) => userCustomizedProfile = true;
+        wizard.FullProfileRadioButton.Click += (_, _) => userCustomizedProfile = true;
 
         void ApplyInstallAutoSort()
         {
@@ -99,12 +105,24 @@ internal static class ReEngineWizardPathNormalizer
                     wizard.InstallDirTextBox.SelectionStart = sorted.Length;
                 }
 
+                LegacyMigrationHelper.TryReadExistingInstallSettings(
+                    sorted, out string? savedProfile, out string? savedSuiteDir, out _);
+                if (!userCustomizedProfile && !string.IsNullOrWhiteSpace(savedProfile))
+                {
+                    wizard.FullProfileRadioButton.Checked = string.Equals(savedProfile, "full", StringComparison.OrdinalIgnoreCase);
+                    wizard.LightweightProfileRadioButton.Checked = !wizard.FullProfileRadioButton.Checked;
+                }
+
                 string currentSuite = NormalizeTrimmedFullPath(wizard.SecondaryDirTextBox.Text);
                 if (!userCustomizedSuiteDir ||
                     string.IsNullOrWhiteSpace(currentSuite) ||
                     string.Equals(currentSuite, lastSyncedSuite, StringComparison.OrdinalIgnoreCase))
                 {
-                    string preferredSuite = ResolvePreferredSuiteInstallDir(sorted);
+                    string preferredSuite = ResolvePreferredSuiteInstallDir(sorted, savedSuiteDir);
+                    if (!string.IsNullOrWhiteSpace(savedSuiteDir))
+                    {
+                        preferredSuite = NormalizeTrimmedFullPath(savedSuiteDir);
+                    }
                     if (!string.Equals(currentSuite, preferredSuite, StringComparison.Ordinal))
                     {
                         wizard.SecondaryDirTextBox.Text = preferredSuite;
@@ -165,6 +183,16 @@ internal static class ReEngineWizardPathNormalizer
 
         wizard.PrimaryButton.MouseDown += (_, _) => ApplyInstallAutoSort();
         wizard.PrimaryButton.Enter += (_, _) => ApplyInstallAutoSort();
+    }
+
+    private static void DisableLabelMnemonics(Control root)
+    {
+        foreach (Control child in root.Controls)
+        {
+            if (child is Label lbl) lbl.UseMnemonic = false;
+            else if (child is ButtonBase btn) btn.UseMnemonic = false;
+            if (child.HasChildren) DisableLabelMnemonics(child);
+        }
     }
 
     private static string NormalizeTrimmedFullPath(string rawPath)

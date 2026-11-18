@@ -13,22 +13,24 @@ internal static class LauncherArgsHelper
 {
     internal static readonly HashSet<string> ValueOptions = new(StringComparer.OrdinalIgnoreCase)
     {
-        "--open", "--module", "--engines-dir", "--engine-dir", "--toolchain-dir", "--output-dir", "--stage",
-        "--data-dir", "--config", "--log-dir", "--feed", "--port", "--ui",
+        "--open", "--module", "--verify-module", "--engines-dir", "--engine-dir", "--toolchain-dir", "--output-dir", "--stage",
+        "--data-dir", "--config", "--log-dir", "--save-dir", "--feed", "--port", "--ui",
+        "--backend", "--scale", "--suite-tab", "--profile", "--automation-port", "--automation-token",
         "--frames", "--fixture", "--dump-screenshot", "--dump-audio"
     };
 
     private static readonly HashSet<string> PathOptions = new(StringComparer.OrdinalIgnoreCase)
     {
         "--open", "--module", "--engines-dir", "--engine-dir", "--toolchain-dir", "--output-dir",
-        "--data-dir", "--config", "--log-dir", "--feed",
+        "--data-dir", "--config", "--log-dir", "--save-dir", "--feed",
         "--fixture", "--dump-screenshot", "--dump-audio"
     };
 
     private static readonly HashSet<string> SyncFlags = new(StringComparer.OrdinalIgnoreCase)
     {
         "decomp", "--open", "--wait", "--check-updates", "--register-assoc",
-        "--dry-run", "--tray-only", "--help", "-h", "/?", "help", "--version", "-v"
+        "--verify", "--doctor", "--automation-port", "--jit-bringup", "--require-backend",
+        "--preload-media", "--host-demo", "--dry-run", "--tray-only", "--help", "-h", "/?", "help", "--version", "-v"
     };
 
     public static bool ShouldWaitForChild(string[]? args)

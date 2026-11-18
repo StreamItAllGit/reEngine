@@ -57,6 +57,18 @@ public sealed class DecompPackageManifest : IDecompPackageManifest
     [JsonPropertyName("compatibleEngineTrack")]
     public string CompatibleEngineTrack { get; set; } = string.Empty;
 
+    /// <summary>Ordered list of compatible engine tracks supported by this decompilation package.</summary>
+    [JsonPropertyName("supportedEngineTracks")]
+    public List<string>? SupportedEngineTracks { get; set; }
+
+    /// <summary>Optional relative assembly path or filename providing <see cref="IDecompPlatformProvider"/>.</summary>
+    [JsonPropertyName("decompProviderAssembly")]
+    public string? DecompProviderAssembly { get; set; }
+
+    /// <summary>Preserved earned research tiers present in upstream <c>Corpus\tiers\</c> (e.g., <c>D1_Raw</c>.. <c>D5_ByteExact</c>).</summary>
+    [JsonPropertyName("preservedTiers")]
+    public List<string>? PreservedTiers { get; set; }
+
     /// <summary>Standard 18 SemVer of the <c>.decomp</c> container schema.</summary>
     [JsonPropertyName("decompSchemaVersion")]
     public string DecompSchemaVersion { get; set; } = "1.0.0";

@@ -1,6 +1,7 @@
 <Solution>
   <Folder Name="/src/">
     <Project Path="src/reEngine.Core/reEngine.Core.csproj" />
+    <Project Path="src/reEngine.Host/reEngine.Host.csproj" />
     <Project Path="src/reEngine.App/reEngine.App.csproj" />
     <Project Path="src/reEngine.Launcher/reEngine.Launcher.csproj" />
     <Project Path="src/reEngine.Installer/reEngine.Installer.csproj" />

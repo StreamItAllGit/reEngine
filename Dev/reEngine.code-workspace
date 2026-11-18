@@ -1,0 +1,94 @@
+{
+  "folders": [
+    {
+      "name": "1. reEngine — Dev",
+      "path": "."
+    },
+    {
+      "name": "2. reEngine — Project Root",
+      "path": ".."
+    }
+  ],
+  "settings": {
+    "dotnet.defaultSolution": "reEngine.slnx",
+    "files.eol": "\n",
+    "files.exclude": {
+      "**/bin": true,
+      "**/obj": true,
+      "**/TestResults": true,
+      "**/__pycache__": true,
+      "**/[Dd]esktop.ini": true,
+      "**/[Tt]humbs.db": true
+    }
+  },
+  "tasks": {
+    "version": "2.0.0",
+    "tasks": [
+      {
+        "label": "Build reEngine (Release /warnaserror)",
+        "type": "shell",
+        "command": "dotnet",
+        "args": [
+          "build",
+          "reEngine.slnx",
+          "-c",
+          "Release",
+          "/warnaserror"
+        ],
+        "group": {
+          "kind": "build",
+          "isDefault": true
+        },
+        "problemMatcher": "$msCompile"
+      },
+      {
+        "label": "Test reEngine (Release /warnaserror)",
+        "type": "shell",
+        "command": "dotnet",
+        "args": [
+          "test",
+          "reEngine.slnx",
+          "-c",
+          "Release",
+          "/warnaserror"
+        ],
+        "options": {
+          "env": {
+            "APP_ISOLATED_TEST": "1"
+          }
+        },
+        "group": {
+          "kind": "test",
+          "isDefault": true
+        }
+      },
+      {
+        "label": "Test reEngine (Debug + Automation /warnaserror)",
+        "type": "shell",
+        "command": "dotnet",
+        "args": [
+          "test",
+          "reEngine.slnx",
+          "-c",
+          "Debug",
+          "-p:ReEngineTestAutomation=true",
+          "/warnaserror"
+        ],
+        "options": {
+          "env": {
+            "APP_ISOLATED_TEST": "1"
+          }
+        },
+        "group": {
+          "kind": "test",
+          "isDefault": false
+        }
+      }
+    ]
+  },
+  "extensions": {
+    "recommendations": [
+      "ms-dotnettools.csdevkit"
+    ]
+  }
+}

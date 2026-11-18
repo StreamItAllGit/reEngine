@@ -10,10 +10,27 @@
     <ApplicationIcon>..\..\assets\reEngine.ico</ApplicationIcon>
   </PropertyGroup>
 
+  <PropertyGroup Condition="'$(Configuration)' == 'Debug' Or '$(ReEngineTestAutomation)' == 'true'">
+    <DefineConstants>$(DefineConstants);REENGINE_ENABLE_AUTOMATION</DefineConstants>
+  </PropertyGroup>
+
   <ItemGroup>
     <ProjectReference Include="..\reEngine.Core\reEngine.Core.csproj" />
+    <ProjectReference Include="..\reEngine.Host\reEngine.Host.csproj" />
     <Reference Include="Foundation.Core">
       <HintPath>..\..\lib\Foundation.Core.dll</HintPath>
+    </Reference>
+    <Reference Include="Foundation.Retro">
+      <HintPath>..\..\lib\Foundation.Retro.dll</HintPath>
+    </Reference>
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(Configuration)' == 'Debug' Or '$(ReEngineTestAutomation)' == 'true'">
+    <Reference Include="Foundation.Automation">
+      <HintPath>..\..\lib\Foundation.Automation.dll</HintPath>
+    </Reference>
+    <Reference Include="Foundation.UI">
+      <HintPath>..\..\lib\Foundation.UI.dll</HintPath>
     </Reference>
   </ItemGroup>
 

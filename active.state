@@ -4,20 +4,27 @@
   "name": "reEngine",
   "projectGroup": "Personal",
   "relativePath": "Personal/reEngine",
-  "containerTier": "Tier A (5-Folder)",
+  "containerTier": "Tier A (4-Folder)",
   "ecosystemTier": "Tier1_Infrastructure",
   "appArchetype": "ENGINE",
-  "version": "0.2.1-hf.1",
-  "activeMilestone": "0.2.0",
+  "version": "0.3.0",
+  "activeMilestone": "0.3.1",
   "goalMajorVersion": "1.0.0",
-  "stateChangedDate": "2026-11-15",
-  "lastVersionDate": "2026-11-15",
+  "stateChangedDate": "2026-11-18",
+  "lastVersionDate": "2026-11-18",
   "productionSubpath": null,
   "supersededBy": null,
   "tasklistDetailLevel": 3,
   "openTaskCount": 0,
-  "completedTaskCount": 9,
+  "completedTaskCount": 31,
   "openReportCount": 0,
+  "isPublicRepo": true,
+  "requireHumanReviewBeforePush": false,
+  "discordPost": {
+    "isEnabled": false,
+    "deliveryMethod": "manual",
+    "autoPostOnRelease": false
+  },
   "gates": {
     "isGate0ScopePassed": true,
     "isGate1PlanPassed": true,
@@ -25,6 +32,6 @@
     "isInspecterVerified": true,
     "isTessaSynced": true
   },
-  "notes": "Hotfix v0.2.1-hf.1: Synced Foundation v0.4.1-hf.1 (AppEnvironment, UiPresentationMode.TrayOrBackground, InstallerRuntimeContext), retired sibling test folder, obsolete test-harness flags & smoke scripts across code/tests/scripts/docs, upgraded Tier A layout to 5-Folder.",
-  "updatedAtUtc": "2026-11-16T00:00:00.000Z"
+  "notes": "v0.3.0 released publicly (https://github.com/StreamItAllGit/reEngine): upstream reEngine.Host.dll (SDL3, PixelOverlayCanvas, HighResFramePacer, AudioRingBuffer, HostInputFrame Schema A/B/C, F1 5-tab drawer, F3 HUD, FirstRunMediaGateView, Debug-only SdlAutomationProxyControl + Release ExitCode=2), resumable .part/.ready atomic engine updates with SSRF guard, supportedEngineTracks + SeriesMap.json bidirectional aliases, detached .recomp child launch without JobObjectGuard + 0.2.7+ --scale/--backend/--jit-bringup forwarding, installer existing-path/profile auto-detection + non-clobbering settings persistence, 7-file Releases bundle with reEngine-v0.3.0-win-x64-Portable.zip, human-first docs, 77/77 passing Release & Debug+Automation xUnit suites, and live visible-window Stage 2 4-drive sandbox E2E verified.",
+  "updatedAtUtc": "2026-11-18T21:20:00.000Z"
 }

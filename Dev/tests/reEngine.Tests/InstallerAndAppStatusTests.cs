@@ -149,7 +149,8 @@ public sealed class InstallerAndAppStatusTests : IDisposable
         File.WriteAllText(strandedCrashFile, "{}");
 
         LegacyMigrationHelper.PersistInstallProfileSettings(targetInstallDir, "Full", isolatedDir, targetInstallDir);
-        string persistedJson = File.ReadAllText(Path.Combine(targetInstallDir, "data", "settings.json"));
+        string persistedPath = Path.Combine(targetInstallDir, "data", "config", "settings.json");
+        string persistedJson = File.ReadAllText(persistedPath);
         using (JsonDocument doc = JsonDocument.Parse(persistedJson))
         {
             Assert.Equal("full", doc.RootElement.GetProperty("installProfile").GetString());
@@ -157,8 +158,21 @@ public sealed class InstallerAndAppStatusTests : IDisposable
             Assert.Equal(Path.GetFullPath(targetInstallDir), doc.RootElement.GetProperty("reEngineInstallDir").GetString());
         }
 
+        // Upgrading without explicit --profile (null) preserves existing installProfile="full", suiteInstallDir, and reEngineInstallDir.
+        Assert.True(LegacyMigrationHelper.TryReadExistingInstallSettings(
+            targetInstallDir, out string? readProfile, out string? readSuite, out string? readReEngine));
+        Assert.Equal("full", readProfile);
+        Assert.Equal(Path.GetFullPath(isolatedDir), readSuite);
+        Assert.Equal(Path.GetFullPath(targetInstallDir), readReEngine);
+
+        LegacyMigrationHelper.PersistInstallProfileSettings(targetInstallDir, null, readSuite, readReEngine);
+        using (JsonDocument docAfterUpgrade = JsonDocument.Parse(File.ReadAllText(persistedPath)))
+        {
+            Assert.Equal("full", docAfterUpgrade.RootElement.GetProperty("installProfile").GetString());
+        }
+
         // Remove settings.json briefly to test migration copy from legacy install
-        File.Delete(Path.Combine(targetInstallDir, "data", "settings.json"));
+        File.Delete(persistedPath);
 
         LegacyMigrationResult firstPass = LegacyMigrationHelper.TryMigrateLegacyInstall(
             targetInstallDir,

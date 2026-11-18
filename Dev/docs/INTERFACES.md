@@ -1,12 +1,12 @@
 # reEngine — Interfaces & Contracts
 
-**Synced Version:** `0.2.1-hf.1` (`2026-11-15`)  
-**Owner:** `reEngine` Core (`@devv` / `@dean`)  
-**Schema Discipline:** Canonical `camelCase` JSON keys per [`18_DATA_DICTIONARY_AND_SCHEMA_LOOKUP.md`](<PROJECTS_ROOT>/Personal/_DevBible/18_DATA_DICTIONARY_AND_SCHEMA_LOOKUP.md)
+**Synced Version:** `0.3.0` (`2026-11-18`)  
+**Scope:** Package Manifests, `reEngine.Host` Runtime Contracts, Update/Settings JSON Schemas & CLI Reference  
+**Schema Style:** Canonical `camelCase` JSON keys
 
 ---
 
-## 1. `.recomp` & `.decomp` Package Manifests
+## 1. `.recomp`, `.decomp`, and `engine.manifest.json` Schemas
 
 ### 1.1 `.recomp` Package Manifest (`module.recomp.json` / `*.recomp`)
 Parsed by `RecompPackageReader.Load(string packagePath)` (UTF-8 JSON or ZIP archive with fail-closed Zip-Slip validation).
@@ -16,10 +16,14 @@ Parsed by `RecompPackageReader.Load(string packagePath)` (UTF-8 JSON or ZIP arch
 | `schemaVersion` | `int` | Yes | `>= 1` (`1`) | Manifest schema revision. |
 | `moduleId` | `string` | Yes | `^[a-z0-9][a-z0-9-]*$` | Lowercase kebab slug isolating `<dataDir>\modules\<moduleId>\`. |
 | `title` | `string` | Yes | Non-empty | Human-facing game/module display title. |
-| `version` | `string` | Yes | SemVer (`"0.2.1-hf.1"`) | Packaged module semantic version. |
-| `engineId` | `string` | Yes | Non-empty | Target platform engine folder (`"reStation"`, `"reNes"`, `"re64"`, `"reCube"`). |
+| `version` | `string` | Yes | SemVer (`"0.3.0"`) | Packaged module semantic version. |
+| `engineId` | `string` | Yes | Non-empty | Target engine folder or alias (`"reStation"`/`"reSlate"`, `"reNes"`/`"reCartOne"`, `"re64"`/`"reCart64"`, `"reGenesis"`/`"reBlast16"`, `"reCube"`). |
 | `engineVersion` | `string` | Yes | Valid `SemVer` | Minimum compatible engine version required (`>=`). |
-| `compatibleEngineTrack` | `string` | Yes | Track selector | Compatibility track (`X.Y.x`, `X.Y.*`, `X.Y`, `X.x`, `X.*`, `X.Y.Z`). |
+| `compatibleEngineTrack` | `string` | Yes | Track selector | Primary compatibility track (`X.Y.x`, `X.Y.*`, `X.Y`, `X.x`, `X.*`, `X.Y.Z`). |
+| `supportedEngineTracks` | `string[]?` | No | `null` | Ordered list of compatible engine tracks checked before `compatibleEngineTrack`. |
+| `backendId` | `string?` | No | `null` | Preferred default render backend (`opengl`, `software`, or `vulkan`/`parallelCpu` for upcoming `0.3.x` engines). |
+| `resolutionScale` | `int?` | No | `null` | Preferred integer resolution scale factor (`1..8`). |
+| `executionTierMode` | `string?` | No | `null` | Execution mode (`aotPrimary`, `jitBringup`, `threadedIr`). |
 | `preloadRomDir` | `string` | No | `"data/rom"` | Relative preload directory inside `ModuleRootDirectory`. |
 | `entryExecutable` | `string?` | No | `null` | Optional module-specific executable path relative to root. |
 
@@ -27,111 +31,132 @@ Parsed by `RecompPackageReader.Load(string packagePath)` (UTF-8 JSON or ZIP arch
 - **Preload Media Priority (`DiscoverPreloadMedia`):** Ranks `.cue` (`0`) > `.chd` (`1`) > `.iso` (`2`) > `.gcm`/`.rvz`/`.n64`/`.z64`/`.v64`/`.sfc`/`.smc`/`.nes`/`.gb`/`.gbc`/`.gba` (`3`) > `.7z`/`.zip`/`.img` (`4`) > `.bin` (`5`).
 
 ### 1.2 `.decomp` Package Manifest (`module.decomp.json` / `*.decomp` — `DecompPackageManifest`)
-Parsed by `DecompPipelineCoordinator.ParseManifest(string packagePath)` (UTF-8 JSON or ZIP archive with Zip-Slip containment) and implements `Foundation.Retro.IDecompPackageManifest`:
+Parsed by `DecompPipelineCoordinator.ParseManifest(string packagePath)` and implements `Foundation.Retro.IDecompPackageManifest`:
 
 | Field (`camelCase`) | Type | Default | Purpose |
 | :--- | :--- | :--- | :--- |
 | `moduleId` | `string` | Filename fallback | Canonical lowercase-kebab-case module identifier. |
 | `title` | `string` | `""` | Human-facing module display title. |
-| `platformId` | `string` | `""` | Target console identifier (`"psx"`, `"nes"`, `"n64"`). |
-| `engineId` | `string` | Required | Target platform engine (`"reStation"`, `"reNes"`, `"re64"`). |
+| `platformId` | `string` | `""` | Target console identifier (`"psx"`, `"nes"`, `"n64"`, `"genesis"`). |
+| `engineId` | `string` | Required | Target platform engine (`"reStation"`/`"reSlate"`, `"reNes"`/`"reCartOne"`, `"re64"`/`"reCart64"`, `"reGenesis"`/`"reBlast16"`). |
 | `engineVersion` | `string` | `"0.1.0"` | Minimum compatible engine SemVer (`>=`). |
-| `compatibleEngineTrack` | `string` | `""` | Compatible engine track selector (`"0.1.x"`, `"0.2.x"`). |
-| `decompSchemaVersion` | `string` | `"1.0.0"` | Standard 18 SemVer of the `.decomp` container schema. |
+| `compatibleEngineTrack` | `string` | `""` | Primary engine track selector (`"0.2.x"`, `"0.3.x"`). |
+| `supportedEngineTracks` | `string[]?` | `null` | Ordered compatible track constraints checked before `compatibleEngineTrack`. |
+| `decompProviderAssembly` | `string?` | `null` | Explicit contained relative DLL path overriding default `<engineId>.Decomp.dll` probing. |
+| `decompSchemaVersion` | `string` | `"1.0.0"` | Semantic version of the `.decomp` container schema. |
 | `targetDecompTier` | `string` | `"D3"` | Target decompilation tier (`none`, `D0`–`D5`). |
 | `goalDecompTier` | `string` | `"D3"` | Goal decompilation tier (`none`, `D0`–`D5`). |
 | `packageVersion` | `string?` | `null` | Optional SemVer of this `.decomp` package. |
-| `upstreamResearchPath` | `string?` | `null` | Optional read-only Tier R research repository path/id. |
+| `upstreamResearchPath` | `string?` | `null` | Optional read-only upstream research repository path/id. |
 | `ghidraProjectName` | `string?` | `null` | Optional CLI Ghidra project name. |
 | `toolchainRequirements` | `DecompToolchainRequirements?` | `null` | `minimumGhidraVersion` (`"11.2"`), `requiresHeadlessJdk` (`true`), `requiredExtensions` (`string[]`). |
 | `preloadRomDir` | `string` | `"data/rom"` | Relative preload media directory inside module root. |
 | `recipeEntryPoint` | `string?` | `null` | Optional clean-room recipe/script path relative to package root. |
 
+### 1.3 `engine.manifest.json` (`EngineManifestModel`)
+Optional descriptor inside `engines\<engineId>\v<Ver>\engine.manifest.json` read by `RecompLaunchPlanBuilder.Supports030Routing`:
+- Fields: `schemaVersion`, `engineId`, `displayName`, `version`, `engineVersion`, `compatibleEngineTrack`, `supportedEngineTracks`, `platformId`, `entryExecutable`, `decompProviderAssembly`, `executionTierMode`, `backendId`, `resolutionScale`, plus `[JsonExtensionData]`.
+
+### 1.4 Clean-Room Package Naming & Bidirectional `engineId` Aliases (`EngineAliasCatalog`)
+- **Clean-Room Package Naming:** Distributable clean-room packages use neutral filenames (`MyGame.recomp`, `SampleModule.decomp`) and lowercase-kebab `moduleId` values (`my-game`).
+- **Bidirectional `engineId` Aliasing (`EngineAliasCatalog`):** Exact matches take precedence, with symmetric lookup across coded and legacy engine IDs:
+
+| Alias Engine ID | Standard Engine ID | Target Platform |
+| :--- | :--- | :--- |
+| `reSlate` | `reStation` | PlayStation 1 (`psx`, R3000A) |
+| `reCartOne` | `reNes` | NES (`nes`, 6502) |
+| `reCart64` | `re64` | Nintendo 64 (`n64`, VR4300) |
+| `reBlast16` | `reGenesis` | Sega Genesis (`genesis`, m68k) |
+
 ---
 
-## 2. Decompilation Pipeline, Offline Toolchain & AOT Cache Contracts (`reEngine.Core`)
+## 2. `reEngine.Host` Runtime Contracts (`SharedLibs\reEngine\v0.3.0\reEngine.Host.dll`)
 
-### 2.1 `IDecompPlatformProvider`, `DecompPipelineCoordinator` & `DecompUnbuiltEngineError`
-- **`IDecompPlatformProvider`:** Discovered in-process or via `<engineDir>\{,app\}<engineId>.dll`:
-  - Properties: `PlatformId`, `DisplayName`, `MinimumEngineVersion`.
-  - Methods: `Task<DecompStageResult> RunDecompAsync(DecompRunOptions options, CancellationToken ct)` and `DecompCleanRoomValidationResult ValidateCleanRoomOutput(string outputDirectory)`.
-- **`DecompStage` & `DecompRunOptions`:** `D0`–`D5` enum (`D3` default), carrying `PackagePath`, `OutputDirectory`, `DataDirectory`, `TargetStage`, `EngineDirectoryOverride`, `ToolchainDirectory`, `DryRun`, `Headless`, `PlatformArguments`.
-- **`DecompPipelineCoordinator.DispatchAsync(options, enginesRootDir, ct)`:**
-  - Resolves engine (`--engine-dir` override or `EngineVersionResolver`). When missing/unbuilt (`re64`, `reGenesis`, `reCube`), populates `DecompDispatchResult.UnbuiltEngineError` (`DecompUnbuiltEngineError.Create`) with deterministic 3-part formatting:
-    - `[1/3 What Failed]` module + engine context
-    - `[2/3 Missing]` engine ID, `compatibleEngineTrack`, and minimum version
-    - `[3/3 Remediation]` install under peer `engines\` (or local `engines\`) or pass `--engine-dir <path>`
-  - Delegates `RunDecompAsync`, then enforces both `provider.ValidateCleanRoomOutput` and `ValidateCleanRoomOutputDirectory` (rejecting `.bin`, `.iso`, `.cue`, `.chd`, `.n64`, `.z64`, `.nes`, `.sav`, `.srm`, `.state`, `*.g.cs`, `*.Generated.dll`).
+Child platform engines reuse `reEngine.Host.dll` built on `Foundation v0.5.0` (`PixelOverlayCanvas`, `HighResFramePacer`, `AudioRingBuffer`, `RgbaPngWriter`, `WavCaptureWriter`) and `ppy.SDL3-CS`.
 
-### 2.2 `OfflineToolchainLocator` (`ReEngineInstallProfile`)
+### 2.1 Core Host Interfaces & Frame Contracts (`reEngine.Host.Contracts`)
+- **`HostInputSchemaKind` (`reEngine.Host.Input`):** `SchemaA` (`0` — classic D-pad + face buttons), `SchemaB` (`1` — dual-input keyboard/mouse + gamepad), `SchemaC` (`2` — analog/C-button layout).
+- **`HostRenderBackendKind`:** `OpenGl`, `Vulkan`, `ParallelCpu`, `Software`.
+- **`HostHotkeyFlags` (`[Flags]` `uint`):** `None`, `ToggleDrawer` (`F1`), `ToggleHud` (`F3`), `DumpFrame` (`F12`), `Escape`.
+- **`HostInputFrame` (`public readonly struct`):** `FrameSequence` (`long`), `DigitalButtons` (`HostGamepadButtons`), `LeftStickX`/`LeftStickY`/`RightStickX`/`RightStickY` (`float`), `TriggerLeft`/`TriggerRight` (`float`), `MouseDeltaX`/`MouseDeltaY` (`float`), `MouseButtons` (`int`), `HotkeyFlags` (`uint`), `ActiveSchema` (`string`).
+- **`IHostSessionCallbacks`:**
+  - `ValueTask OnFrameTickAsync(long frameNumber, HostInputFrame input, Span<byte> rgbaFramebuffer, int width, int height, CancellationToken ct)`
+  - `int ReadAudioSamples(Span<short> interleavedStereoPcm)`
+- **`HostSessionRunner.RunAsync(HostSessionOptions, IHostSessionCallbacks, heartbeatSink, ct)`:**
+  - Returns `HostSessionResult(ExitCode, FramesRendered, IsDrawerOpen, IsHudVisible, ActiveTab, CapturedFramePath, CapturedAudioPath, Summary)`.
+  - Fails closed (`ExitCode = 2`) in `Release` builds whenever `HostSessionOptions.AutomationPort.HasValue`.
+
+### 2.2 Host Overlays & Input Mapping (`reEngine.Host.Ui`, `reEngine.Host.Input`)
+- **`F1SettingsDrawerView`:** Renders 5 `HostDrawerTabId` tabs (`Video`, `Controls`, `Keybinds`, `System`, `DiscMedia`) into `PixelOverlayCanvas`, exposing hit-testable `HostWidgetBounds` (`F1Drawer`, `Tab_Video`, `Tab_Controls`, `Tab_Keybinds`, `Tab_System`, `Tab_DiscMedia`, `Drawer_CloseButton`, `Drawer_ActionButton`) and integer scale `1x/2x/4x`.
+- **`F3HudOverlayView`:** Compact single-row HUD (`F3Hud`) showing FPS, frame time (`ms`), backend, scale factor, active execution tier, and audio buffer fill ratio.
+- **`FirstRunMediaGateView`:** First-run user media prompt (`data\rom\`) displaying expected SHA-256 and exposing `MediaGate_BrowseButton` + `MediaGate_DemoBypassButton`.
+- **`HostInputMapper` & `HostInputSchemas`:** Supports dynamic keybind remaps, live Schema A/B/C hot-swapping, and synthetic key injection for debug automation.
+
+---
+
+## 3. Decompilation Pipeline, Strictness Validator, Offline Toolchain & AOT Cache (`reEngine.Core`)
+
+### 3.1 `IDecompPlatformProvider`, `DecompPipelineCoordinator` & `D4BuildReport`
+- **`IDecompPlatformProvider`:** Discovered in-process or via probe order (`decompProviderAssembly` -> `<id>.Decomp.dll` -> `app\<id>.Decomp.dll` -> `<id>.dll` -> `app\<id>.dll` across aliases).
+  - `ProviderLoadContext` unifies shared contract assemblies (`reEngine.Core`, `reEngine.Host`, `Foundation.Core`, `Foundation.Retro`) with `AssemblyLoadContext.Default` and supports `.deps.json` and same-directory sibling DLL fallback.
+- **`DecompPipelineCoordinator.DispatchAsync(options, enginesRootDir, ct)`:** Resolves engine/aliases, returns 3-part `DecompUnbuiltEngineError` (`ExitCode = 3`) if missing, executes `RunDecompAsync`, and runs both `provider.ValidateCleanRoomOutput` and `ValidateCleanRoomOutputDirectory`.
+- **`D4BuildReport` & `DecompD4StrictnessValidator`:**
+  - Parses `d4_build_report.json` accepting `compilerFlags` as either `string[]` or space-delimited `string` (`FlexibleCompilerFlagsJsonConverter`), and reads `isZeroWarningsVerified` / `isZeroDecompilerTellsVerified` alongside legacy `zeroWarningsVerified` / `zeroDecompilerTellsVerified`.
+  - Rejects `compilerErrorCount > 0`, `compilerWarningCount > 0`, `craftsmanshipTellCount > 0`, `-Wno-everything`, missing `Corpus\tiers\{D1_Raw,D2_Structured,D3_Mapped,D4_FunctionalRewrite,D5_ByteExact}` folders during corpus strictness checks, raw C/C++ rewrite files or `cBody` fields in `Dev\schemas\d4_rewrites\*.json` / `.decomp` archives, or ROM/generated artifacts.
+
+### 3.2 `OfflineToolchainLocator` (`ReEngineInstallProfile`)
 - **`ReEngineInstallProfile`:** `Lightweight` (`0`) vs `Full` (`1`), `MaxToolchainBudgetMb = 160`, `ThirdPartyLicensesFileName = "THIRDPARTY_LICENSES.txt"`.
-- **`OfflineToolchainLocator.ResolveToolchainDirectory(baseOrInstallDir, explicitToolchainDir)`:** Checks explicit override first, then sibling peer `..\toolchain\` (primary under `suiteInstallDir`), then falls back to `.\toolchain\` for portable layouts.
-- **`OfflineToolchainLocator.Locate(baseOrInstallDir, profile, explicitToolchainDir, requirements)`:** Zero-network probe checking `ghidra\support\analyzeHeadless(.bat)`, `jdk\bin\java(.exe)` (when `RequiresHeadlessJdk`), `THIRDPARTY_LICENSES.txt`, and absence of `ghidra\GPL\`. Under `Lightweight` without `toolchain\`, returns `IsAvailable = false` guiding `--profile Full` or `--toolchain-dir <path>`.
+- **`OfflineToolchainLocator.ResolveToolchainDirectory`:** Prefers explicit override, then peer `..\toolchain\`, then portable `.\toolchain\`, rejecting unstripped `ghidra\GPL\`.
 
-### 2.3 `IAotCacheManager` & `AotCacheManager`
-- **`AotCacheKey`:** `(ModuleId, RomSha256, EngineId, EngineVersion, ModuleVersion)` -> `ToCacheVersionSegment()` (`<romSha256_16>-<EngineId>-<EngineVersion>-<ModuleVersion>`).
-- **`AotCacheEntry` Serialized JSON Keys (`Standard 18`):** `key`, `cacheDirectory`, `generatedAssemblyPath`, `createdAtUtc`, `lastAccessedAtUtc`, `fileSizeBytes` (`[JsonPropertyName("fileSizeBytes")]`), `sha256Hex` (`[JsonPropertyName("sha256Hex")]`), `isValid`.
-- **Cache Operations (`<dataDir>\cache\aot-index.json` + `.bak` + `.aot-index.lock`):**
-  - `ResolveCacheDirectory(key)` -> `<dataDir>\cache\<moduleId>\<segment>\` via `AotCacheLayoutHelper`.
-  - `StoreCompiledAssemblyAsync(key, sourceAssemblyPath)` -> atomic temp write, `.bak` backup rotation on `aot-index.json`, size + SHA-256 indexing -> `AotCompileResult`.
-  - `TryGetEntryAsync(key)` -> validates file existence, byte size, and SHA-256 (`null` on mismatch/corruption).
-  - `EvictStaleEntriesAsync(moduleId, activeKey)` -> removes contained stale directories for `moduleId` while preserving `activeKey` and other modules.
-  - `ValidateCleanRoomRecompPackage(recompPackagePath)` -> inspects ZIP `.recomp` archives or directories and returns `CleanRoomRecompCheckResult` (`IsClean == false` if any `*.Generated.dll` or `*.g.cs` exists).
+### 3.3 `IAotCacheManager` & `AotCacheManager`
+- **`AotCacheEntry` JSON Keys:** `key`, `cacheDirectory`, `generatedAssemblyPath`, `createdAtUtc`, `lastAccessedAtUtc`, `fileSizeBytes`, `sha256Hex`, `isValid`.
+- **Integrity:** `<dataDir>\cache\aot-index.json` + `.aot-index.lock` + `.bak` rotation + `ValidateCleanRoomRecompPackage`.
 
 ---
 
-## 3. Settings, Associations, Update Sweep & Bootstrap SDK
+## 4. Settings, Updates, Associations, Bootstrap SDK & Installer
 
-### 3.1 Settings Overlay & Standard 18 Keys (`data\settings.json` & `Dev\settings.example.json`)
-- **`ReEngineSettings`:** Preserves unknown keys via `[JsonExtensionData]`: `schemaVersion`, `appId` (`"reengine"`), `updatedAtUtc`, `shouldCheckUpdates`, `shouldAutoStagePatches`, `lastUpdateFeedUrl`, `enginesDirectoryOverride`, `preferredResolutionScale`, `windowWidth`, `windowHeight`.
-- **Standard 18 `v0.2.0` Config Keys (`Dev\settings.example.json` & Installer Persistence):**
-  - `installProfile` (`"lightweight"` | `"full"`)
-  - `reEngineInstallDir` (`"%LOCALAPPDATA%\\Programs\\StreamItAll\\reEngine\\reEngine"`)
-  - `suiteInstallDir` (`"%LOCALAPPDATA%\\Programs\\StreamItAll\\reEngine"`)
-  - `umbrellaSubpath` (`"StreamItAll\\reEngine\\reEngine"`)
-  - `decompSchemaVersion` (`"1.0.0"`), `goalDecompTier` (`"D3"`), `targetDecompTier` (`"D3"`)
-- **`ReEngineAppStatusHelper` (`reEngine.App`):** Reads/writes `installProfile` (`GetInstallProfile`/`SetInstallProfile`), summarizes `<dataDir>\cache\*.Generated.dll` (`InspectAotCache`), and resolves peer `..\toolchain` (via `OfflineToolchainLocator`) + `enginesDir` parent/local fallbacks to report `DECOMP: FULL` vs `DECOMP: ROUTER` (`InspectDecompStatus`).
+### 4.1 Settings Overlay & Migration (`data\config\settings.json`)
+- **`ReEngineSettings` (`UpdateModels.cs`):** `[JsonExtensionData]` preserves forward-compatible keys; writes canonical keys (`schemaVersion`, `appId`, `updatedAtUtc`, `shouldCheckUpdates`, `shouldAutoStagePatches`, `lastUpdateFeedUrl`, `enginesDirectoryOverride`, `resolutionScale`, `backendId`, `pinnedEngineVersions`, `stagedUpdatePath`, `windowWidth`, `windowHeight`), while reading legacy `preferredResolutionScale` read-only for migration (`JsonIgnore(WhenWritingNull)`).
+- **`ProgramBootstrapHelper` & `SettingsMigrationHelper`:** Defaults non-isolated installs to `<InstallRoot>\data\config\settings.json` and `<InstallRoot>\logs\`; merges legacy `data\settings.json` and `app\data\settings.json` newest-wins, backs up to `data\config_history\legacy_*.json`, and archives `.migrated.bak`.
 
-### 3.2 File Associations (`FileAssociationRecord` — `IFileAssociationStore`)
-Persisted under `HKCU\Software\Classes` (`WindowsRegistryAssociationStore`, throws when `suppressHostMutations: true` or `APP_ISOLATED_TEST=1`) or `<dataDir>\virtual_registry.json` (`VirtualRegistryAssociationStore`):
-- **`.recomp` (`reEngine.RecompModule`):** `"\"<exe>\" --open \"%1\""`
-- **`.decomp` (`reEngine.DecompModule`):** `"\"<exe>\" decomp --module \"%1\""`
-- UI button **Register Associations** registers both `.recomp` and `.decomp` via `Program.ResolveLauncherExecutablePath()`.
+### 4.2 Resumable Patch Staging & Side-by-Side Track Resolution (`UpdatePackageApplier` & `UpdateCoordinator`)
+- **`UpdatePackageApplier`:**
+  - `AssertSafeRemoteUrl`: blocks non-HTTP(S), private RFC1918/ULA, link-local, metadata hostnames, and unapproved loopback targets.
+  - `DownloadResumablePartAsync`: HTTP `Range` resume against `.part` and `.part.meta.json` (`UpdatePartMeta`: `engineId`, `version`, `downloadUrl`, `sha256Hex`, `expectedSizeBytes`, `fileSizeBytes`, `updatedAtUtc`), then verifies SHA-256.
+  - `StageAndPromoteArchive`: Zip-Slip-checked extraction to `engines\<engineId>\.staging-<ver>\` -> atomic move to `v<Ver>\` -> writes `.ready` (`{ engineId, version, completedAtUtc }`).
+- **`UpdateCoordinator`:** Uses a `2s` feed poll timeout (`ManifestPollTimeout = 2s`) across deduplicated `(EngineId, Track)` pairs, preserving breaking major/minor tracks.
+- **`EngineVersionResolver`:** Requires `.ready` on `>= 0.3.0` engines, skips `.staging-*`, resolves bidirectional `EngineAliasCatalog` equivalents, and honors `pinnedEngineVersions`.
 
-### 3.3 Suite App Manifest (`Dev\app.manifest.json`), Bootstrap SDK & Installer CLI
-- **`Dev\app.manifest.json`:** `schemaVersion = 2`, `appId = "reengine"`, `version = "0.2.1-hf.1"`, `activeMilestone = "0.2.1-hf.1"`, `goalMajorVersion = "1.0.0"`, `sdkVersion = "0.4.1-hf.1"`, `downstreamProjects = ["Personal/reStation", "Personal/KingsFieldRecomp", "Personal/HMBackToNature-Recomp"]`.
-- **Bootstrap SDK (`ReEnginePackagingConstants` & `ReEngineBootstrapHelper` -> `<SHARED_LIBS>\reEngine\v0.2.1-hf.1\`):**
-  - `ReEnginePackagingConstants`: `Version = "0.2.1-hf.1"`, `StudioName = "StreamItAll"`, `SuiteName = "reEngine"`, `UmbrellaSubpath = "StreamItAll\\reEngine\\reEngine"`, `DefaultInstallProfile = "lightweight"`, `AllowAutoStart = false`.
-  - `ResolveDefaultReEngineInstallDir(explicitDir, isolatedDataDir, isolatedTest)` enforces `isolatedDataDir` containment under `isolatedTest` / `APP_ISOLATED_TEST=1` or resolves `explicitDir` -> `REENGINE_HOME` -> `%LOCALAPPDATA%\Programs\StreamItAll\reEngine\reEngine`.
-  - `ResolveDefaultSuiteInstallDir(...)` resolves `%LOCALAPPDATA%\Programs\StreamItAll\reEngine`.
-  - `ResolveToolchainDir(reEngineInstallDir)` / `ResolveEnginesRootDir(reEngineInstallDir)` resolve peer `..\toolchain` and `..\engines` under `suiteInstallDir` (non-drive-root parent) as primary, falling back to `.\toolchain` and `.\engines` for isolated/portable installs.
-- **Installer (`reEngine.Installer` & `ReEngineWizardPathNormalizer` / `LegacyMigrationHelper`):**
-  - `Program`: `AllowAutoStart = false`, `BootstrapSharedSuiteDaemon = false`, `AllowLegacyMigration = true`, strips `--autostart` (`SanitizeArgs`), supports `--profile Lightweight|Full`, `--suite-dir` (`<dir>\reEngine` when `--install-dir` and `--reengine-dir` omitted), `--reengine-dir` (mapped to `--install-dir` when omitted), `--migrate-legacy`, `--confirm-legacy-cleanup`.
-  - Interactive GUI mode (`InstallerWizardForm`) wires `ReEngineWizardPathNormalizer.WireWizardAutoSortHandlers(wizard)` to auto-sort non-leaf parent picks into `<parent>\reEngine`, sync `SecondaryDirTextBox` via `ResolvePreferredSuiteInstallDir`, and ensure `<preferredEnginesRoot>` exists on post-install.
-  - `LegacyMigrationHelper`: copies `data\settings.json` and preserves `data\rom\*` from `<LEGACY_PROGRAMS_DIR>\reEngine` (or contained `legacy-programs\reEngine` under `isolatedTest` / `APP_ISOLATED_TEST=1`), and gates cleanup of stranded `engines\reStation\v0.1.1\app\` + `logs\crashes\crash_*.json` behind explicit human confirmation.
+### 4.3 File Associations, App Manifest & Installer (`installer.manifest.json`)
+- **Associations (`IFileAssociationStore`):** `.recomp` (`reEngine.RecompModule` -> `--open "%1"`) and `.decomp` (`reEngine.DecompModule` -> `decomp --module "%1"`), written to `HKCU\Software\Classes` or `<dataDir>\virtual_registry.json` (`APP_ISOLATED_TEST=1`).
+- **`Dev\app.manifest.json`:** `schemaVersion = 2`, `appId = "reengine"`, `version = "0.3.0"`, `activeMilestone = "0.3.0"`, `goalMajorVersion = "1.0.0"`, `sdkVersion = "0.5.0"`.
+- **`Dev\Installer\installer.manifest.json`:** Embedded resource inside `reEngine.Installer` carrying `studioName = "StreamItAll"`, `suiteName = "reEngine"`, `umbrellaSubpath = "StreamItAll\\reEngine\\reEngine"`, `allowAutoStart = false`, `layoutMode = "single-line"`, and `--suite-dir` secondary picker.
+- **`ReEnginePackagingConstants` (`SharedLibs\reEngine\v0.3.0\`):** `Version = "0.3.0"`, `AllowAutoStart = false`, `BrandAccentHex = "#38BDF8"`.
 
 ---
 
-## 4. CLI Contract, Child Isolation & Exit Code Matrix
+## 5. CLI Contract, Child Isolation & Exit Code Matrix
 
-### 4.1 CLI Flags & Launcher Argument Rules
+### 5.1 CLI Flags & Launcher Argument Rules
 - **Subcommands & Package Flags:** `decomp --module <file.decomp> [--stage D0..D5] [--engine-dir <dir>] [--toolchain-dir <dir>] [--output-dir <dir>]`, `--open <path>` (or positional `*.recomp`/`*.recomp.json`), `--wait`, `--register-assoc`.
-- **Update & Directory Flags:** `--check-updates`, `--strict`, `--feed <urlOrPath>`, `--engines-dir <dir>`, `--data-dir <dir>`, `--config <path>`, `--log-dir <dir>`.
-- **Mode & Diagnostic Flags:** `--tray-only`, `--window`, `--browser`, `--suite-tab <tab>`, `--port <n>`, `--dry-run`, `--enable-logs`, `--frames <n>`, `--fixture <path>`, `--dump-screenshot <path>`, `--dump-audio <path>`, `--version` (`-v`), `--help` (`-h`, `/?`, `help`).
-- **Launcher Rules (`LauncherArgsHelper`):** Normalizes caller-CWD relative paths for `PathOptions` and positional file args (while preserving `decomp`, `help`, `/?`, and `http://`/`https://` `--feed` URIs), skips value tokens for `--port` / `--ui` / `--frames` / `--stage` / `--suite-tab`, and sync-waits on CLI/`decomp`/diagnostic flags.
+- **Update & Directory Flags:** `--check-updates`, `--strict`, `--feed <urlOrPath>`, `--engines-dir <dir>`, `--data-dir <dir>`, `--config <path>`, `--log-dir <dir>`, `--save-dir <dir>`.
+- **Host, Routing & Verification Flags (`v0.3.0`):** `--host-demo`, `--backend <opengl|vulkan|parallelCpu|software>`, `--scale <1|2|4|8>`, `--require-backend`, `--jit-bringup`, `--preload-media`, `--verify`, `--verify-module <id>`, `--doctor`, `--tray-only`, `--window`, `--browser`, `--suite-tab <tab>`, `--profile <Lightweight|Full>`, `--port <n>`, `--automation-port <n>` *(fail-closed Exit `2` in Release)*, `--automation-token <tok>`, `--dry-run`, `--enable-logs`, `--frames <n>`, `--fixture <path>`, `--dump-screenshot <path>`, `--dump-audio <path>`, `--version` (`-v`), `--help` (`-h`, `/?`, `help`).
+- **`LauncherArgsHelper`:** Normalizes caller-CWD relative file arguments (`PathOptions`), skips value tokens (`--port`, `--automation-port`, `--automation-token`, `--backend`, `--scale`, `--suite-tab`, `--verify-module`, `--profile`, `--frames`, `--stage`, `--ui`), and sync-waits on CLI/`decomp`/`--host-demo` invocations.
 
-### 4.2 Per-Module Child Isolation (`RecompLaunchCoordinator.BuildChildLaunchPlan`)
-1. Isolates `--data-dir` to `<dataDir>\modules\<moduleId>\`, `--config` to `<moduleDataDir>\settings.json` (accepting explicit `--config` only inside `<moduleDataDir>`), and `--log-dir` to `<moduleDataDir>\logs` (or containment-checked `--log-dir`).
-2. Forwards `--module <fullPkgPath>`, optional `--preload-media <PrimaryMediaPath>`, plus active wait/mode/diagnostic flags.
+### 5.2 Per-Module Child Isolation (`RecompLaunchPlanBuilder` & `RecompLaunchCoordinator`)
+1. Isolates `--data-dir` to `<dataDir>\modules\<moduleId>\`, `--config` to `<moduleDataDir>\settings.json`, and `--log-dir` to `<moduleDataDir>\logs` (strictly containment-checked under `APP_ISOLATED_TEST=1`).
+2. Forwards `--module <fullPkgPath>`, optional `--preload-media`, `--scale`, plus `opengl`/`software` and `--jit-bringup` to `>= 0.2.7` engines; reserves `vulkan`/`parallelCpu`, `--require-backend`, and `--automation-port` strictly for `>= 0.3.0` engines.
+3. Attaches Windows `JobObjectGuard` only when `--wait` (`ShouldWaitForExit = true`) is active; interactive detached launches leave detached child windows running cleanly after the launcher stub exits `0`.
 
-### 4.3 Propagated Exit Codes (`reEngine.Launcher` <-> `reEngine.App`)
+### 5.3 Propagated Exit Codes (`reEngine.Launcher` <-> `reEngine.App` <-> `reEngine.Host`)
 
 | Exit Code | Trigger / Meaning |
 | :---: | :--- |
-| `0` | Success, `--version`/`--help`/`--dry-run` pass, or non-strict offline `--check-updates` (`[WARN]`). |
+| `0` | Success, `--version`/`--help`/`--verify`/`--dry-run` pass, interactive child handoff, or non-strict offline `--check-updates`. |
 | `1` | General runtime failure, missing compatible `re*` engine (`.recomp`), or child launch failure. |
-| `2` | Invalid CLI `ArgumentException`, Zip-Slip/`InvalidDataException`/`JsonException` manifest error, or fail-closed containment violation. |
+| `2` | Invalid CLI `ArgumentException`, Zip-Slip/`InvalidDataException`/`JsonException`, containment error, or `--automation-port` in a `Release` build. |
 | `3` | `.decomp` unbuilt/missing platform engine (`DecompUnbuiltEngineError` 3-part diagnostic). |
 | `4` | `--check-updates --strict` failure when update feed/network is unavailable. |
-| `130` | `Console.CancelKeyPress` / `OperationCanceledException` interrupt (terminates child process tree cleanly). |
-| `5, 6, ...` | Propagated verbatim from child `re*` engines during `--open` / `--wait`. |
+| `130` | `Console.CancelKeyPress` / `OperationCanceledException` interrupt (terminates synchronous child process tree cleanly). |
+| `5, 6, ...` | Propagated verbatim from child `re*` engines during `--open --wait`. |

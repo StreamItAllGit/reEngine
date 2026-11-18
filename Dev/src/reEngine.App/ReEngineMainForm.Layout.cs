@@ -1,27 +1,23 @@
 // @module: reEngine.App.ReEngineMainForm.Layout
-// @purpose: Standard 09 Dark Slate control builders, 2-line tooltips, and dynamic Resize-driven layout bounds for ReEngineMainForm.
-// @depends-on: System, System.Drawing, System.Windows.Forms
-// @exports: ReEngineMainForm (partial: InitializeControls, LayoutControls)
+// @purpose: Standard 09 Dark Slate Sub-Page Pill Navigation, status header, modular shelves, and slide-over right drawer layout.
+// @depends-on: System, System.Drawing, System.Windows.Forms, reEngine.App.Ui
+// @exports: ReEngineMainForm (partial: InitializeControls, LayoutControls, ActivateShelf)
 
 using System.Drawing;
 using System.Windows.Forms;
+using reEngine.App.Ui;
 
 namespace reEngine.App;
 
+internal enum MainShelfKind
+{
+    Library = 0,
+    Engines = 1,
+    BringUp = 2
+}
+
 internal sealed partial class ReEngineMainForm
 {
-    private static readonly Color Surface0 = Color.FromArgb(14, 14, 16);
-    private static readonly Color Surface1 = Color.FromArgb(18, 18, 20);
-    private static readonly Color Surface2 = Color.FromArgb(24, 24, 27);
-    private static readonly Color Surface3 = Color.FromArgb(39, 39, 42);
-    private static readonly Color BorderDefault = Color.FromArgb(63, 63, 70);
-    private static readonly Color TextPrimary = Color.FromArgb(244, 244, 245);
-    private static readonly Color TextMuted = Color.FromArgb(161, 161, 170);
-    private static readonly Color AccentCyan = Color.FromArgb(56, 189, 248);
-    private static readonly Color AccentSuccess = Color.FromArgb(16, 185, 129);
-    private static readonly Color AccentWarning = Color.FromArgb(245, 158, 11);
-    private static readonly Color AccentDanger = Color.FromArgb(239, 68, 68);
-
     private Panel _headerPanel = null!;
     private Label _lblTitle = null!;
     private Label _lblSubtitle = null!;
@@ -29,260 +25,153 @@ internal sealed partial class ReEngineMainForm
     private Label _lblDecompPill = null!;
     private Label _lblAssocPill = null!;
     private Label _lblUpdatePill = null!;
-    private Label _lblEnginesHeader = null!;
-    private ListView _lstEngines = null!;
-    private Panel _controlsCard = null!;
-    private Label _lblControlsHeader = null!;
-    private CheckBox _chkCheckUpdates = null!;
-    private CheckBox _chkAutoStage = null!;
-    private Label _lblInstallProfile = null!;
-    private ComboBox _cmbInstallProfile = null!;
-    private Label _lblDecompAotStatus = null!;
-    private Button _btnOpenPackage = null!;
-    private Button _btnRegisterAssoc = null!;
-    private Button _btnCheckUpdates = null!;
+    private Panel _navStrip = null!;
+    private Button _pillLibrary = null!;
+    private Button _pillEngines = null!;
+    private Button _pillBringUp = null!;
+    private Button _btnToggleDrawer = null!;
+    private LibraryShelfPanel _libraryShelf = null!;
+    private EnginesShelfPanel _enginesShelf = null!;
+    private BringUpShelfPanel _bringUpShelf = null!;
+    private DetailsRightDrawer _rightDrawer = null!;
     private Button _btnSaveSettings = null!;
     private Button _btnClose = null!;
     private Label _lblStatusText = null!;
     private ToolTip _tooltip = null!;
+    private MainShelfKind _activeShelf = MainShelfKind.Library;
 
     private void InitializeControls()
     {
-        _tooltip = new ToolTip
-        {
-            BackColor = Surface2,
-            ForeColor = TextPrimary,
-            AutoPopDelay = 8000,
-            InitialDelay = 300,
-            ReshowDelay = 150
-        };
+        _tooltip = new ToolTip { BackColor = ReEngineTheme.Surface2, ForeColor = ReEngineTheme.TextPrimary, AutoPopDelay = 7000 };
 
-        _headerPanel = new Panel { BackColor = Surface2 };
+        _headerPanel = new Panel { Name = "Header_Panel", BackColor = ReEngineTheme.Surface2 };
         _lblTitle = new Label
         {
             Text = "reEngine — Suite Router & Engine Manager",
             Font = new Font("Segoe UI Semibold", 13f, FontStyle.Bold),
-            ForeColor = TextPrimary,
-            AutoSize = true,
+            ForeColor = ReEngineTheme.TextPrimary,
+            AutoSize = false,
+            AutoEllipsis = true,
             UseMnemonic = false
         };
         _lblSubtitle = new Label
         {
-            Text = "Side-by-side platform engine tracks, .recomp associations, and non-blocking updates",
+            Text = "Package Library, Engine Tracks, and Clean-Room Bring-Up",
             Font = new Font("Segoe UI", 9f),
-            ForeColor = TextMuted,
-            AutoSize = true
-        };
-
-        _lblDaemonPill = CreateStatusPill("ZERO-DAEMON", AccentCyan);
-        _lblDecompPill = CreateStatusPill("DECOMP: ROUTER", AccentCyan);
-        _lblAssocPill = CreateStatusPill("UNREGISTERED", AccentWarning);
-        _lblUpdatePill = CreateStatusPill("UP TO DATE", AccentCyan);
-        _headerPanel.Controls.AddRange(new Control[] { _lblTitle, _lblSubtitle, _lblDaemonPill, _lblDecompPill, _lblAssocPill, _lblUpdatePill });
-
-        _lblEnginesHeader = new Label
-        {
-            Text = "Installed Platform Engines",
-            Font = new Font("Segoe UI Semibold", 10f, FontStyle.Bold),
-            ForeColor = TextPrimary,
-            AutoSize = true
-        };
-
-        _lstEngines = new ListView
-        {
-            View = View.Details,
-            FullRowSelect = true,
-            GridLines = true,
-            OwnerDraw = true,
-            BackColor = Surface1,
-            ForeColor = TextPrimary,
-            BorderStyle = BorderStyle.FixedSingle
-        };
-        _lstEngines.DrawColumnHeader += static (_, e) =>
-        {
-            using var bg = new SolidBrush(Surface2);
-            using var pen = new Pen(BorderDefault);
-            using var headerFont = new Font("Segoe UI Semibold", 9f, FontStyle.Bold);
-            e.Graphics.FillRectangle(bg, e.Bounds);
-            e.Graphics.DrawRectangle(pen, e.Bounds.X, e.Bounds.Y, e.Bounds.Width - 1, e.Bounds.Height - 1);
-            TextRenderer.DrawText(
-                e.Graphics,
-                e.Header?.Text ?? string.Empty,
-                headerFont,
-                Rectangle.Inflate(e.Bounds, -6, 0),
-                TextPrimary,
-                TextFormatFlags.VerticalCenter | TextFormatFlags.Left | TextFormatFlags.EndEllipsis);
-        };
-        _lstEngines.DrawItem += static (_, e) => e.DrawDefault = true;
-        _lstEngines.DrawSubItem += static (_, e) => e.DrawDefault = true;
-        _lstEngines.Columns.Add("Engine ID", 140);
-        _lstEngines.Columns.Add("Installed Version", 130);
-        _lstEngines.Columns.Add("Engine Track", 120);
-        _lstEngines.Columns.Add("Install Directory", 400);
-
-        _controlsCard = new Panel { BackColor = Surface2 };
-        _lblControlsHeader = new Label
-        {
-            Text = "Update & Association Controls",
-            Font = new Font("Segoe UI Semibold", 10f, FontStyle.Bold),
-            ForeColor = TextPrimary,
-            AutoSize = true,
+            ForeColor = ReEngineTheme.TextMuted,
+            AutoSize = false,
+            AutoEllipsis = true,
             UseMnemonic = false
         };
-        _chkCheckUpdates = new CheckBox
-        {
-            Text = "Check for compatible updates on launch",
-            ForeColor = TextPrimary,
-            AutoSize = true
-        };
-        _chkAutoStage = new CheckBox
-        {
-            Text = "Automatically stage compatible patches",
-            ForeColor = TextPrimary,
-            AutoSize = true
-        };
-        _lblInstallProfile = new Label
-        {
-            Text = "Profile:",
-            ForeColor = TextMuted,
-            Font = new Font("Segoe UI", 9f),
-            AutoSize = true
-        };
-        _cmbInstallProfile = new ComboBox
-        {
-            DropDownStyle = ComboBoxStyle.DropDownList,
-            BackColor = Surface1,
-            ForeColor = TextPrimary,
-            FlatStyle = FlatStyle.Flat
-        };
-        _cmbInstallProfile.Items.AddRange(new object[] { "Lightweight", "Full" });
-        _lblDecompAotStatus = new Label
-        {
-            Text = ".decomp Dispatch: Router-only | AOT Cache: 0 assembly(ies) (0.00 MB)",
-            ForeColor = TextMuted,
-            Font = new Font("Segoe UI", 8.5f),
-            AutoEllipsis = true
-        };
 
-        _btnOpenPackage = CreateActionButton("Open .recomp Package", AccentCyan, Surface0);
-        _btnOpenPackage.Click += (_, _) => OnOpenPackageClicked();
+        _lblDaemonPill = CreateStatusPill("Pill_ZeroDaemon", "ZERO-DAEMON", ReEngineTheme.AccentCyan);
+        _lblDecompPill = CreateStatusPill("Pill_Decomp", "DECOMP: ROUTER", ReEngineTheme.AccentCyan);
+        _lblAssocPill = CreateStatusPill("Pill_Assoc", "UNREGISTERED", ReEngineTheme.AccentWarning);
+        _lblUpdatePill = CreateStatusPill("Pill_Update", "UP TO DATE", ReEngineTheme.AccentCyan);
+        _headerPanel.Controls.AddRange(new Control[] { _lblTitle, _lblSubtitle, _lblDaemonPill, _lblDecompPill, _lblAssocPill, _lblUpdatePill });
 
-        _btnRegisterAssoc = CreateActionButton("Register Associations", Surface3, TextPrimary);
-        _btnRegisterAssoc.Click += (_, _) => OnRegisterAssociationClicked();
+        _navStrip = new Panel { Name = "Nav_PillStrip", BackColor = ReEngineTheme.Surface1 };
+        _pillLibrary = ReEngineTheme.CreatePillButton("Pill_Library", "Library", true);
+        _pillEngines = ReEngineTheme.CreatePillButton("Pill_Engines", "Engines", false);
+        _pillBringUp = ReEngineTheme.CreatePillButton("Pill_BringUp", "Bring-Up", false);
+        _btnToggleDrawer = ReEngineTheme.CreateActionButton("Btn_ToggleDrawer", "Inspector Drawer", ReEngineTheme.Surface3, ReEngineTheme.TextPrimary);
 
-        _btnCheckUpdates = CreateActionButton("Check For Updates", Surface3, TextPrimary);
-        _btnCheckUpdates.Click += (_, _) => OnCheckUpdatesClicked();
+        _pillLibrary.Click += (_, _) => ActivateShelf(MainShelfKind.Library);
+        _pillEngines.Click += (_, _) => ActivateShelf(MainShelfKind.Engines);
+        _pillBringUp.Click += (_, _) => ActivateShelf(MainShelfKind.BringUp);
+        _btnToggleDrawer.Click += (_, _) => ToggleRightDrawer();
+        _navStrip.Controls.AddRange(new Control[] { _pillLibrary, _pillEngines, _pillBringUp, _btnToggleDrawer });
 
-        _btnSaveSettings = CreateActionButton("Save Settings", Surface3, TextPrimary);
+        _libraryShelf = new LibraryShelfPanel(OnOpenPackageClicked, OnLibrarySelectionChanged);
+        _enginesShelf = new EnginesShelfPanel(OnRegisterAssociationClicked, OnCheckUpdatesClicked, OnPinTrackClicked, OnEngineSelected, OnEngineOptionsChanged);
+        _bringUpShelf = new BringUpShelfPanel();
+        _rightDrawer = new DetailsRightDrawer(() => SetDrawerVisible(false), OnClearPinsClicked);
+
+        _btnSaveSettings = ReEngineTheme.CreateActionButton("Btn_SaveSettings", "Save Settings", ReEngineTheme.Surface3, ReEngineTheme.TextPrimary);
         _btnSaveSettings.Click += (_, _) => OnSaveSettingsClicked();
+        _btnClose = ReEngineTheme.CreateActionButton("Btn_Close", "Close", ReEngineTheme.Surface1, ReEngineTheme.TextPrimary);
+        _btnClose.Click += (_, _) => { ExitCode = 0; BeginInvoke(Close); };
+        _lblStatusText = new Label { Name = "Lbl_StatusText", ForeColor = ReEngineTheme.TextMuted, Font = new Font("Segoe UI", 8.75f), AutoEllipsis = true, UseMnemonic = false };
 
-        _btnClose = CreateActionButton("Close", Surface1, TextPrimary);
-        _btnClose.Click += (_, _) => { ExitCode = 0; Close(); };
+        _tooltip.SetToolTip(_btnToggleDrawer, "Inspector Drawer\nShows execution mode, decompilation toolchain, AOT cache, media folder, and track pin controls.");
 
-        _lblStatusText = new Label
+        Controls.AddRange(new Control[]
         {
-            ForeColor = TextMuted,
-            Font = new Font("Segoe UI", 8.75f),
-            AutoEllipsis = true
-        };
-
-        SetTwoLineTooltip(_btnOpenPackage, "Open .recomp Package [Ctrl+O]", "Resolves the highest compatible engine track and detects data\\rom preload media.");
-        SetTwoLineTooltip(_btnRegisterAssoc, "Register Associations [Ctrl+R]", "Writes .recomp and .decomp open handlers to per-user HKCU Registry (or virtual_registry.json under APP_ISOLATED_TEST).");
-        SetTwoLineTooltip(_btnCheckUpdates, "Check For Updates [F5]", "Checks for compatible track patches while preserving older breaking engine tracks.");
-        SetTwoLineTooltip(_btnSaveSettings, "Save Settings [Ctrl+S]", "Saves update and manager preferences atomically to settings.json.");
-        SetTwoLineTooltip(_chkCheckUpdates, "Launch Update Checks", "Toggles non-blocking compatible update checks when launching .recomp modules.");
-        SetTwoLineTooltip(_chkAutoStage, "Auto-Stage Compatible Patches", "Downloads and SHA-256 verifies compatible track patches without overwriting breaking tracks.");
-        SetTwoLineTooltip(_cmbInstallProfile, "Install Profile", "Active install profile (Lightweight or Full offline toolchain).");
-
-        _controlsCard.Controls.AddRange(new Control[]
-        {
-            _lblControlsHeader, _chkCheckUpdates, _chkAutoStage, _lblInstallProfile, _cmbInstallProfile, _lblDecompAotStatus,
-            _btnOpenPackage, _btnRegisterAssoc, _btnCheckUpdates, _btnSaveSettings
+            _headerPanel, _navStrip, _libraryShelf, _enginesShelf, _bringUpShelf, _rightDrawer, _btnSaveSettings, _btnClose, _lblStatusText
         });
+        ActivateShelf(MainShelfKind.Library);
+    }
 
-        Controls.AddRange(new Control[] { _headerPanel, _lblEnginesHeader, _lstEngines, _controlsCard, _btnClose, _lblStatusText });
+    private void ActivateShelf(MainShelfKind shelf)
+    {
+        _activeShelf = shelf;
+        _libraryShelf.Visible = shelf == MainShelfKind.Library;
+        _enginesShelf.Visible = shelf == MainShelfKind.Engines;
+        _bringUpShelf.Visible = shelf == MainShelfKind.BringUp;
+        ReEngineTheme.StylePill(_pillLibrary, shelf == MainShelfKind.Library);
+        ReEngineTheme.StylePill(_pillEngines, shelf == MainShelfKind.Engines);
+        ReEngineTheme.StylePill(_pillBringUp, shelf == MainShelfKind.BringUp);
+        LayoutControls();
     }
 
     private void LayoutControls()
     {
         if (_headerPanel is null) return;
-
-        int w = ClientSize.Width;
-        int h = ClientSize.Height;
+        int w = Math.Max(740, ClientSize.Width);
+        int h = Math.Max(480, ClientSize.Height);
         const int pad = 16;
 
-        _headerPanel.Bounds = new Rectangle(0, 0, w, 72);
-        _lblTitle.Location = new Point(pad, 12);
-        _lblSubtitle.Location = new Point(pad, 40);
+        _headerPanel.Bounds = new Rectangle(0, 0, w, 68);
 
         int pillRight = w - pad;
         foreach (Label pill in new[] { _lblUpdatePill, _lblAssocPill, _lblDecompPill, _lblDaemonPill })
         {
             int measured = TextRenderer.MeasureText(pill.Text ?? string.Empty, pill.Font).Width;
-            int pillWidth = Math.Max(92, Math.Max(pill.PreferredWidth, measured) + 16);
-            pill.Size = new Size(pillWidth, 24);
+            pill.Size = new Size(Math.Max(92, Math.Max(pill.PreferredWidth, measured) + 16), 24);
             pillRight -= pill.Width;
             pill.Location = new Point(pillRight, 14);
             pillRight -= 6;
         }
 
-        _lblEnginesHeader.Location = new Point(pad, 88);
-        int controlsHeight = 160;
-        int footerHeight = 44;
-        int listTop = 114;
-        int listHeight = Math.Max(130, h - listTop - controlsHeight - footerHeight - pad * 2);
-        _lstEngines.Bounds = new Rectangle(pad, listTop, w - pad * 2, listHeight);
-        if (_lstEngines.Columns.Count == 4)
+        _lblTitle.Bounds = new Rectangle(pad, 10, Math.Max(160, pillRight - pad - 2), 24);
+        _lblSubtitle.Bounds = new Rectangle(pad, 38, Math.Max(160, w - (pad * 2)), 18);
+
+        _navStrip.Bounds = new Rectangle(0, 68, w, 42);
+        _pillLibrary.Bounds = new Rectangle(pad, 6, 108, 28);
+        _pillEngines.Bounds = new Rectangle(pad + 116, 6, 108, 28);
+        _pillBringUp.Bounds = new Rectangle(pad + 232, 6, 108, 28);
+        _btnToggleDrawer.Bounds = new Rectangle(w - pad - 148, 6, 148, 28);
+
+        int contentTop = 114;
+        int footerHeight = 46;
+        int contentHeight = Math.Max(220, h - contentTop - footerHeight);
+        int drawerWidth = _rightDrawer.Visible ? Math.Min(290, w / 3) : 0;
+        int shelfWidth = Math.Max(360, w - (pad * 2) - (drawerWidth > 0 ? drawerWidth + 12 : 0));
+
+        var shelfBounds = new Rectangle(pad, contentTop, shelfWidth, contentHeight);
+        _libraryShelf.Bounds = shelfBounds;
+        _enginesShelf.Bounds = shelfBounds;
+        _bringUpShelf.Bounds = shelfBounds;
+        if (_rightDrawer.Visible)
         {
-            int used = 130 + 130 + 110 + 24;
-            _lstEngines.Columns[3].Width = Math.Max(180, _lstEngines.Width - used);
+            _rightDrawer.Bounds = new Rectangle(shelfBounds.Right + 12, contentTop, drawerWidth, contentHeight);
+            _rightDrawer.BringToFront();
         }
 
-        int cardTop = _lstEngines.Bottom + 12;
-        _controlsCard.Bounds = new Rectangle(pad, cardTop, w - pad * 2, controlsHeight);
-        _lblControlsHeader.Location = new Point(16, 12);
-        _chkCheckUpdates.Location = new Point(16, 40);
-        _chkAutoStage.Location = new Point(286, 40);
-        _lblInstallProfile.Location = new Point(_controlsCard.Width - 196, 42);
-        _cmbInstallProfile.Bounds = new Rectangle(_controlsCard.Width - 138, 38, 122, 26);
-        _lblDecompAotStatus.Bounds = new Rectangle(16, 68, _controlsCard.Width - 32, 20);
-
-        int btnY = 104;
-        _btnOpenPackage.Bounds = new Rectangle(16, btnY, 176, 34);
-        _btnRegisterAssoc.Bounds = new Rectangle(200, btnY, 204, 34);
-        _btnCheckUpdates.Bounds = new Rectangle(412, btnY, 152, 34);
-        _btnSaveSettings.Bounds = new Rectangle(_controlsCard.Width - 136, btnY, 120, 34);
-
-        int footerY = h - 42;
-        _btnClose.Bounds = new Rectangle(w - pad - 96, footerY, 96, 30);
-        _lblStatusText.Bounds = new Rectangle(pad, footerY + 6, w - pad * 2 - 110, 22);
+        int footerY = h - 38;
+        _btnClose.Bounds = new Rectangle(w - pad - 92, footerY, 92, 28);
+        _btnSaveSettings.Bounds = new Rectangle(_btnClose.Left - 124, footerY, 116, 28);
+        _lblStatusText.Bounds = new Rectangle(pad, footerY + 5, Math.Max(180, _btnSaveSettings.Left - pad - 10), 20);
     }
 
-    private static Label CreateStatusPill(string text, Color accent) => new()
+    private static Label CreateStatusPill(string name, string text, Color accent) => new()
     {
+        Name = name,
         Text = text,
         ForeColor = accent,
-        BackColor = Surface3,
+        BackColor = ReEngineTheme.Surface3,
         Font = new Font("Segoe UI Semibold", 8.25f, FontStyle.Bold),
         TextAlign = ContentAlignment.MiddleCenter,
         UseMnemonic = false
     };
-
-    private static Button CreateActionButton(string text, Color back, Color fore)
-    {
-        var btn = new Button
-        {
-            Text = text,
-            BackColor = back,
-            ForeColor = fore,
-            FlatStyle = FlatStyle.Flat,
-            Font = new Font("Segoe UI Semibold", 9f, FontStyle.Bold),
-            Cursor = Cursors.Hand
-        };
-        btn.FlatAppearance.BorderColor = BorderDefault;
-        return btn;
-    }
-
-    private void SetTwoLineTooltip(Control control, string title, string description) =>
-        _tooltip.SetToolTip(control, $"{title}\n{description}");
 }

@@ -3,6 +3,7 @@
 // @depends-on: System, System.Collections.Generic, System.Globalization, System.IO, System.Linq, System.Text.Json, reEngine.Core.Resolution, reEngine.Core.Updates
 // @exports: AotCacheStatusSummary, DecompDispatchStatusSummary, ReEngineAppStatusHelper
 
+using System.Diagnostics;
 using System.Globalization;
 using System.Text.Json;
 using reEngine.Core.Decomp;
@@ -40,6 +41,37 @@ internal sealed record DecompDispatchStatusSummary(
 internal static class ReEngineAppStatusHelper
 {
     public const string InstallProfileKey = "installProfile";
+    public const string JitBringupKey = "shouldAllowJitBringup";
+
+    public static bool GetJitBringup(ReEngineSettings settings)
+    {
+        ArgumentNullException.ThrowIfNull(settings);
+        if (settings.ExtensionData is not null)
+        {
+            if (TryReadBool(settings.ExtensionData, JitBringupKey, out bool v)) return v;
+            if (TryReadBool(settings.ExtensionData, "jitBringup", out bool legacy)) return legacy;
+        }
+        return false;
+    }
+
+    public static void SetJitBringup(ReEngineSettings settings, bool enabled)
+    {
+        ArgumentNullException.ThrowIfNull(settings);
+        settings.ExtensionData ??= new Dictionary<string, JsonElement>(StringComparer.OrdinalIgnoreCase);
+        settings.ExtensionData[JitBringupKey] = JsonSerializer.SerializeToElement(enabled);
+    }
+
+    private static bool TryReadBool(IDictionary<string, JsonElement> data, string key, out bool value)
+    {
+        if (data.TryGetValue(key, out JsonElement el) &&
+            el.ValueKind is JsonValueKind.True or JsonValueKind.False)
+        {
+            value = el.GetBoolean();
+            return true;
+        }
+        value = false;
+        return false;
+    }
 
     public static string GetInstallProfile(ReEngineSettings settings)
     {
@@ -86,8 +118,9 @@ internal static class ReEngineAppStatusHelper
             {
                 bytes += new FileInfo(dll).Length;
             }
-            catch (IOException)
+            catch (IOException ex)
             {
+                Trace.WriteLine($"Skipped locked AOT assembly size check for '{dll}': {ex.Message}");
             }
         }
 

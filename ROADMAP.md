@@ -1,21 +1,21 @@
 # reEngine — Roadmap & Milestones
 
-**Current Active Version:** `0.2.1-hf.1`  
+**Current Active Version:** `0.3.0`  
 **Lifecycle State:** `active.state`  
-**Last Updated:** 2026-11-15
+**Last Updated:** 2026-11-18
 
 ---
 
 ## 1. North Star Goal
-Provide a lightweight, **zero-daemon top-level `.recomp`/`.decomp` suite router and engine version manager** (`0 MB` idle, `AllowAutoStart = false`) shared automatically by all per-architecture **4-Tier Recomp / Shared-IR RyuJIT / Clean-Room HLE** engines (`reStation`, `re64`, `reCube`, `rePS2`, `reAdvance`, plus optional `reNes`/`reSnes`/`reBoy` spawned on demand for `R1–R3` `.recomp` tracks) and `<Game>Recomp` modules—delivering **`v1.0.0` (`win-x64` Going Gold)** with synchronous `uStation` delegation (`reEngine --open <pkg> --wait`) and scaling in **`v2.0.0` to Full-Stack 10-Platform Compatibility** across Desktop, Handheld, Mobile, WebAssembly, and Consoles.
+Provide a lightweight, **zero-daemon `.recomp` / `.decomp` package router and engine version manager** (`0 MB` idle footprint, no background services or startup entries) shared across clean-room static recompilation engines (`reStation`, `re64`, `reCube`, `rePS2`, `reAdvance`, plus optional `reNes`/`reSnes`/`reBoy`) and game modules—delivering **`v1.0.0` desktop stability on Windows (`win-x64`)** and scaling in **`v2.0.0` to full cross-platform compatibility** across Desktop, Handheld, Mobile, WebAssembly, and Consoles.
 
-- **Explicit Non-Goals (Anti-Creep Boundary):** `reEngine` NEVER runs background daemons or startup entries, NEVER ships generic cycle-accurate emulator cores (emulation belongs in standalone emulators and `uStation`), `uStation` NEVER builds a competing recompiler (all `.recomp` launches delegate via `reEngine --open <pkg> --wait`), and `reEngine` strictly scopes to `R1–R3` `.recomp`/`.decomp` packages—once a game graduates to an `R4`/`R5` full native port, it ships as its own standalone game EXE/installer and does not use `reEngine`.
+- **Explicit Boundaries:** `reEngine` never runs background daemons or startup entries, never bundles generic cycle-accurate emulators or copyrighted retail ROM/BIOS files, delegates frontend emulator launching without rebuilding an emulator inside `reEngine`, and focuses strictly on `.recomp`/`.decomp` modules (standalone full native game ports ship directly as their own independent executables).
 
 ---
 
-## 2. Active & Next Milestone
-- **Shipped Baseline (`0.2.1-hf.1`):** `v0.2.1-hf.1` (`2026-11-15`) — Syncs `Foundation v0.4.1-hf.1` (`AppEnvironment`, `TrayOrBackground`, `InstallerRuntimeContext`), retires the sibling test folder and obsolete test-harness flags in favor of `APP_ISOLATED_TEST=1` (`51/51` passing tests, `0` warnings), and refreshes documentation/manifests cleanly atop `v0.2.1` (`ReEngineWizardPathNormalizer` `<parent>\reEngine\` auto-sorting) and `v0.2.0` (`.decomp` orchestrator, offline Ghidra + OpenJDK `Full` stager, `<dataDir>\cache\` `AotCacheManager`, and `%LOCALAPPDATA%\Programs\StreamItAll\reEngine\` peer suite layout).
-- **Next Active Milestone:** `v0.3.0` — Resumable `.part` Staging Decoupling & Atomic Apply (`staged_updates\` $\rightarrow$ `engines\`), `"supportedEngineTracks"` Runtime Compatibility Matcher, `--jit-bringup` / 4-Backend Routing, Upstream `Foundation.Launcher`, and Library Shelf UI.
+## 2. Active In-Dev Milestone
+- **Shipped Baseline (`0.3.0`):** `v0.3.0` (`2026-11-18`) — Introduces the shared multi-targeted `reEngine.Host.dll` SDL3 runtime (windowing, audio ring buffer, unified controller/keyboard input, `F1` 5-tab drawer, `F3` HUD, and first-run user media prompt), resumable HTTP `Range` `.part` engine updates with atomic `.ready` promotion, bidirectional engine aliases (`reSlate` / `reStation`, `reCartOne` / `reNes`, `reCart64` / `re64`, `reBlast16` / `reGenesis`), detached interactive child-window `.recomp` launching (`--scale` and `opengl`/`software` + `--jit-bringup` forwarding to `reStation v0.2.7+`), `.decomp` provider assembly unification with strict clean-room validation, unified `data\config\settings.json` migration, and the Dark Slate 3-shelf + Inspector Drawer manager UI.
+- **Next Planned Milestone (`v0.4.0`):** Integrate synchronous frontend delegation (`uStation -> reEngine --open --wait`), add `--save-dir` and `--fullscreen` passthrough with bounded process-tree cleanup, and add one-click module validation (`--verify-module`) for newly graduated research packages.
 
 ---
 
@@ -23,98 +23,81 @@ Provide a lightweight, **zero-daemon top-level `.recomp`/`.decomp` suite router 
 
 ```mermaid
 flowchart LR
-    V01["v0.1.0-v0.1.3 (Shipped)\nRouter, SDK & Legal Sanitizer"] --> V02["v0.2.0 (Shipped)\n.decomp + Offline Ghidra + AOT Cache"]
-    V02 --> V03["v0.3.0 (Next)\n.part Apply, Tracks, 4-Backend & Shelf"]
-    V03 --> V04["v0.4.0\nuStation --open --wait & R&D Bridge"]
-    V04 --> V10["v1.0.0 (GOLD win-x64)\nMulti-Engine R1-R3 Cert"]
-    V10 --> V11["v1.1.0\nCross-OS SDL3 UI + Linux/macOS/Deck"]
-    V11 --> V12["v1.2.0\nAndroid/iOS Zero-RWX Host"]
-    V12 --> V13["v1.3.0\nbrowser-wasm OPFS Router"]
-    V13 --> V14["v1.4.0\nConsole Cert & Static Registry"]
-    V14 --> V20["v2.0.0 (NORTH STAR)\n10-Platform Full Stack"]
+    V01["v0.1.0-v0.1.3 (Shipped)\nRouter, SDK & Legal Clean-Room Packaging"] --> V02["v0.2.0-v0.2.1-hf.1 (Shipped)\n.decomp + Offline Ghidra + AOT Cache"]
+    V02 --> V03["v0.3.0 (Shipped)\nreEngine.Host, Resumable Updates & UI Fixes"]
+    V03 --> V04["v0.4.0 (Next)\nuStation --open --wait & Module Validation"]
+    V04 --> V10["v1.0.0 (Desktop Release)\nwin-x64 Multi-Engine Certification"]
+    V10 --> V11["v1.1.0\nCross-Platform SDL3 UI (Linux/macOS/SteamOS)"]
+    V11 --> V12["v1.2.0\nAndroid/iOS Support"]
+    V12 --> V13["v1.3.0\nbrowser-wasm Web Router"]
+    V13 --> V14["v1.4.0\nConsole Static Registry"]
+    V14 --> V20["v2.0.0 (North Star)\n10-Platform Cross-Platform Suite"]
 ```
 
-### `v0.3.0` — `.part` Atomic Updates, `"supportedEngineTracks"`, `--jit-bringup` / 4-Backend Routing & Library Shelf UI
-- **Cornerstone Goal:** Decouple large `.part` update downloads from `2s` manifest discovery with atomic staging into `engines\`, add runtime `"supportedEngineTracks"` resolution, expose first-class routing for `re*` execution tiers, developer `--jit-bringup`, all `4` canonical production backends, upstream `Foundation.Launcher` sync-wait (`0.3.1.20261114-022857.-.rootlauncher-shouldwait-proposal.md`), and a Pill/Drawer `.recomp` library shelf.
-- **Planned Deliverables (`250/400/600` code-only SLOC per file):**
-  - [ ] Decouple `2s` manifest check from resumable `.part` staging (`SafeNetworkTransfer`), add atomic unpack from `staged_updates\` $\rightarrow$ `engines\<engineId>\v<Ver>\`, and enable `"supportedEngineTracks"` multi-track resolution inside `EngineVersionResolver` (`ROUTE-08`).
-  - [ ] Forward `--jit-bringup`, `--backend <opengl|vulkan|parallelCpu|software>`, and `--require-backend` through `RecompLaunchCoordinator` and roll `LauncherArgsHelper` sync-wait/CWD-normalization rules upstream into `Foundation.Launcher` (`ROUTE-09`).
-  - [ ] Upgrade manager UI to Standard 09 Sub-Page Pill Navigation (`Library`, `Engines`, `Bring-Up`) + Slide-Over Right Drawer displaying `executionTierMode`, `isR4PromotionReady` (`100%` static `R3` `.recomp` indicator), `data\rom\` status, and side-by-side track rollback (`ROUTE-10`).
-- **Empirical Isolated Verification Gate (`APP_ISOLATED_TEST=1`):**
-  - Seed `reStation` (`v0.1.0`, `v0.1.1`, `v0.2.0`) + `re64` (`v0.1.0`) under an isolated temporary `engines\` root; verify resumable `.part` SHA-256 recovery and atomic unpack without mutating older versions, run `reEngine --data-dir <tmpData> --open <module.recomp> --backend <opengl|vulkan|parallelCpu|software> --jit-bringup --wait`, assert child heartbeats (`<= 15s`, zero duplicate prefixes) and exact exit codes (`0..6, 130`), and inspect UI geometry across desktop/compact viewports.
-
-### `v0.4.0` — `uStation -> reEngine --open --wait` & `R&D` Graduation Bridge
-- **Cornerstone Goal:** Cement the single-ecosystem delegation boundary between `uStation` (emulator/vault), `R&D` (`graduate-recomp`), and `reEngine` (`.recomp` router).
-- **Planned Deliverables (`250/400/600` code-only SLOC per file):**
-  - [ ] Add `--save-dir` and `--fullscreen` passthrough plus `JobObjectGuard` child-tree termination (`<= 3s`) so `uStation` can track accurate `GameplayDuration` and safely flush `.mcr`/`.rst1` saves on exit.
-  - [ ] Add `R&D` `graduate-recomp` bundle validator & CLI import hook (`reEngine --verify-module`).
-- **Empirical Isolated Verification Gate (`APP_ISOLATED_TEST=1`):**
-  - Invoke `reEngine.exe --data-dir <tmpData> --open <KingsField.recomp> --save-dir <tmpSaves> --wait` from a bounded parent runner harness; assert root `reEngine.exe` blocks for the entire `N`-frame run, preserves saves cleanly on exit, terminates the full process tree within `<= 3s` on watchdog cancellation, and leaves `HKCU` and `<PROGRAMS_ROOT>\` untouched.
-
-### `v1.0.0` — Going Gold (`win-x64` Suite Router Milestone)
-- **Cornerstone Goal:** Certify `reEngine` on `win-x64` as the Golden-Master `.recomp` router on explicit user approval (`compatibleEngineTrack: "1.x"` with backward compatibility via canonical `"supportedEngineTracks": ["0.1.x", "0.2.x", "0.3.x", "0.4.x", "1.x"]` for `"0.x"` modules).
+### `v0.4.0` — Frontend Delegation & Research Module Bridge
+- **Goal:** Complete seamless delegation between frontend launchers (`uStation`), standalone research packages, and `reEngine`.
 - **Planned Deliverables:**
-  - [ ] Finalize `reEngine.Core` v1.0.0 ABI drop in `<PROJECTS_ROOT>\SharedLibs\reEngine\v1.0.0\` (`+ Latest\`).
-  - [ ] Pass full multi-engine suite integration across `>= 2` `re*` engines (`reStation v1.0.0` verified across `opengl`, `vulkan`, `parallelCpu` + second `re*` engine stub such as `re64`) and `>= 2` `R1–R3` `.recomp` modules (strictly `R1–R3` only; decoupled from `R4` standalone ports and per-game overlay counts).
-- **Empirical Release Verification Gate:**
-  - `0` compiler/linter warnings, `0` `audit_installer.ps1` findings (`AllowAutoStart = false`), `100%` passing tests (`APP_ISOLATED_TEST=1`), verified dispatch across `>= 2` `re*` engines (`reStation` + `re64`) and `>= 2` `R1–R3` `.recomp` modules, `--tray-only` diagnostic pass, and `0` `WARN`/`ERROR`/crash entries across both log roots.
+  - [ ] Add `--save-dir` and `--fullscreen` passthrough plus bounded `<= 3s` child-tree shutdown when launched synchronously (`--wait`), ensuring memory card/state saves flush cleanly on exit.
+  - [ ] Add standalone package validation (`reEngine --verify-module`) for newly packaged `.recomp` and `.decomp` modules.
+- **Verification Gate:** Isolated end-to-end launch tests confirming synchronous blocking, intact save file writes, clean teardown under timeout, and zero host registry/install-folder side effects.
 
-### `v1.1.0` — Cross-Platform `SDL3` Router UI & Desktop/SteamOS (`linux-x64`, `osx-arm64`, `steamos-deck`)
-- **Cornerstone Goal:** Break `reEngine` free of `net8.0-windows` WinForms lock-in so the router and shell associations run natively across Windows, Linux, macOS, and SteamOS Deck.
-- **Planned Deliverables (`250/400/600` code-only SLOC per file):**
-  - [ ] Lift `RecompLaunchCoordinator` into `reEngine.Core`; introduce `IReEngineUiShell` and `reEngine.Shell.Sdl3` (`0 MB` idle daemon, `AllowAutoStart = false`).
-  - [ ] Implement `FreedesktopAssociationStore` (XDG `.desktop` + `mimeapps.list`), `LaunchServicesAssociationStore` (macOS UTI), POSIX `ProcessGroupGuard`, extensionless binary discovery in `EngineVersionResolver`, and SteamOS `1280x800` gamepad-only navigation.
-- **Empirical Isolated Verification Gate (`APP_ISOLATED_TEST=1`):**
-  - Verify `0` `System.Windows.Forms` references in the cross-platform router host, virtualized `--register-assoc` XDG/macOS outputs strictly under the isolated temp `--data-dir`, `1280x720` + `1280x800` captures, and `0` orphan processes on POSIX process-group teardown.
+### `v1.0.0` — Windows Desktop General Availability (`win-x64`)
+- **Goal:** Certify `reEngine` on Windows (`win-x64`) as a stable `v1.0.0` suite router and SDK (`compatibleEngineTrack: "1.x"` with backward compatibility for `"0.x"` modules).
+- **Planned Deliverables:**
+  - [ ] Lock `reEngine.Core` and `reEngine.Host` `v1.0.0` public SDK interfaces.
+  - [ ] Certify end-to-end routing across at least two platform engines (including `reStation` with `opengl`, `vulkan`, `parallelCpu`, and `software`, plus a second engine such as `re64`) and multiple `.recomp` game modules.
+- **Verification Gate:** Zero compiler warnings, full automated test and installer pass, multi-engine live launch verification, and clean diagnostic logs.
 
-### `v1.2.0` — Mobile Touch Router & Zero-RWX Host Prep (`linux-bionic-arm64`, `ios-arm64`)
-- **Cornerstone Goal:** Bring `reEngine` module management, scoped-storage `data/rom/` discovery, and Zero-RWX static cartridge dispatch to Android and iOS.
-- **Planned Deliverables (`250/400/600` code-only SLOC per file):**
-  - [ ] Add Android SAF `data/rom/` URI resolver (`reEngine.Core`) and dual-orientation touch Pill/Drawer layout (`portrait` & `landscape`).
-  - [ ] Integrate `Foundation.Retro.IRecompStaticModuleRegistry` lookup for `RECOMP_ZERO_RWX` hosts where dynamic `AssemblyLoadContext.LoadFromAssemblyPath` / RWX is blocked (`ios-arm64`).
-- **Empirical Isolated Verification Gate (`APP_ISOLATED_TEST=1`):**
-  - NativeAOT / mobile-linker publish passes binary inspection with `0` `System.Reflection.Emit` / `RWX` symbols on `ios-arm64`; mobile touch geometry (`portrait` & `landscape` viewports) passes zero-overlap inspection.
+### `v1.1.0` — Cross-Platform SDL3 Manager & Desktop/SteamOS (`linux-x64`, `osx-arm64`, `steamos-deck`)
+- **Goal:** Replace the Windows-only WinForms interface with a native cross-platform SDL3 shell so `reEngine` runs natively on Windows, Linux, macOS, and SteamOS Deck.
+- **Planned Deliverables:**
+  - [ ] Move launch orchestration cleanly into `reEngine.Core` and implement an SDL3-backed UI shell with zero background daemons.
+  - [ ] Add XDG `.desktop` / `mimeapps.list` (Linux), `Info.plist` UTI (macOS), POSIX process-group cleanup, extensionless binary discovery, and `1280x800` gamepad navigation.
+- **Verification Gate:** Zero `System.Windows.Forms` dependencies in the cross-platform UI target, isolated association tests, multi-resolution captures, and clean POSIX teardown.
+
+### `v1.2.0` — Mobile Touch Router & Pre-Linked Execution (`linux-bionic-arm64`, `ios-arm64`)
+- **Goal:** Support Android scoped storage (`data/rom/`), dual-orientation touch layouts, and pre-linked static module dispatch on iOS (`W^X` locked hosts).
+- **Planned Deliverables:**
+  - [ ] Implement Android SAF `data/rom/` discovery and portrait/landscape touch navigation.
+  - [ ] Integrate pre-linked static module lookup for platforms that forbid runtime JIT compilation.
+- **Verification Gate:** Linker/binary audit confirming zero runtime executable code emission on `ios-arm64` and overlap-free mobile UI layouts.
 
 ### `v1.3.0` — Progressive Web Router (`browser-wasm`)
-- **Cornerstone Goal:** Enable in-browser `.recomp` launching and OPFS `data/rom/` media ingestion with graceful COOP/COEP fallback.
-- **Planned Deliverables (`250/400/600` code-only SLOC per file):**
-  - [ ] Add `reEngine.Shell.Wasm` OPFS/IndexedDB chunked `data/rom/` loader and `crossOriginIsolated` worker detector (`COOP`/`COEP`).
-- **Empirical Isolated Verification Gate (`APP_ISOLATED_TEST=1`):**
-  - Automated Chromium CDP test verifies `.recomp` launch **both** with COOP/COEP (`crossOriginIsolated == true`) and without (`crossOriginIsolated == false`, `0` tab deadlocks, `< 512 MB` WASM heap).
+- **Goal:** Enable in-browser `.recomp` launching and OPFS/IndexedDB user media loading with graceful cross-origin worker fallback.
+- **Planned Deliverables:**
+  - [ ] Implement chunked browser storage for `data/rom/` and automatic COOP/COEP `SharedArrayBuffer` capability detection.
+- **Verification Gate:** Automated browser verification across both isolated multi-threaded mode and single-threaded fallback with bounded WASM memory usage.
 
-### `v1.4.0` — Console Cartridge Registry & Reduced-Capacity Cert (`switch`, `xbox`, `playstation`)
-- **Cornerstone Goal:** Add Zero-RWX `IPlatformHal` console storage/controller adapters and pre-linked `.recomp` registry dispatch for console targets.
-- **Planned Deliverables (`250/400/600` code-only SLOC per file):**
-  - [ ] Implement bounded per-console `IPlatformHal` save-quota & controller-only `10-foot` launcher spokes (`<= 250 LOC` each) reusing `IRecompStaticModuleRegistry`.
-- **Empirical Release Verification Gate:**
-  - Console Zero-RWX harness passes `0` dynamic codegen / `0` dynamic DLL loads, deterministic save-slot quota limits, and full `10-foot` controller-only navigation.
+### `v1.4.0` — Console Cartridge Registry (`switch`, `xbox`, `playstation`)
+- **Goal:** Provide storage-quota-safe console HAL adapters and controller-only `10-foot` launcher menus backed by pre-linked module registries.
+- **Planned Deliverables:**
+  - [ ] Implement bounded per-console save adapters and full `10-foot` controller-only navigation.
+- **Verification Gate:** Zero dynamic code generation or runtime DLL loading, deterministic save quotas, and full controller navigation.
 
-### `v2.0.0` — Full-Stack 10-Platform Compatibility & First-Party Achievements North Star (`reEngine` Summit)
-- **Cornerstone Goal:** Unite all 10 `hostRid` platforms (`win-x64`, `linux-x64`, `osx-arm64`, `steamos-deck`, `linux-bionic-arm64`, `ios-arm64`, `browser-wasm`, `switch`, `xbox`, `playstation`) behind one `reEngine` router—running full CoreCLR RyuJIT `re*` engines where permitted and seamless Reduced-Capacity Mode (Static `.recomp` + Zero-RWX Threaded-IR + `parallelCpu`/platform GPU) everywhere else, plus the **First-Party `.recomp` Achievement & Mastery System** (`manifestType: "recomp-achievements"`, `IRecompAchievementProvider` toast overlay + `uStation` local vault sync, zero RetroAchievements/`rcheevos` calls).
-- **Planned Deliverables (`250/400/600` code-only SLOC per file, Gate 1 `/define` lock):**
-  - [ ] Lock `manifestType: "recomp-achievements"`, `achievementId`, `achievementPoints`, `achievementCategory`, `isSecretAchievement`, `requiresPureSimulation`, `achievementSessionMode`, `ramWatchPredicates`, `isAchievementsEnabled`, `shouldShowAchievementToasts`, `isUnlocked`, `unlockedAtUtc`, `unlockedAchievementCount`, `totalAchievementCount`, and `masteryPercent`, plus toast UI & `uStation` mastery vault bridge.
-- **Empirical Release Verification Gate:**
-  - Automated 10-`hostRid` suite certification passing cross-platform `.mcr`/`.rst1` save portability, `0` warnings, `AllowAutoStart = false` (`0 MB` idle daemon), achievement toast/vault roundtrip (`0` RA network traffic), and `100%` clean isolated telemetry across every supported target.
+### `v2.0.0` — Cross-Platform Suite & First-Party Achievements (`reEngine` Summit)
+- **Goal:** Unify all 10 desktop, handheld, mobile, web, and console targets behind a single `reEngine` router and introduce an optional **First-Party `.recomp` Achievement System** (`manifestType: "recomp-achievements"`, local unlock toasts and progression tracking with zero external RetroAchievements network calls).
+- **Planned Deliverables:**
+  - [ ] Finalize achievement manifest contracts, local unlock toast overlays, and local progression vault synchronization.
+- **Verification Gate:** Cross-platform save portability, zero warnings, zero background services, and offline achievement unlock/sync verification.
 
 ---
 
 ## 4. Completed Milestones
-- `0.2.1-hf.1` *(2026-11-15)*: Synced `Foundation v0.4.1-hf.1` (`AppEnvironment`, `UiPresentationMode.TrayOrBackground`, `InstallerRuntimeContext`), retired the sibling test folder, obsolete test-harness CLI flags, smoke `.bat` wrappers, and stale verification artifacts in favor of `APP_ISOLATED_TEST=1` (`51/51` passing xUnit tests, `0` warnings) and `--tray-only` / `--window` / `--browser`, scrubbed Root Quartet + Manual Shelf + manifests (`active.state` `Tier A (4-Folder)`), and hardened `Dev\scripts\build_release.ps1`.
-- `0.2.1` *(2026-11-15)*: Added `ReEngineWizardPathNormalizer` for Setup Wizard `<parent>\reEngine` auto-sorting, synced suite field selection, companion `<reEngineDir>\engines\` creation for custom non-umbrella folders, extracted `ReEnginePackagingConstants.cs`, bumped SDK/installer metadata (`53/53` passing tests, `0` warnings), and fixed `build_release.ps1` `audit_installer.ps1` path.
-- `0.2.0` *(2026-11-15)*: Delivered platform-agnostic `.decomp` routing & `D0`–`D5` pipeline coordination (`DecompPackageManifest`, `IDecompPlatformProvider`, `DecompPipelineCoordinator`, 3-part `Exit 3` unbuilt-engine diagnostics, `HKCU` `.decomp` association), `OfflineToolchainLocator` + `stage_offline_toolchain.ps1` (`<= 160 MB` stripped Apache-2.0 CLI Ghidra + `jlink` OpenJDK + `THIRDPARTY_LICENSES.txt`), `<dataDir>\cache\` `AotCacheManager` + clean-room `.recomp` guard, `%LOCALAPPDATA%\Programs\StreamItAll\reEngine\` peer suite layout (`--profile Lightweight|Full`, `--suite-dir`, `--reengine-dir`, opt-in `--migrate-legacy`), `Dev\settings.example.json`, `Foundation v0.4.0` SDK sync, `50/50` xUnit tests (`0` warnings), `@dean` Gate 2 `PASS`, `audit_installer.ps1` (`0` findings), `@inspecter` release verification `PASS`, and `git-filter-repo` history scrub (`T8`, `0.2.0.2026-11-14.md`).
-  - [x] `T1`–`T7`: `.decomp` contracts & HKCU association, offline Ghidra + OpenJDK `Full` stager, `D0`–`D5` orchestrator + `Exit 3` diagnostics, `<dataDir>\cache\` AOT cache manager, `SharedLibs\reEngine\v0.2.0\`, `%LOCALAPPDATA%\Programs\StreamItAll\reEngine\` suite defaults, `--migrate-legacy`, and UI `.decomp` / `Profile:` / AOT status integration.
-  - [x] `T8`: `Archive\pre-scrub-v0.2.0.7z` snapshot, working-tree + `git-filter-repo` history scrub (`0` PII/path/UUID leaks across `git log --all`), single-pass release sync, and GitHub Release `v0.2.0`.
-- `0.1.3` *(2026-11-14)*: Hardened UTF-8 `Sanitize-MarkdownForEndUser` + fail-fast leak guards across `Installers\RELEASE_NOTES.md` and `Releases\{v0.1.3,Latest}\*.md`, bundled root `MPL-2.0` `LICENSE` across portable `Builds\v0.1.3\app\`, `Archive\`, and `SharedLibs\reEngine\v0.1.3\`, scrubbed `AGENTS.md` & `app.manifest.json`, expanded all 4 Manual Shelf documents to `>= 85` non-empty lines, added `## License & Legal` to `README.md` / `USER_GUIDE.md`, passed `34/34` xUnit tests (`0` warnings), `@dean-2` Gate 2 `PASS`, `audit_installer.ps1` (`0` findings), and `@inspecter` release verification `PASS` (`0.1.3.2026-11-14.md`).
-- `0.1.2` *(2026-11-14)*: Delivered `RecompPackageReader.ResolveModuleRootDirectory` for parent `<InstallRoot>\data\rom\` discovery on `app\*.recomp` ZIP cartridges, max-2 unpacked `Releases\` pruning, `34/34` xUnit tests (`0` warnings), `SharedLibs\reEngine\v0.1.2\`, and unit verification (`v0.1.2.2026-11-14.md`).
-- `0.1.1` *(2026-11-14)*: Closed all `5` verified `v0.1.0` runtime/CLI lockstep defects with `33/33` passing xUnit tests (`0` warnings), `@dean` Gate 1 (`#24`) & Gate 2 (`#29`) `PASS`, signed `Installers\reEngine-Setup-v0.1.1-win-x64.exe` (`0` `audit_installer.ps1` findings), `SharedLibs\reEngine\v0.1.1\` SDK drop, and `@inspecter-reengine` release verification `PASS`; resolved archived report `0.1.0.20261114-020546.-.lockstep-audit.md`.
-  - [x] `T1`: `reEngine.Launcher` synchronous wait (`--open`, `--wait`, `--check-updates`, `--register-assoc`, `--tray-only`, `--dry-run`, `--help`, `--version`, positional paths), caller-CWD relative-path normalization, `(0, 1, 2, 3, 4, 5, 6, 130)` exit propagation, plus Standard 15 read-only `Foundation` proposal report (`0.3.1.20261114-022857.-.rootlauncher-shouldwait-proposal.md`).
-  - [x] `T2`: `UpdateCoordinator.CheckAllInstalledEnginesAsync` multi-engine `(EngineId, Track)` sweep + offline/dropped-socket `[WARN]` (`0` crash dumps, `--strict` exit `4`), `recentLogs` snapshot on `CrashBundleService`, Standard 15 `[v0.1.1] [PID/T]` single-prefix `[HEARTBEAT]`, and `ReEngineMainForm` `APP_ISOLATED_TEST` containment + `LayoutControls()` refresh.
-  - [x] `T3`: `RecompLaunchCoordinator` + `RecompLaunchOptions` `--wait`, `--tray-only`, `--enable-logs`, `--frames`, `--fixture`, `--dump-screenshot`, `--dump-audio` passthrough and fail-closed `<dataDir>\modules\<moduleId>\` isolation.
-  - [x] `T4`–`T5`: Version sync (`0.1.1`), unit tests (`33/33`), `@dean` Gate 2, `SharedLibs\reEngine\v0.1.1\` packaging, `@inspecter-reengine` release verification, and `@tessa` Root Quartet & Manual Shelf lockstep sync.
-- `0.1.0` *(2026-11-13)*: Delivered `reEngine.Core`, `reEngine.App`, `reEngine.Launcher`, `reEngine.Installer` (`AllowAutoStart = false`, `0` `audit_installer.ps1` findings), `14/14` passing xUnit tests (`0` warnings), immutable `SharedLibs\reEngine\v0.1.0\` SDK drop, 6-file `Releases\Latest\`, and `@inspecter` initial release verification.
+- `0.3.0` *(2026-11-18)*: Delivered shared multi-targeted `reEngine.Host.dll` (SDL3 window, RGBA surface presentation, audio ring buffer, Schema A/B/C input mapping, `F1` 5-tab settings drawer, `F3` HUD, first-run media gate, and fail-closed Release automation gate returning Exit `2`), resumable HTTP `Range` `.part` downloads with SHA-256 verification and atomic `.ready` engine promotion, multi-track compatibility and bidirectional engine aliases (`reSlate`/`reStation`, `reCartOne`/`reNes`, `reCart64`/`re64`, `reBlast16`/`reGenesis`), fixed detached interactive `.recomp` child-window launching (no premature `JobObjectGuard` termination on launcher handoff) with `--scale` + `opengl`/`software` + `--jit-bringup` forwarding for `reStation v0.2.7+`, `.decomp` provider assembly resolution + clean-room strictness validation, unified `data\config\settings.json` migration, and a cleaner human-first Dark Slate manager UI (`opengl`/`software` backend dropdown, decompilation/AOT readiness `Bring-Up` shelf, and fixed WinForms `&` label rendering).
+  - [x] **Resumable Updates & Engine Aliases:** Resumable `.part` downloads with SSRF filtering, SHA-256 verification, atomic `.ready` promotion, multi-track resolution, and version track pinning.
+  - [x] **Interactive Detached Launching & Unified Settings:** Preserved detached child windows during interactive UI launches, forwarded `--scale` / `opengl` / `software` / `--jit-bringup` to `0.2.7+` children, merged legacy configs to `data\config\settings.json`, and logged IO errors cleanly.
+  - [x] **Manager UI & Inspector Improvements:** Updated `Library` (supported backends, plain-English labels, `&` mnemonic fix), `Engines` (responsive pills/buttons), `Bring-Up` (toolchain & AOT readiness panel), and `Inspector Drawer`.
+  - [x] **Shared `reEngine.Host.dll` & Public Release Readiness:** Extracted multi-targeted SDL3 host runtime, clean-room `.decomp` strictness checks, `SECURITY.md`, hardlinked `Releases\`, and live visible-window sandbox + detached child-window E2E verification.
+- `0.2.1-hf.1` *(2026-11-15)*: Updated shared runtime primitives, standardized `APP_ISOLATED_TEST=1` isolation (`51/51` passing tests, `0` warnings), retired legacy test wrappers, and hardened release packaging checks.
+- `0.2.1` *(2026-11-15)*: Added Setup Wizard auto-sorting into `<parent>\reEngine\` without double-nesting, kept companion `engines\` synced cleanly, and verified custom path overrides.
+- `0.2.0` *(2026-11-15)*: Added `.decomp` package schemas (`D0`–`D5`), offline CLI Ghidra + OpenJDK `Full` toolchain stager (`<= 160 MB`), `<dataDir>\cache\` AOT cache manager, default `%LOCALAPPDATA%\Programs\StreamItAll\reEngine\` user installs, `--migrate-legacy`, and `.decomp` file associations.
+- `0.1.3` *(2026-11-14)*: Added `## License & Legal` (`MPL-2.0`, `7-Zip`, non-affiliation, zero-ROM notices), UTF-8 leak guards across release docs, expanded technical manuals, and clean portable license bundling.
+- `0.1.2` *(2026-11-14)*: Added parent-folder `data\rom\` discovery for packaged `app\*.recomp` modules and automated pruning of older unpacked release folders.
+- `0.1.1` *(2026-11-14)*: Added synchronous launcher wait + caller-CWD path resolution, multi-engine offline-resilient update sweeps, per-module `<dataDir>\modules\<moduleId>\` isolation, and contextual crash bundle logs.
+- `0.1.0` *(2026-11-13)*: Initial release establishing `reEngine.Core`, `reEngine.App`, `reEngine.Launcher`, `reEngine.Installer` (no auto-start), brand icon assets, Dark Slate manager UI, and initial test suite.
 
 ---
 
 ## 5. Icebox & Cutting-Room Floor
 - Optional clean-room `.recomp` community manifest hash index browser (verification metadata only, zero copyrighted ROM/binary links).
-- Explicit non-goal: **zero** RetroAchievements.org / `rcheevos` integration anywhere in `reEngine` (RetroAchievements prohibits whitelisting static recompilations and native PC ports; achievement tracking uses the first-party `v2.0.0` `.recomp` schema above).
+- Explicit non-goal: zero RetroAchievements.org / `rcheevos` integration anywhere in `reEngine` (achievement tracking uses the local first-party `v2.0.0` `.recomp` format above).

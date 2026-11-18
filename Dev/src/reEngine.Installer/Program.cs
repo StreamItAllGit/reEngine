@@ -75,12 +75,21 @@ internal static class Program
         int exitCode = StandardInstallerHost.Run(descriptor, hostArgs, typeof(Program).Assembly);
         if (exitCode == 0 && !verifyOnly && !uninstall && !dryRun)
         {
-            string resolvedInstallDir = ResolveEffectiveInstallDir(installDir, dataDir, isIsolatedTest);
-            string? effectiveSuiteDir = ResolveEffectiveSuiteDir(suiteDir, resolvedInstallDir);
+            string resolvedInstallDir = ResolveEffectiveInstallDir(descriptor, cli, installDir, dataDir, isIsolatedTest);
+            LegacyMigrationHelper.TryReadExistingInstallSettings(
+                resolvedInstallDir, out string? existingProfile, out string? existingSuiteDir, out string? existingReEngineDir);
+            string? effectiveProfile = !string.IsNullOrWhiteSpace(cli.ProfileId)
+                ? LegacyMigrationHelper.NormalizeProfileId(cli.ProfileId)
+                : existingProfile;
+            string? effectiveSuiteDir = !string.IsNullOrWhiteSpace(suiteDir)
+                ? Path.GetFullPath(suiteDir.Trim())
+                : (!string.IsNullOrWhiteSpace(existingSuiteDir)
+                    ? existingSuiteDir
+                    : ResolveEffectiveSuiteDir(null, resolvedInstallDir));
             string effectiveReEngineDir = !string.IsNullOrWhiteSpace(reEngineDir)
                 ? Path.GetFullPath(reEngineDir.Trim())
-                : resolvedInstallDir;
-            ApplyPostInstallActions(resolvedInstallDir, profileId, effectiveSuiteDir, effectiveReEngineDir,
+                : (!string.IsNullOrWhiteSpace(existingReEngineDir) ? existingReEngineDir : resolvedInstallDir);
+            ApplyPostInstallActions(resolvedInstallDir, effectiveProfile, effectiveSuiteDir, effectiveReEngineDir,
                 migrateLegacy, confirmLegacyCleanup, isIsolatedTest, dataDir, silent);
         }
 
@@ -117,13 +126,26 @@ internal static class Program
         Application.SetCompatibleTextRenderingDefault(false);
         Application.SetHighDpiMode(HighDpiMode.PerMonitorV2);
 
+        string resolvedInitialInstallDir = !string.IsNullOrWhiteSpace(cli.InstallDir)
+            ? Path.GetFullPath(cli.InstallDir)
+            : guiEngine.ResolveDefaultInstallDirectory();
+        LegacyMigrationHelper.TryReadExistingInstallSettings(
+            resolvedInitialInstallDir, out string? savedProfile, out string? savedSuiteDir, out string? savedReEngineDir);
+
         string initialProfile = !string.IsNullOrWhiteSpace(cli.ProfileId)
             ? LegacyMigrationHelper.NormalizeProfileId(cli.ProfileId)
-            : theme.DefaultProfileId;
+            : (!string.IsNullOrWhiteSpace(savedProfile) ? savedProfile : theme.DefaultProfileId);
         SecondaryPathPickerOptions? picker = theme.SecondaryPathPicker;
+        string? inferredSuiteDir = Directory.Exists(resolvedInitialInstallDir)
+            ? ReEngineWizardPathNormalizer.ResolvePreferredSuiteInstallDir(resolvedInitialInstallDir, savedSuiteDir)
+            : null;
         string? initialSecondary = !string.IsNullOrWhiteSpace(suiteDir)
             ? suiteDir
-            : (!string.IsNullOrWhiteSpace(reEngineDir) ? reEngineDir : picker?.DefaultPath);
+            : (!string.IsNullOrWhiteSpace(reEngineDir)
+                ? reEngineDir
+                : (!string.IsNullOrWhiteSpace(inferredSuiteDir)
+                    ? inferredSuiteDir
+                    : (!string.IsNullOrWhiteSpace(savedReEngineDir) ? savedReEngineDir : picker?.DefaultPath)));
         string? secondaryFlag = !string.IsNullOrWhiteSpace(reEngineDir) && string.IsNullOrWhiteSpace(suiteDir)
             ? "--reengine-dir"
             : picker?.FlagName;
@@ -131,7 +153,7 @@ internal static class Program
         using var wizard = new InstallerWizardForm(
             engine: guiEngine,
             ctx: ctx,
-            initialInstallDir: theme.DefaultInstallDir,
+            initialInstallDir: resolvedInitialInstallDir,
             externalPayloadPath: cli.PayloadPath,
             isUninstallMode: cli.Uninstall,
             initialCreateShortcuts: !cli.NoShortcuts,
@@ -177,7 +199,7 @@ internal static class Program
 
     private static void ApplyPostInstallActions(
         string installDir,
-        string profileId,
+        string? profileId,
         string? suiteDir,
         string? reEngineDir,
         bool migrateLegacy,
@@ -251,7 +273,7 @@ internal static class Program
         AppId = ReEnginePackagingConstants.AppId,
         DisplayName = ReEnginePackagingConstants.DisplayName,
         Version = ReEnginePackagingConstants.Version,
-        Subtitle = "Zero-Daemon .decomp / .recomp Router & Side-by-Side Engine Manager",
+        Subtitle = "Zero-Daemon .decomp / .recomp Router and Side-by-Side Engine Manager",
         BrandAccentHex = ReEnginePackagingConstants.BrandAccentHex,
         DefaultInstallDir = ReEngineBootstrapHelper.ResolveDefaultReEngineInstallDir(),
         AllowAutoStart = ReEnginePackagingConstants.AllowAutoStart,
@@ -354,7 +376,12 @@ internal static class Program
         return forwarded.ToArray();
     }
 
-    private static string ResolveEffectiveInstallDir(string? installDir, string? dataDir, bool isolatedTest)
+    private static string ResolveEffectiveInstallDir(
+        InstallerAppDescriptor descriptor,
+        InstallerCliOptions cli,
+        string? installDir,
+        string? dataDir,
+        bool isolatedTest)
     {
         if (!string.IsNullOrWhiteSpace(installDir))
         {
@@ -364,7 +391,8 @@ internal static class Program
         {
             return Path.GetFullPath(Path.Combine(dataDir, "installed-app"));
         }
-        return ReEngineBootstrapHelper.ResolveDefaultReEngineInstallDir();
+        var ctx = new InstallerRuntimeContext(cli.DataDir, cli.ConfigPath, cli.LogDir, cli.DryRun, descriptor.EnvPrefix);
+        return new InstallerEngine(descriptor, ctx, typeof(Program).Assembly).ResolveDefaultInstallDirectory();
     }
 
     private static string? ResolveEffectiveSuiteDir(string? explicitSuiteDir, string installDir) =>

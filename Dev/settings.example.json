@@ -1,9 +1,17 @@
 {
+  "schemaVersion": 1,
+  "appId": "reengine",
   "installProfile": "lightweight",
+  "backendId": "opengl",
+  "resolutionScale": 2,
+  "shouldCheckUpdates": true,
+  "shouldAutoStagePatches": true,
+  "pinnedEngineVersions": {},
+  "stagedUpdatePath": null,
   "reEngineInstallDir": "%LOCALAPPDATA%\\Programs\\StreamItAll\\reEngine\\reEngine",
   "suiteInstallDir": "%LOCALAPPDATA%\\Programs\\StreamItAll\\reEngine",
   "umbrellaSubpath": "StreamItAll\\reEngine\\reEngine",
   "decompSchemaVersion": "1.0.0",
-  "goalDecompTier": "D3",
-  "targetDecompTier": "D3"
+  "goalDecompTier": "D4",
+  "targetDecompTier": "D4"
 }

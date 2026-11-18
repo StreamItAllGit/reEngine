@@ -7,6 +7,10 @@
     <IsTestProject>true</IsTestProject>
   </PropertyGroup>
 
+  <PropertyGroup Condition="'$(Configuration)' == 'Debug' Or '$(ReEngineTestAutomation)' == 'true'">
+    <DefineConstants>$(DefineConstants);REENGINE_ENABLE_AUTOMATION</DefineConstants>
+  </PropertyGroup>
+
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.8.0" />
     <PackageReference Include="xunit" Version="2.5.3" />
@@ -15,6 +19,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\reEngine.Core\reEngine.Core.csproj" />
+    <ProjectReference Include="..\..\src\reEngine.Host\reEngine.Host.csproj" />
     <ProjectReference Include="..\..\src\reEngine.Installer\reEngine.Installer.csproj" />
     <Reference Include="Foundation.Core">
       <HintPath>..\..\lib\Foundation.Core.dll</HintPath>
@@ -27,11 +32,22 @@
     </Reference>
   </ItemGroup>
 
+  <ItemGroup Condition="'$(Configuration)' == 'Debug' Or '$(ReEngineTestAutomation)' == 'true'">
+    <Reference Include="Foundation.Automation">
+      <HintPath>..\..\lib\Foundation.Automation.dll</HintPath>
+    </Reference>
+  </ItemGroup>
+
   <ItemGroup>
     <Compile Include="..\..\src\reEngine.Launcher\LauncherArgsHelper.cs" Link="Linked\LauncherArgsHelper.cs" />
+    <Compile Include="..\..\src\reEngine.App\Program.Bootstrap.cs" Link="Linked\Program.Bootstrap.cs" />
+    <Compile Include="..\..\src\reEngine.App\SettingsMigrationHelper.cs" Link="Linked\SettingsMigrationHelper.cs" />
     <Compile Include="..\..\src\reEngine.App\RecompLaunchOptions.cs" Link="Linked\RecompLaunchOptions.cs" />
+    <Compile Include="..\..\src\reEngine.App\RecompLaunchPlanBuilder.cs" Link="Linked\RecompLaunchPlanBuilder.cs" />
     <Compile Include="..\..\src\reEngine.App\RecompLaunchCoordinator.cs" Link="Linked\RecompLaunchCoordinator.cs" />
     <Compile Include="..\..\src\reEngine.App\ReEngineAppStatusHelper.cs" Link="Linked\ReEngineAppStatusHelper.cs" />
+    <Compile Include="..\..\src\reEngine.App\Ui\ReEngineTheme.cs" Link="Linked\ReEngineTheme.cs" />
+    <Compile Include="..\..\src\reEngine.App\Ui\LibraryShelfPanel.cs" Link="Linked\LibraryShelfPanel.cs" />
   </ItemGroup>
 
   <ItemGroup>

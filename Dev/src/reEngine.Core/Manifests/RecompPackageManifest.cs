@@ -44,6 +44,22 @@ public sealed class RecompPackageManifest
     [JsonPropertyName("compatibleEngineTrack")]
     public string CompatibleEngineTrack { get; set; } = string.Empty;
 
+    /// <summary>Ordered list of compatible engine tracks supported by this module.</summary>
+    [JsonPropertyName("supportedEngineTracks")]
+    public List<string>? SupportedEngineTracks { get; set; }
+
+    /// <summary>Optional preferred render backend identifier (<c>opengl</c>, <c>vulkan</c>, <c>parallelCpu</c>, <c>software</c>).</summary>
+    [JsonPropertyName("backendId")]
+    public string? BackendId { get; set; }
+
+    /// <summary>Optional integer resolution scale factor requested by this module (1..8).</summary>
+    [JsonPropertyName("resolutionScale")]
+    public int? ResolutionScale { get; set; }
+
+    /// <summary>Optional execution tier mode (<c>aotPrimary</c>, <c>jitBringup</c>, <c>threadedIr</c>).</summary>
+    [JsonPropertyName("executionTierMode")]
+    public string? ExecutionTierMode { get; set; }
+
     /// <summary>Relative preload media directory inside the module root (defaults to <c>data/rom</c>).</summary>
     [JsonPropertyName("preloadRomDir")]
     public string PreloadRomDir { get; set; } = "data/rom";
@@ -277,9 +293,17 @@ public static class RecompPackageReader
         {
             throw new InvalidDataException($"Manifest '{sourcePath}' is missing required 'engineVersion'.");
         }
+        bool hasTracks = manifest.SupportedEngineTracks is { Count: > 0 };
         if (string.IsNullOrWhiteSpace(manifest.CompatibleEngineTrack))
         {
-            throw new InvalidDataException($"Manifest '{sourcePath}' is missing required 'compatibleEngineTrack'.");
+            if (hasTracks)
+            {
+                manifest.CompatibleEngineTrack = manifest.SupportedEngineTracks![0];
+            }
+            else
+            {
+                throw new InvalidDataException($"Manifest '{sourcePath}' is missing required 'compatibleEngineTrack' or 'supportedEngineTracks'.");
+            }
         }
         if (string.IsNullOrWhiteSpace(manifest.PreloadRomDir))
         {

@@ -51,6 +51,10 @@
     </ItemGroup>
   </Target>
 
+  <ItemGroup>
+    <EmbeddedResource Include="..\..\Installer\installer.manifest.json" LogicalName="installer.manifest.json" />
+  </ItemGroup>
+
   <ItemGroup Condition="'$(InstallerPayloadZip)' != '' and Exists('$(InstallerPayloadZip)')">
     <EmbeddedResource Include="$(InstallerPayloadZip)"
                       LogicalName="reEngine.Installer.Embedded.payload.zip" />

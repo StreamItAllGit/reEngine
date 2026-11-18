@@ -1,7 +1,7 @@
 // @module: reEngine.Core.Updates.UpdateModels
-// @purpose: Standard 18/19 settings schema, update feed contracts, and multi-engine update sweep outcome records.
+// @purpose: Standard 18/19 settings schema, update feed contracts, resumable .part metadata, and multi-engine sweep records.
 // @depends-on: System, System.Collections.Generic, System.Text.Json, System.Text.Json.Serialization
-// @exports: ReEngineSettings, UpdateFeedEntry, UpdateFeedManifest, UpdateCheckOutcome, MultiEngineUpdateSweepResult
+// @exports: ReEngineSettings, UpdateFeedEntry, UpdateFeedManifest, UpdatePartMeta, UpdateCheckOutcome, MultiEngineUpdateSweepResult
 
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -41,9 +41,26 @@ public sealed class ReEngineSettings
     [JsonPropertyName("enginesDirectoryOverride")]
     public string? EnginesDirectoryOverride { get; set; }
 
-    /// <summary>Optional global pass-through resolution scale preference (1..8).</summary>
+    /// <summary>Legacy deprecated scale preference read only for migration to <see cref="ResolutionScale"/>.</summary>
     [JsonPropertyName("preferredResolutionScale")]
-    public int PreferredResolutionScale { get; set; } = 2;
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public int? PreferredResolutionScale { get; set; }
+
+    /// <summary>Canonical Standard 18 integer resolution scale setting (1..8).</summary>
+    [JsonPropertyName("resolutionScale")]
+    public int? ResolutionScale { get; set; } = 2;
+
+    /// <summary>Canonical Standard 18 preferred render backend identifier (<c>opengl</c>, <c>vulkan</c>, <c>parallelCpu</c>, <c>software</c>).</summary>
+    [JsonPropertyName("backendId")]
+    public string BackendId { get; set; } = "opengl";
+
+    /// <summary>Explicit per-engine pinned version overrides keyed by engine ID.</summary>
+    [JsonPropertyName("pinnedEngineVersions")]
+    public Dictionary<string, string>? PinnedEngineVersions { get; set; }
+
+    /// <summary>Absolute or data-relative path to the latest resumable staged update package directory.</summary>
+    [JsonPropertyName("stagedUpdatePath")]
+    public string? StagedUpdatePath { get; set; }
 
     /// <summary>Saved manager window width.</summary>
     [JsonPropertyName("windowWidth")]
@@ -89,6 +106,18 @@ public sealed record UpdateCheckOutcome(
     string? BreakingVersion,
     string StatusMessage,
     bool NetworkUnavailable = false);
+
+/// <summary>
+/// Resumable download checkpoint sidecar persisted alongside <c>*.part</c> downloads (<c>*.part.meta.json</c>).
+/// </summary>
+public sealed record UpdatePartMeta(
+    [property: JsonPropertyName("engineId")] string EngineId,
+    [property: JsonPropertyName("version")] string Version,
+    [property: JsonPropertyName("downloadUrl")] string DownloadUrl,
+    [property: JsonPropertyName("sha256Hex")] string Sha256Hex,
+    [property: JsonPropertyName("expectedSizeBytes")] long ExpectedSizeBytes,
+    [property: JsonPropertyName("fileSizeBytes")] long FileSizeBytes,
+    [property: JsonPropertyName("updatedAtUtc")] string UpdatedAtUtc);
 
 /// <summary>
 /// Aggregate result of sweeping all distinct <c>(EngineId, Track)</c> targets installed under <c>engines\</c>.

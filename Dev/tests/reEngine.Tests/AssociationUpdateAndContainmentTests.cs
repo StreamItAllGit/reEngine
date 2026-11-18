@@ -205,22 +205,23 @@ public sealed class AssociationUpdateAndContainmentTests : IDisposable
 
         var coordinator = new UpdateCoordinator(dataDir, settingsPath);
         ReEngineSettings loaded = coordinator.LoadSettings().Value;
-        loaded.PreferredResolutionScale = 4;
+        loaded.ResolutionScale = 4;
         coordinator.SaveSettings(loaded);
 
         string savedJson = File.ReadAllText(settingsPath);
         Assert.Contains("futureExperimentalFlag", savedJson, StringComparison.Ordinal);
         Assert.Contains("keep-me", savedJson, StringComparison.Ordinal);
+        Assert.DoesNotContain("preferredResolutionScale", savedJson, StringComparison.Ordinal);
         ReEngineSettings reloaded = coordinator.LoadSettings().Value;
         Assert.False(reloaded.ShouldCheckUpdates);
-        Assert.Equal(4, reloaded.PreferredResolutionScale);
+        Assert.Equal(4, reloaded.ResolutionScale);
     }
 
     [Fact]
     public void ReEnginePackagingConstants_EnforcesAllowAutoStartFalse_AndZeroPiiDefaultPath()
     {
         Assert.False(ReEnginePackagingConstants.AllowAutoStart);
-        Assert.Equal("0.2.1-hf.1", ReEnginePackagingConstants.Version);
+        Assert.Equal("0.3.0", ReEnginePackagingConstants.Version);
         Assert.Equal("StreamItAll", ReEnginePackagingConstants.StudioName);
         Assert.Equal("reEngine", ReEnginePackagingConstants.SuiteName);
         Assert.Equal("StreamItAll\\reEngine\\reEngine", ReEnginePackagingConstants.UmbrellaSubpath);

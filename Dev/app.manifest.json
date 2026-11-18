@@ -3,19 +3,22 @@
   "schemaVersion": 2,
   "manifestType": "standalone-app",
   "appId": "reengine",
-  "version": "0.2.1-hf.1",
-  "updatedAtUtc": "2026-11-16T00:00:00.000Z",
+  "version": "0.3.0",
+  "updatedAtUtc": "2026-11-18T21:20:00.000Z",
   "displayName": "reEngine Router",
-  "containerTier": "Tier A (5-Folder)",
+  "containerTier": "Tier A (4-Folder)",
   "ecosystemTier": "Tier1_Infrastructure",
   "appArchetype": "ENGINE",
-  "activeMilestone": "0.2.0",
+  "activeMilestone": "0.3.1",
   "goalMajorVersion": "1.0.0",
-  "sdkVersion": "0.4.1-hf.1",
+  "isPublicRepo": true,
+  "sdkVersion": "0.5.0",
   "upstreamResearchPath": null,
   "downstreamProjects": [
     "Personal/reStation",
+    "Personal/reNes",
     "Personal/KingsFieldRecomp",
-    "Personal/HMBackToNature-Recomp"
+    "Personal/HMBackToNature-Recomp",
+    "Personal/MetalGearRecomp"
   ]
 }

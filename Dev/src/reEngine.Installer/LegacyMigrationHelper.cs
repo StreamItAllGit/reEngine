@@ -60,23 +60,90 @@ internal static class LegacyMigrationHelper
         return Path.GetFullPath(Path.Combine(driveRoot, "Programs", ReEnginePackagingConstants.DisplayName));
     }
 
+    public static bool TryReadExistingInstallSettings(
+        string? installDir,
+        out string? profileId,
+        out string? suiteDir,
+        out string? reEngineDir)
+    {
+        profileId = null;
+        suiteDir = null;
+        reEngineDir = null;
+        if (string.IsNullOrWhiteSpace(installDir))
+        {
+            return false;
+        }
+
+        string fullInstall = Path.GetFullPath(installDir.Trim());
+        string configSettings = Path.Combine(fullInstall, "data", "config", "settings.json");
+        string legacyFlat = Path.Combine(fullInstall, "data", "settings.json");
+        string path = File.Exists(configSettings) ? configSettings : legacyFlat;
+        if (!File.Exists(path))
+        {
+            return false;
+        }
+
+        try
+        {
+            if (JsonNode.Parse(File.ReadAllText(path)) is not JsonObject root)
+            {
+                return false;
+            }
+
+            if (root["installProfile"]?.GetValue<string>() is { } rawProfile && !string.IsNullOrWhiteSpace(rawProfile))
+            {
+                string trimmed = rawProfile.Trim().ToLowerInvariant();
+                if (trimmed is "lightweight" or "full")
+                {
+                    profileId = trimmed;
+                }
+            }
+
+            if (root["suiteInstallDir"]?.GetValue<string>() is { } rawSuite && !string.IsNullOrWhiteSpace(rawSuite))
+            {
+                suiteDir = Path.GetFullPath(rawSuite.Trim());
+            }
+
+            if (root["reEngineInstallDir"]?.GetValue<string>() is { } rawRe && !string.IsNullOrWhiteSpace(rawRe))
+            {
+                reEngineDir = Path.GetFullPath(rawRe.Trim());
+            }
+
+            return profileId is not null || suiteDir is not null || reEngineDir is not null;
+        }
+        catch (Exception)
+        {
+            return false;
+        }
+    }
+
     public static void PersistInstallProfileSettings(
         string installDir,
-        string profileId,
+        string? profileId,
         string? suiteDir,
         string? reEngineDir)
     {
-        string dataDir = Path.Combine(Path.GetFullPath(installDir), "data");
-        Directory.CreateDirectory(dataDir);
-        string settingsPath = Path.Combine(dataDir, "settings.json");
+        string configDir = Path.Combine(Path.GetFullPath(installDir), "data", "config");
+        Directory.CreateDirectory(configDir);
+        string settingsPath = Path.Combine(configDir, "settings.json");
 
-        JsonObject root = File.Exists(settingsPath)
-            ? JsonNode.Parse(File.ReadAllText(settingsPath)) as JsonObject ?? new JsonObject()
+        string legacyFlatPath = Path.Combine(Path.GetFullPath(installDir), "data", "settings.json");
+        string sourceToRead = File.Exists(settingsPath) ? settingsPath : legacyFlatPath;
+        JsonObject root = File.Exists(sourceToRead)
+            ? JsonNode.Parse(File.ReadAllText(sourceToRead)) as JsonObject ?? new JsonObject()
             : new JsonObject();
 
         root["schemaVersion"] = 1;
         root["appId"] = ReEnginePackagingConstants.AppId;
-        root["installProfile"] = NormalizeProfileId(profileId);
+        if (!string.IsNullOrWhiteSpace(profileId))
+        {
+            root["installProfile"] = NormalizeProfileId(profileId);
+        }
+        else if (root["installProfile"] is null || string.IsNullOrWhiteSpace(root["installProfile"]?.ToString()))
+        {
+            root["installProfile"] = ReEnginePackagingConstants.DefaultInstallProfile;
+        }
+
         if (!string.IsNullOrWhiteSpace(suiteDir))
         {
             root["suiteInstallDir"] = Path.GetFullPath(suiteDir);
@@ -112,10 +179,13 @@ internal static class LegacyMigrationHelper
 
         if (!dryRun)
         {
-            Directory.CreateDirectory(targetDataDir);
-            string legacySettings = Path.Combine(legacyRoot, "data", "settings.json");
-            string targetSettings = Path.Combine(targetDataDir, "settings.json");
-            if (File.Exists(legacySettings) && !File.Exists(targetSettings))
+            string targetConfigDir = Path.Combine(targetDataDir, "config");
+            Directory.CreateDirectory(targetConfigDir);
+            string legacyConfigSettings = Path.Combine(legacyRoot, "data", "config", "settings.json");
+            string legacyFlatSettings = Path.Combine(legacyRoot, "data", "settings.json");
+            string? legacySettings = File.Exists(legacyConfigSettings) ? legacyConfigSettings : (File.Exists(legacyFlatSettings) ? legacyFlatSettings : null);
+            string targetSettings = Path.Combine(targetConfigDir, "settings.json");
+            if (legacySettings is not null && !File.Exists(targetSettings))
             {
                 File.Copy(legacySettings, targetSettings, overwrite: false);
                 migratedSettings = true;

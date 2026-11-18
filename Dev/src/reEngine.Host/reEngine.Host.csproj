@@ -1,0 +1,43 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net8.0-windows</TargetFrameworks>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <AssemblyName>reEngine.Host</AssemblyName>
+    <RootNamespace>reEngine.Host</RootNamespace>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);1591</NoWarn>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="('$(Configuration)' == 'Debug' Or '$(ReEngineTestAutomation)' == 'true') And '$(TargetFramework)' == 'net8.0-windows'">
+    <DefineConstants>$(DefineConstants);REENGINE_ENABLE_AUTOMATION</DefineConstants>
+    <UseWindowsForms>true</UseWindowsForms>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="reEngine.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="ppy.SDL3-CS" Version="2026.1002.1" ExcludeAssets="compile" />
+    <ProjectReference Include="..\reEngine.Core\reEngine.Core.csproj" />
+    <Reference Include="Foundation.Core">
+      <HintPath>..\..\lib\Foundation.Core.dll</HintPath>
+    </Reference>
+    <Reference Include="Foundation.Retro">
+      <HintPath>..\..\lib\Foundation.Retro.dll</HintPath>
+    </Reference>
+  </ItemGroup>
+
+  <ItemGroup Condition="('$(Configuration)' == 'Debug' Or '$(ReEngineTestAutomation)' == 'true') And '$(TargetFramework)' == 'net8.0-windows'">
+    <Reference Include="Foundation.Automation">
+      <HintPath>..\..\lib\Foundation.Automation.dll</HintPath>
+    </Reference>
+    <Reference Include="Foundation.UI">
+      <HintPath>..\..\lib\Foundation.UI.dll</HintPath>
+    </Reference>
+  </ItemGroup>
+
+</Project>
