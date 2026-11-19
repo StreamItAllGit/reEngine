@@ -3,6 +3,7 @@
 // @depends-on: System, System.Collections.Generic, System.IO, System.Text.Json, System.Windows.Forms, Foundation.Core, reEngine.Core.Bootstrap
 // @exports: LegacyMigrationResult, LegacyMigrationHelper
 
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Windows.Forms;
@@ -61,111 +62,103 @@ internal static class LegacyMigrationHelper
     }
 
     public static bool TryReadExistingInstallSettings(
-        string? installDir,
-        out string? profileId,
-        out string? suiteDir,
-        out string? reEngineDir)
+        string? installDir, out string? profileId, out string? suiteDir, out string? reEngineDir)
     {
         profileId = null;
         suiteDir = null;
         reEngineDir = null;
-        if (string.IsNullOrWhiteSpace(installDir))
+        if (string.IsNullOrWhiteSpace(installDir)) return false;
+
+        string sourcePath = ResolveSettingsPaths(installDir.Trim(), out _);
+        JsonObject? root = TryLoadSettingsObject(sourcePath);
+        if (root is null) return false;
+
+        if (TryGetString(root, "installProfile", out string rawProfile))
         {
-            return false;
+            string trimmed = rawProfile.Trim().ToLowerInvariant();
+            if (trimmed is "lightweight" or "full") profileId = trimmed;
         }
-
-        string fullInstall = Path.GetFullPath(installDir.Trim());
-        string configSettings = Path.Combine(fullInstall, "data", "config", "settings.json");
-        string legacyFlat = Path.Combine(fullInstall, "data", "settings.json");
-        string path = File.Exists(configSettings) ? configSettings : legacyFlat;
-        if (!File.Exists(path))
-        {
-            return false;
-        }
-
-        try
-        {
-            if (JsonNode.Parse(File.ReadAllText(path)) is not JsonObject root)
-            {
-                return false;
-            }
-
-            if (root["installProfile"]?.GetValue<string>() is { } rawProfile && !string.IsNullOrWhiteSpace(rawProfile))
-            {
-                string trimmed = rawProfile.Trim().ToLowerInvariant();
-                if (trimmed is "lightweight" or "full")
-                {
-                    profileId = trimmed;
-                }
-            }
-
-            if (root["suiteInstallDir"]?.GetValue<string>() is { } rawSuite && !string.IsNullOrWhiteSpace(rawSuite))
-            {
-                suiteDir = Path.GetFullPath(rawSuite.Trim());
-            }
-
-            if (root["reEngineInstallDir"]?.GetValue<string>() is { } rawRe && !string.IsNullOrWhiteSpace(rawRe))
-            {
-                reEngineDir = Path.GetFullPath(rawRe.Trim());
-            }
-
-            return profileId is not null || suiteDir is not null || reEngineDir is not null;
-        }
-        catch (Exception)
-        {
-            return false;
-        }
+        if (TryGetString(root, "suiteInstallDir", out string rawSuite)) suiteDir = Path.GetFullPath(rawSuite.Trim());
+        if (TryGetString(root, "reEngineInstallDir", out string rawRe)) reEngineDir = Path.GetFullPath(rawRe.Trim());
+        return profileId is not null || suiteDir is not null || reEngineDir is not null;
     }
 
     public static void PersistInstallProfileSettings(
-        string installDir,
-        string? profileId,
-        string? suiteDir,
-        string? reEngineDir)
+        string installDir, string? profileId, string? suiteDir, string? reEngineDir)
     {
-        string configDir = Path.Combine(Path.GetFullPath(installDir), "data", "config");
-        Directory.CreateDirectory(configDir);
-        string settingsPath = Path.Combine(configDir, "settings.json");
+        string sourceToRead = ResolveSettingsPaths(installDir, out string settingsPath);
+        Directory.CreateDirectory(Path.GetDirectoryName(settingsPath)!);
+        bool hasExisting = File.Exists(sourceToRead);
+        JsonObject root = TryLoadSettingsObject(sourceToRead) ?? new JsonObject();
 
-        string legacyFlatPath = Path.Combine(Path.GetFullPath(installDir), "data", "settings.json");
-        string sourceToRead = File.Exists(settingsPath) ? settingsPath : legacyFlatPath;
-        JsonObject root = File.Exists(sourceToRead)
-            ? JsonNode.Parse(File.ReadAllText(sourceToRead)) as JsonObject ?? new JsonObject()
-            : new JsonObject();
-
-        root["schemaVersion"] = 1;
-        root["appId"] = ReEnginePackagingConstants.AppId;
+        SetCanonicalNode(root, "schemaVersion", 1);
+        SetCanonicalNode(root, "appId", ReEnginePackagingConstants.AppId);
         if (!string.IsNullOrWhiteSpace(profileId))
         {
-            root["installProfile"] = NormalizeProfileId(profileId);
+            SetCanonicalNode(root, "installProfile", NormalizeProfileId(profileId));
         }
-        else if (root["installProfile"] is null || string.IsNullOrWhiteSpace(root["installProfile"]?.ToString()))
+        else if (TryGetString(root, "installProfile", out string existingProfile))
         {
-            root["installProfile"] = ReEnginePackagingConstants.DefaultInstallProfile;
+            string lower = existingProfile.Trim().ToLowerInvariant();
+            SetCanonicalNode(root, "installProfile", lower is "lightweight" or "full" ? lower : existingProfile.Trim());
+        }
+        else
+        {
+            SetCanonicalNode(root, "installProfile", ReEnginePackagingConstants.DefaultInstallProfile);
         }
 
-        if (!string.IsNullOrWhiteSpace(suiteDir))
-        {
-            root["suiteInstallDir"] = Path.GetFullPath(suiteDir);
-        }
-        if (!string.IsNullOrWhiteSpace(reEngineDir))
-        {
-            root["reEngineInstallDir"] = Path.GetFullPath(reEngineDir);
-        }
-        root["updatedAtUtc"] = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ss.fffZ");
+        if (!string.IsNullOrWhiteSpace(suiteDir)) SetCanonicalNode(root, "suiteInstallDir", Path.GetFullPath(suiteDir));
+        if (!string.IsNullOrWhiteSpace(reEngineDir)) SetCanonicalNode(root, "reEngineInstallDir", Path.GetFullPath(reEngineDir));
+        SetCanonicalNode(root, "updatedAtUtc", DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ss.fffZ"));
 
         string tmpPath = settingsPath + ".tmp";
-        File.WriteAllText(tmpPath, root.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
+        string json = root.ToJsonString(new JsonSerializerOptions { WriteIndented = true }) + Environment.NewLine;
+        File.WriteAllText(tmpPath, json, new UTF8Encoding(false));
+        if (hasExisting) File.Copy(sourceToRead, settingsPath + ".bak", overwrite: true);
         File.Move(tmpPath, settingsPath, overwrite: true);
     }
 
+    private static string ResolveSettingsPaths(string installDir, out string canonicalSettingsPath)
+    {
+        string fullInstall = Path.GetFullPath(installDir);
+        canonicalSettingsPath = Path.Combine(fullInstall, "data", "config", "settings.json");
+        string legacyFlatPath = Path.Combine(fullInstall, "data", "settings.json");
+        return File.Exists(canonicalSettingsPath) ? canonicalSettingsPath : legacyFlatPath;
+    }
+
+    private static JsonObject? TryLoadSettingsObject(string path)
+    {
+        if (!File.Exists(path)) return null;
+        try { return JsonNode.Parse(File.ReadAllText(path, Encoding.UTF8)) as JsonObject; }
+        catch (Exception ex) when (ex is JsonException or IOException) { return null; }
+    }
+
+    private static bool TryGetString(JsonObject root, string key, out string value)
+    {
+        foreach (KeyValuePair<string, JsonNode?> kv in root)
+        {
+            if (string.Equals(kv.Key, key, StringComparison.OrdinalIgnoreCase) &&
+                kv.Value is JsonValue jv && jv.TryGetValue(out string? s) && !string.IsNullOrWhiteSpace(s))
+            {
+                value = s;
+                return true;
+            }
+        }
+        value = string.Empty;
+        return false;
+    }
+
+    private static void SetCanonicalNode(JsonObject root, string key, JsonNode value)
+    {
+        foreach (string stale in root.Where(kv => string.Equals(kv.Key, key, StringComparison.OrdinalIgnoreCase) && kv.Key != key).Select(kv => kv.Key).ToList())
+        {
+            root.Remove(stale);
+        }
+        root[key] = value;
+    }
+
     public static LegacyMigrationResult TryMigrateLegacyInstall(
-        string targetInstallDir,
-        bool isolatedTest,
-        string? isolatedDataDir,
-        bool silent,
-        bool dryRun,
-        bool confirmCleanupFlag)
+        string targetInstallDir, bool isolatedTest, string? isolatedDataDir, bool silent, bool dryRun, bool confirmCleanupFlag)
     {
         string? legacyRoot = ResolveLegacyRoot(isolatedTest, isolatedDataDir);
         if (string.IsNullOrWhiteSpace(legacyRoot) || !Directory.Exists(legacyRoot))
@@ -181,11 +174,9 @@ internal static class LegacyMigrationHelper
         {
             string targetConfigDir = Path.Combine(targetDataDir, "config");
             Directory.CreateDirectory(targetConfigDir);
-            string legacyConfigSettings = Path.Combine(legacyRoot, "data", "config", "settings.json");
-            string legacyFlatSettings = Path.Combine(legacyRoot, "data", "settings.json");
-            string? legacySettings = File.Exists(legacyConfigSettings) ? legacyConfigSettings : (File.Exists(legacyFlatSettings) ? legacyFlatSettings : null);
+            string legacySettings = ResolveSettingsPaths(legacyRoot, out _);
             string targetSettings = Path.Combine(targetConfigDir, "settings.json");
-            if (legacySettings is not null && !File.Exists(targetSettings))
+            if (File.Exists(legacySettings) && !File.Exists(targetSettings))
             {
                 File.Copy(legacySettings, targetSettings, overwrite: false);
                 migratedSettings = true;
@@ -197,21 +188,15 @@ internal static class LegacyMigrationHelper
                 string targetRomDir = Path.Combine(targetDataDir, "rom");
                 foreach (string srcFile in Directory.EnumerateFiles(legacyRomDir, "*", SearchOption.AllDirectories))
                 {
-                    string rel = Path.GetRelativePath(legacyRomDir, srcFile);
-                    string dstFile = Path.Combine(targetRomDir, rel);
+                    string dstFile = Path.Combine(targetRomDir, Path.GetRelativePath(legacyRomDir, srcFile));
                     Directory.CreateDirectory(Path.GetDirectoryName(dstFile)!);
-                    if (!File.Exists(dstFile))
-                    {
-                        File.Copy(srcFile, dstFile, overwrite: false);
-                        preservedRoms++;
-                    }
+                    if (!File.Exists(dstFile)) { File.Copy(srcFile, dstFile, overwrite: false); preservedRoms++; }
                 }
             }
         }
 
         List<string> stranded = FindStrandedV011Artifacts(legacyRoot);
         bool cleaned = false;
-
         if (stranded.Count > 0 && !dryRun)
         {
             bool allowCleanup = false;
@@ -220,28 +205,17 @@ internal static class LegacyMigrationHelper
                 DialogResult choice = MessageBox.Show(
                     $"Found {stranded.Count} stranded legacy v0.1.1 artifact(s) under '{legacyRoot}'.\n\n" +
                     "Would you like to remove these stranded v0.1.1 artifacts now? (Your data\\rom\\ files are preserved.)",
-                    "reEngine — Human-Gated Legacy Cleanup",
-                    MessageBoxButtons.YesNo,
-                    MessageBoxIcon.Question);
+                    "reEngine — Human-Gated Legacy Cleanup", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
                 allowCleanup = choice == DialogResult.Yes;
             }
-            else if (confirmCleanupFlag)
-            {
-                allowCleanup = true;
-            }
+            else if (confirmCleanupFlag) allowCleanup = true;
 
             if (allowCleanup)
             {
                 foreach (string item in stranded)
                 {
-                    if (Directory.Exists(item))
-                    {
-                        Directory.Delete(item, recursive: true);
-                    }
-                    else if (File.Exists(item))
-                    {
-                        File.Delete(item);
-                    }
+                    if (Directory.Exists(item)) Directory.Delete(item, recursive: true);
+                    else if (File.Exists(item)) File.Delete(item);
                 }
                 cleaned = true;
             }
@@ -256,20 +230,10 @@ internal static class LegacyMigrationHelper
     {
         var stranded = new List<string>();
         string legacyEngineApp = Path.Combine(legacyRoot, "engines", "reStation", "v0.1.1", "app");
-        if (Directory.Exists(legacyEngineApp))
-        {
-            stranded.Add(legacyEngineApp);
-        }
+        if (Directory.Exists(legacyEngineApp)) stranded.Add(legacyEngineApp);
 
         string legacyCrashDir = Path.Combine(legacyRoot, "logs", "crashes");
-        if (Directory.Exists(legacyCrashDir))
-        {
-            foreach (string crash in Directory.EnumerateFiles(legacyCrashDir, "crash_*.json", SearchOption.TopDirectoryOnly))
-            {
-                stranded.Add(crash);
-            }
-        }
-
+        if (Directory.Exists(legacyCrashDir)) stranded.AddRange(Directory.EnumerateFiles(legacyCrashDir, "crash_*.json", SearchOption.TopDirectoryOnly));
         return stranded;
     }
 }

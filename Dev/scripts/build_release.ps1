@@ -58,26 +58,20 @@ function Assert-NoEndUserLeaks([string]$Path, [string]$Text) {
     $userEsc = if ([string]::IsNullOrWhiteSpace($env:USERNAME)) { "" } else { "|" + [regex]::Escape($env:USERNAME) }
     $leak = "(?i)file:///|Dev[\\/](?:src|tests|docs|scripts|lib|assets)|SharedLibs[\\/]|audit_installer\.ps1|[CD]:[\\/](?:Projects|Users|Programs)|_DevBible|\bDev Bible\b|@(?:pland|dean|devv|inspecter|tessa|nora|milo|simon|julian|holly|rowan|coordinator|monitor)\b$userEsc"
     $m = [regex]::Match($Text, $leak)
-    if ($m.Success) {
-        throw "End-user release markdown leak in '$Path': matched '$($m.Value)'."
-    }
+    if ($m.Success) { throw "End-user release markdown leak in '$Path': matched '$($m.Value)'." }
 }
 
 function Assert-BinaryPurity([string]$DllPath, [string[]]$ForbiddenTokens) {
     if (-not (Test-Path $DllPath)) { throw "Binary missing for purity check: $DllPath" }
     $ascii = [System.Text.Encoding]::ASCII.GetString([System.IO.File]::ReadAllBytes($DllPath))
     foreach ($tok in $ForbiddenTokens) {
-        if ($ascii.IndexOf($tok, [System.StringComparison]::OrdinalIgnoreCase) -ge 0) {
-            throw "Release binary purity violation in '$DllPath': found '$tok'."
-        }
+        if ($ascii.IndexOf($tok, [System.StringComparison]::OrdinalIgnoreCase) -ge 0) { throw "Release binary purity violation in '$DllPath': found '$tok'." }
     }
     $deps = [System.IO.Path]::ChangeExtension($DllPath, ".deps.json")
     if (Test-Path $deps) {
         $depsText = Read-Utf8 $deps
         foreach ($tok in $ForbiddenTokens) {
-            if ($depsText.IndexOf($tok, [System.StringComparison]::OrdinalIgnoreCase) -ge 0) {
-                throw "Release deps.json purity violation in '$deps': found '$tok'."
-            }
+            if ($depsText.IndexOf($tok, [System.StringComparison]::OrdinalIgnoreCase) -ge 0) { throw "Release deps.json purity violation in '$deps': found '$tok'." }
         }
     }
 }
@@ -110,7 +104,10 @@ $launcherTmp = Join-Path $env:TEMP "reengine_launcher_$Version"
 if (Test-Path $launcherTmp) { Remove-Item $launcherTmp -Recurse -Force }
 & dotnet publish (Join-Path $devDir "src\reEngine.Launcher\reEngine.Launcher.csproj") -c Release -r win-x64 --self-contained false -p:PublishSingleFile=true -o $launcherTmp /warnaserror
 if ($LASTEXITCODE -ne 0) { throw "publish reEngine.Launcher failed ($LASTEXITCODE)" }
-Copy-Item (Join-Path $launcherTmp "reEngine.exe") (Join-Path $stageDir "reEngine.exe") -Force
+$launcherBin = Join-Path $launcherTmp "reEngine.exe"
+$launcherBytes = (Get-Item $launcherBin).Length
+if ($launcherBytes -ge 2MB) { throw "reEngine.Launcher.exe exceeded 2 MB cap ($launcherBytes bytes)" }
+Copy-Item $launcherBin (Join-Path $stageDir "reEngine.exe") -Force
 Remove-Item $launcherTmp -Recurse -Force -ErrorAction SilentlyContinue
 
 Write-Utf8 (Join-Path $stageApp "version.txt") "$Version"
@@ -120,7 +117,7 @@ Copy-Item (Join-Path $devDir "scripts\THIRDPARTY_LICENSES.txt") (Join-Path $stag
 Copy-Item (Join-Path $devDir "scripts\*.bat") $stageScripts -Force
 Copy-Item (Join-Path $devDir "scripts\interactive\*.bat") $stageInteractive -Force
 Get-ChildItem $stageDir -Include *.pdb, *.xml -Recurse -File | Remove-Item -Force
-Assert-BinaryPurity (Join-Path $stageApp "reEngine.Host.dll") @("Foundation.Automation")
+Assert-BinaryPurity (Join-Path $stageApp "reEngine.Host.dll") @("Foundation.Automation", "System.Windows.Forms")
 Assert-BinaryPurity (Join-Path $stageApp "reEngine.dll") @("Foundation.Automation")
 
 Invoke-Sign (Join-Path $stageApp "reEngine.exe")
@@ -166,13 +163,13 @@ Invoke-Sign $installerPath
 $rawNotes = (@'
 # reEngine — Release v__VER__
 
-Clean-room `.recomp` & `.decomp` suite router, upstream `reEngine.Host.dll` SDL3 video/audio runtime, and multi-track side-by-side engine manager.
+Clean-room static recompilation suite router, unified 5-backend `reEngine.Host.dll` runtime, interactive `.decomp` Bring-Up runner, and multi-track side-by-side engine manager.
 
 ## Highlights
-- Introduces `reEngine.Host.dll` unifying SDL3 windows, `HostRgbaSurfaceBackend`, `Sdl3AudioPump`, Schema A/B/C input (`HostInputFrame`), `F1` 5-tab settings drawer, `F3` HUD, and BYO media gate.
-- Separates fast `2s` update feed checks from resumable `.part` downloads with atomic `.staging-<ver>` to `v<Ver>` promotion and side-by-side track rollback.
-- Supports coded and legacy `engineId` aliases (`reSlate` / `reStation`, `reCartOne` / `reNes`, `reCart64` / `re64`, `reBlast16` / `reGenesis`), `.decomp` provider resolution, and D4 clean-room validation.
-- Consolidates runtime settings under `<InstallRoot>\data\config\settings.json` and `<InstallRoot>\logs\` with signed single-EXE setup and `AllowAutoStart = false`.
+- **Unified 5-Backend `reEngine.Host.dll` & Native Audio:** Adds native `OpenGL 3.3+`, `Vulkan 1.3+`, `DirectX 12` (`directx` / `dx12`), deterministic `ParallelCpu`, and `Software` presenters with `IHostGraphicsContext` interop, path-contained `<dataDir>\hdpacks\` texture overrides, `--require-backend` (`ExitCode = 6`) or graceful fallback, and native OS audio pinning (`wasapi`, `pipewire`/`alsa`, `coreaudio`).
+- **3-Slot Multi-Bind Input, Gamepads & Upgraded `F1` Drawer:** Supports 3-slot `[1st, 2nd, 3rd]` keyboard/mouse/wheel bindings, Xbox and open-standard HID SDL3 gamepads with rumble, dynamic per-game `Controls` options, a 5-column interactive `Keybinds` drawer, and cross-platform touch overlay contracts.
+- **Interactive `.decomp` Bring-Up & Root-Tree Media Walk:** Opening `.decomp` modules launches the `Bring-Up` shelf with `D0..D5` stage execution, automatic root-tree media search, and a Missing Media prompt defaulting to use-in-place with opt-in copy into `data\rom\` (including `.cue` companion `.bin` files).
+- **Frontend Bridge, `--verify-module` & `D4_CleanSource`:** Adds `--fullscreen`, `--save-dir`, bounded `<= 3s` graceful `--wait` child-tree teardown so saves flush cleanly, dual-mode `--verify-module` (`--json`), canonical `D4_CleanSource` checks (`D4_FunctionalRewrite` read-alias), and `.bak`-protected `settings.json` upgrades.
 '@).Replace('__VER__', $Version)
 
 $docMap = [ordered]@{
@@ -231,6 +228,24 @@ if (Test-Path $auditScript) {
     if ($LASTEXITCODE -ne 0) { throw "audit_installer.ps1 failed ($LASTEXITCODE)" }
 }
 
+$vm = [regex]::Match($Version, '^(\d+)\.(\d+)\.(\d+)')
+if ($vm.Success) {
+    $curMaj = [int]$vm.Groups[1].Value; $curMin = [int]$vm.Groups[2].Value
+    Get-ChildItem -Path $releasesDir -Directory -ErrorAction SilentlyContinue | Where-Object { $_.Name -match '^v\d+\.\d+\.\d+-' } |
+        ForEach-Object { Remove-Item -LiteralPath $_.FullName -Recurse -Force }
+    Get-ChildItem -Path $releasesDir -Directory -ErrorAction SilentlyContinue | Where-Object { $_.Name -match '^v\d+\.\d+\.\d+$' } |
+        Sort-Object { [version]$_.Name.Substring(1) } -Descending | Select-Object -Skip 2 |
+        ForEach-Object { Remove-Item -LiteralPath $_.FullName -Recurse -Force }
+    $arcRows = @(Get-ChildItem -Path $releasesDir -File -Filter "*.7z" -ErrorAction SilentlyContinue | ForEach-Object {
+        $am = [regex]::Match($_.Name, '^(?:reEngine-)?v(\d+)\.(\d+)\.(\d+)')
+        if ($am.Success) { [PSCustomObject]@{ File = $_; Maj = [int]$am.Groups[1].Value; Min = [int]$am.Groups[2].Value; Key = ([int]$am.Groups[1].Value * 10000 + [int]$am.Groups[2].Value) } }
+    })
+    $allKeys = [System.Collections.Generic.List[int]]::new(); $allKeys.Add($curMaj * 10000 + $curMin)
+    foreach ($a in $arcRows) { $allKeys.Add($a.Key) }
+    $keepKeys = @($allKeys | Sort-Object -Descending -Unique | Select-Object -First 3)
+    foreach ($a in $arcRows) { if (($a.Maj -eq $curMaj -and $a.Min -lt ($curMin - 2)) -or ($a.Maj -lt $curMaj -and $keepKeys -notcontains $a.Key)) { Remove-Item -LiteralPath $a.File.FullName -Force } }
+}
+
 Write-Host "[5/6] Publishing immutable SharedLibs\reEngine\v$Version (Release net8.0 purity verified)..."
 $sharedRoot = Join-Path (Split-Path -Parent (Split-Path -Parent $root)) "SharedLibs\reEngine"
 $coreOut = Join-Path $devDir "src\reEngine.Core\bin\Release\net8.0"
@@ -246,10 +261,11 @@ foreach ($sdkDir in @((Join-Path $sharedRoot "v$Version"), (Join-Path $sharedRoo
     New-Item -ItemType Directory -Force $sdkDir | Out-Null
     foreach ($fn in @("reEngine.Core.dll", "reEngine.Core.xml", "reEngine.Core.deps.json")) { Copy-Item (Join-Path $coreOut $fn) (Join-Path $sdkDir $fn) -Force }
     foreach ($fn in @("reEngine.Host.dll", "reEngine.Host.xml", "reEngine.Host.deps.json")) { Copy-Item (Join-Path $hostNet8Out $fn) (Join-Path $sdkDir $fn) -Force }
+    Assert-BinaryPurity (Join-Path $sdkDir "reEngine.Host.dll") @("Foundation.Automation", "System.Windows.Forms")
     if (Test-Path $sdl3Src) { Copy-Item $sdl3Src (Join-Path $sdkDir "SDL3.dll") -Force }
     Copy-Item $licensePath (Join-Path $sdkDir "LICENSE") -Force
     Copy-Item (Join-Path $devDir "scripts\THIRDPARTY_LICENSES.txt") (Join-Path $sdkDir "THIRDPARTY_LICENSES.txt") -Force
-    Copy-Item $installerPath (Join-Path $sdkDir $installerName) -Force
+    Copy-Item (Join-Path $relLatestDir $installerName) (Join-Path $sdkDir $installerName) -Force
     $artifacts = @(Get-ChildItem $sdkDir -File | Where-Object { $_.Name -ne "sdk-manifest.json" } | Sort-Object Name | ForEach-Object {
         [ordered]@{ fileName = $_.Name; fileSizeBytes = $_.Length; sha256Hex = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant() }
     })
