@@ -41,7 +41,9 @@ public enum HostRenderBackendKind
     OpenGl = 0,
     Vulkan = 1,
     ParallelCpu = 2,
-    Software = 3
+    Software = 3,
+    DirectX = 4,
+    Metal = 5
 }
 
 /// <summary>
@@ -74,7 +76,11 @@ public readonly struct HostInputFrame
         float mouseDeltaY = 0f,
         int mouseButtons = 0,
         uint hotkeyFlags = 0,
-        string activeSchema = "B")
+        string activeSchema = "B",
+        float wheelDelta = 0f,
+        uint gamepadButtonsMask = 0u,
+        bool controllerConnected = false,
+        int touchActiveCount = 0)
     {
         FrameSequence = frameSequence;
         DigitalButtons = digitalButtons;
@@ -89,6 +95,10 @@ public readonly struct HostInputFrame
         MouseButtons = mouseButtons;
         HotkeyFlags = hotkeyFlags;
         ActiveSchema = string.IsNullOrWhiteSpace(activeSchema) ? "B" : activeSchema;
+        WheelDelta = wheelDelta;
+        GamepadButtonsMask = gamepadButtonsMask;
+        ControllerConnected = controllerConnected;
+        TouchActiveCount = touchActiveCount;
     }
 
     public long FrameSequence { get; }
@@ -104,6 +114,10 @@ public readonly struct HostInputFrame
     public int MouseButtons { get; }
     public uint HotkeyFlags { get; }
     public string ActiveSchema { get; }
+    public float WheelDelta { get; }
+    public uint GamepadButtonsMask { get; }
+    public bool ControllerConnected { get; }
+    public int TouchActiveCount { get; }
 }
 
 /// <summary>
@@ -132,7 +146,8 @@ public sealed record HostDrawerDescriptor(
     int ResolutionScale,
     string ActiveSchema,
     string MediaLabel = "Disc/Media Image",
-    IReadOnlyList<HostDrawerRowDescriptor>? ExtraRows = null)
+    IReadOnlyList<HostDrawerRowDescriptor>? ExtraRows = null,
+    IReadOnlyList<HostControlOptionDescriptor>? ControlOptions = null)
 {
     public static HostDrawerDescriptor CreateDefault(string moduleTitle = "reEngine Host", string engineDisplayName = "reEngine.Host") =>
         new(moduleTitle, engineDisplayName, "AOT Primary", RecompRenderBackendIds.OpenGl33, 2, "B");
@@ -169,6 +184,13 @@ public sealed record HostSessionOptions
     public bool ShowMediaGateInitially { get; init; }
     public string? ExpectedMediaSha256 { get; init; }
     public HostRenderBackendKind PreferredBackend { get; init; } = HostRenderBackendKind.Software;
+    public bool RequireBackend { get; init; }
+    public bool IsFullscreen { get; init; }
+    public string? AudioDriverOverride { get; init; }
+    public string? HdPacksDirectory { get; init; }
+    public bool IsHdTexturePackEnabled { get; init; }
+    public bool EnableTouchOverlay { get; init; }
+    public IReadOnlyList<IHostInputProvider>? InputProviders { get; init; }
     public HostAudioFormat AudioFormat { get; init; } = new();
     public HostDrawerDescriptor DrawerDescriptor { get; init; } = HostDrawerDescriptor.CreateDefault();
 }
@@ -184,7 +206,10 @@ public sealed record HostSessionResult(
     HostDrawerTabId ActiveTab,
     string? CapturedFramePath,
     string? CapturedAudioPath,
-    string Summary);
+    string Summary,
+    string? ActiveBackendId = null,
+    string? ActiveAudioDriver = null,
+    string? FallbackBanner = null);
 
 /// <summary>
 /// Video surface presenter abstraction implemented cleanly for RGBA or GL backends.

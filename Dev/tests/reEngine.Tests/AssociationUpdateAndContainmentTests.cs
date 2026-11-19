@@ -221,7 +221,7 @@ public sealed class AssociationUpdateAndContainmentTests : IDisposable
     public void ReEnginePackagingConstants_EnforcesAllowAutoStartFalse_AndZeroPiiDefaultPath()
     {
         Assert.False(ReEnginePackagingConstants.AllowAutoStart);
-        Assert.Equal("0.3.0", ReEnginePackagingConstants.Version);
+        Assert.Equal("0.4.0", ReEnginePackagingConstants.Version);
         Assert.Equal("StreamItAll", ReEnginePackagingConstants.StudioName);
         Assert.Equal("reEngine", ReEnginePackagingConstants.SuiteName);
         Assert.Equal("StreamItAll\\reEngine\\reEngine", ReEnginePackagingConstants.UmbrellaSubpath);

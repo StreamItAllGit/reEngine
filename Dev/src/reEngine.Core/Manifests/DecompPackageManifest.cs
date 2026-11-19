@@ -65,9 +65,21 @@ public sealed class DecompPackageManifest : IDecompPackageManifest
     [JsonPropertyName("decompProviderAssembly")]
     public string? DecompProviderAssembly { get; set; }
 
-    /// <summary>Preserved earned research tiers present in upstream <c>Corpus\tiers\</c> (e.g., <c>D1_Raw</c>.. <c>D5_ByteExact</c>).</summary>
+    /// <summary>Preserved earned research tiers present in upstream <c>Corpus\tiers\</c> (<c>D1_Raw</c>, <c>D2_Structured</c>, <c>D3_Mapped</c>, canonical <c>D4_CleanSource</c> with <c>D4_FunctionalRewrite</c> legacy alias, <c>D5_ByteExact</c>).</summary>
     [JsonPropertyName("preservedTiers")]
     public List<string>? PreservedTiers { get; set; }
+
+    /// <summary>Standard 18 D4 parity level (<c>none</c>, <c>D4a</c> subsystem parity, or <c>D4b</c> execution parity).</summary>
+    [JsonPropertyName("d4ParityTier")]
+    public string? D4ParityTier { get; set; }
+
+    /// <summary>Standard 18 separate port/reimplementation axis tier (<c>none</c>, <c>P0</c>–<c>P5</c>).</summary>
+    [JsonPropertyName("currentPortTier")]
+    public string? CurrentPortTier { get; set; }
+
+    /// <summary>Optional expected 64-char hex SHA-256 of verified user media for suite-tree disambiguation.</summary>
+    [JsonPropertyName("expectedSha256")]
+    public string? ExpectedSha256 { get; set; }
 
     /// <summary>Standard 18 SemVer of the <c>.decomp</c> container schema.</summary>
     [JsonPropertyName("decompSchemaVersion")]

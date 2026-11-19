@@ -27,6 +27,9 @@ public sealed class F1SettingsDrawerView
     public int ResolutionScale { get; set; } = 2;
     public HostInputSchemaKind SelectedSchema { get; set; } = HostInputSchemaKind.SchemaB;
     public string ExecutionTierLabel { get; set; } = "AOT Primary";
+    public bool IsFullscreen { get; set; }
+    public bool IsHdTexturePackEnabled { get; set; }
+    public string? FallbackBanner { get; set; }
 
     public void Render(PixelOverlayCanvas canvas, HostDrawerDescriptor descriptor)
     {

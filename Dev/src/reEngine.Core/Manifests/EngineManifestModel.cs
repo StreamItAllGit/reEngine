@@ -57,7 +57,7 @@ public sealed class EngineManifestModel
     [JsonPropertyName("executionTierMode")]
     public string? ExecutionTierMode { get; set; }
 
-    /// <summary>Default render backend identifier (<c>opengl</c>, <c>vulkan</c>, <c>parallelCpu</c>, <c>software</c>).</summary>
+    /// <summary>Default render backend identifier (<c>opengl</c>, <c>vulkan</c>, <c>directx</c>, <c>parallelCpu</c>, <c>software</c>, reserved <c>metal</c>).</summary>
     [JsonPropertyName("backendId")]
     public string? BackendId { get; set; }
 

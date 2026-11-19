@@ -7,15 +7,15 @@
   "containerTier": "Tier A (4-Folder)",
   "ecosystemTier": "Tier1_Infrastructure",
   "appArchetype": "ENGINE",
-  "version": "0.3.0",
-  "activeMilestone": "0.3.1",
+  "version": "0.4.0",
+  "activeMilestone": "0.4.0",
   "goalMajorVersion": "1.0.0",
-  "stateChangedDate": "2026-11-18",
+  "stateChangedDate": "2026-11-19",
   "lastVersionDate": "2026-11-18",
   "productionSubpath": null,
   "supersededBy": null,
   "tasklistDetailLevel": 3,
-  "openTaskCount": 0,
+  "openTaskCount": 8,
   "completedTaskCount": 31,
   "openReportCount": 0,
   "isPublicRepo": true,
@@ -33,10 +33,10 @@
   "gates": {
     "isGate0ScopePassed": true,
     "isGate1PlanPassed": true,
-    "isGate2BuildPassed": true,
-    "isInspecterVerified": true,
-    "isTessaSynced": true
+    "isGate2BuildPassed": false,
+    "isInspecterVerified": false,
+    "isTessaSynced": false
   },
-  "notes": "v0.3.0 released publicly (https://github.com/StreamItAllGit/reEngine): upstream reEngine.Host.dll (SDL3, PixelOverlayCanvas, HighResFramePacer, AudioRingBuffer, HostInputFrame Schema A/B/C, F1 5-tab drawer, F3 HUD, FirstRunMediaGateView, Debug-only SdlAutomationProxyControl + Release ExitCode=2), resumable .part/.ready atomic engine updates with SSRF guard, supportedEngineTracks + SeriesMap.json bidirectional aliases, detached .recomp child launch without JobObjectGuard + 0.2.7+ --scale/--backend/--jit-bringup forwarding, installer existing-path/profile auto-detection + non-clobbering settings persistence, 7-file Releases bundle with reEngine-v0.3.0-win-x64-Portable.zip, human-first docs, 77/77 passing Release & Debug+Automation xUnit suites, and live visible-window Stage 2 4-drive sandbox E2E verified.",
-  "updatedAtUtc": "2026-11-18T21:27:00.000Z"
+  "notes": "v0.4.0 In Execution (@devv): Unified reEngine.Host GPU/Input/Audio, .decomp UI + Root-Tree Media Walk, D4_CleanSource, Frontend --wait/--fullscreen/--save-dir Bridge & --verify-module.",
+  "updatedAtUtc": "2026-11-19T10:39:00.000Z"
 }

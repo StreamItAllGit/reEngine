@@ -50,9 +50,25 @@ public sealed class ReEngineSettings
     [JsonPropertyName("resolutionScale")]
     public int? ResolutionScale { get; set; } = 2;
 
-    /// <summary>Canonical Standard 18 preferred render backend identifier (<c>opengl</c>, <c>vulkan</c>, <c>parallelCpu</c>, <c>software</c>).</summary>
+    /// <summary>Canonical Standard 18 preferred render backend identifier (<c>opengl</c>, <c>vulkan</c>, <c>directx</c>, <c>parallelCpu</c>, <c>software</c>).</summary>
     [JsonPropertyName("backendId")]
     public string BackendId { get; set; } = "opengl";
+
+    /// <summary>Whether fullscreen host presentation is enabled by default (Standard 18: <c>isFullscreen</c>).</summary>
+    [JsonPropertyName("isFullscreen")]
+    public bool IsFullscreen { get; set; }
+
+    /// <summary>Optional explicit OS native audio driver override (e.g., <c>wasapi</c>, <c>pipewire</c>, <c>coreaudio</c>; <see langword="null"/> = auto).</summary>
+    [JsonPropertyName("audioDriver")]
+    public string? AudioDriver { get; set; }
+
+    /// <summary>Whether path-contained <c>hdpacks\</c> texture overrides are enabled (Standard 18: <c>isHdTexturePackEnabled</c>).</summary>
+    [JsonPropertyName("isHdTexturePackEnabled")]
+    public bool IsHdTexturePackEnabled { get; set; }
+
+    /// <summary>Bounded graceful child-tree shutdown timeout in milliseconds during synchronous <c>--wait</c> teardown.</summary>
+    [JsonPropertyName("shutdownTimeoutMs")]
+    public int? ShutdownTimeoutMs { get; set; } = 3000;
 
     /// <summary>Explicit per-engine pinned version overrides keyed by engine ID.</summary>
     [JsonPropertyName("pinnedEngineVersions")]

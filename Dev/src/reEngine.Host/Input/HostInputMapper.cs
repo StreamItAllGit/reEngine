@@ -26,10 +26,12 @@ public enum HostHotkeyFlags : uint
 public sealed class HostInputMapper
 {
     private readonly HashSet<int> _heldScancodes = new();
+    private readonly List<IHostInputProvider> _providers = new();
     private long _frameSequence;
     private uint _pendingHotkeys;
     private float _pendingMouseDx;
     private float _pendingMouseDy;
+    private float _pendingWheelDelta;
     private int _mouseButtons;
 
     public HostInputSchemaKind ActiveSchema { get; set; } = HostInputSchemaKind.SchemaB;
@@ -74,6 +76,32 @@ public sealed class HostInputMapper
         _mouseButtons = buttons;
     }
 
+    public void AccumulateMouseWheel(float deltaY) => _pendingWheelDelta += deltaY;
+
+    public void SetMouseButton(int buttonIndex, bool isPressed)
+    {
+        if (buttonIndex is < 1 or > 5) return;
+        int mask = 1 << (buttonIndex - 1);
+        if (isPressed) _mouseButtons |= mask;
+        else _mouseButtons &= ~mask;
+    }
+
+    public void RegisterProvider(IHostInputProvider provider)
+    {
+        ArgumentNullException.ThrowIfNull(provider);
+        if (!_providers.Contains(provider)) _providers.Add(provider);
+    }
+
+    public bool RequestRumble(HostRumbleRequest request)
+    {
+        bool sent = false;
+        foreach (IHostInputProvider provider in _providers)
+        {
+            if (provider.TryRumble(request)) sent = true;
+        }
+        return sent;
+    }
+
     public HostInputFrame BuildFrame(
         HostGamepadButtons externalButtons = HostGamepadButtons.None,
         float extLeftX = 0f,
@@ -98,8 +126,28 @@ public sealed class HostInputMapper
         _pendingHotkeys = 0;
         float mdx = _pendingMouseDx;
         float mdy = _pendingMouseDy;
+        float wheel = _pendingWheelDelta;
         _pendingMouseDx = 0f;
         _pendingMouseDy = 0f;
+        _pendingWheelDelta = 0f;
+
+        uint gpMask = 0u;
+        bool gpConnected = false;
+        int touchCount = 0;
+        foreach (IHostInputProvider provider in _providers)
+        {
+            HostExternalInputSnapshot ext = provider.Poll();
+            digital |= ext.Buttons;
+            gpMask |= ext.GamepadButtonsMask;
+            if (ext.ControllerConnected) gpConnected = true;
+            touchCount += ext.TouchActiveCount;
+            if (MathF.Abs(ext.LeftX) > MathF.Abs(lx)) lx = ext.LeftX;
+            if (MathF.Abs(ext.LeftY) > MathF.Abs(ly)) ly = ext.LeftY;
+            if (MathF.Abs(ext.RightX) > MathF.Abs(rx)) rx = ext.RightX;
+            if (MathF.Abs(ext.RightY) > MathF.Abs(ry)) ry = ext.RightY;
+            if (ext.TriggerLeft > tl) tl = ext.TriggerLeft;
+            if (ext.TriggerRight > tr) tr = ext.TriggerRight;
+        }
 
         return new HostInputFrame(
             frameSequence: ++_frameSequence,
@@ -114,7 +162,11 @@ public sealed class HostInputMapper
             mouseDeltaY: mdy,
             mouseButtons: _mouseButtons,
             hotkeyFlags: hotkeys,
-            activeSchema: HostInputSchemas.ToShortCode(ActiveSchema));
+            activeSchema: HostInputSchemas.ToShortCode(ActiveSchema),
+            wheelDelta: wheel,
+            gamepadButtonsMask: gpMask,
+            controllerConnected: gpConnected,
+            touchActiveCount: touchCount);
     }
 
     public static bool TryMapKeyNameToScancode(string? keyName, out int scancode)
