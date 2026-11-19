@@ -145,6 +145,8 @@ public sealed class PackageVerificationService
             violations.Add($"Manifest '{manifestPath}' has invalid SemVer engineVersion '{manifest.EngineVersion}'.");
         if (Path.IsPathRooted(preloadDir))
             violations.Add($"Fail-Closed Containment Violation: preloadRomDir '{preloadDir}' must be relative.");
+        else if (TryContainRelative(moduleRootDir, preloadDir) is string err)
+            violations.Add(err);
 
         if (File.Exists(fullPkg))
         {
@@ -160,6 +162,20 @@ public sealed class PackageVerificationService
             CheckLooseDirectorySources(fullPkg, violations);
         }
         return new LoadedPackage(manifest.ModuleId, manifest.EngineId, preloadDir, manifest.ExpectedSha256, null, manifest);
+    }
+
+    private static string? TryContainRelative(string rootDir, string relPath)
+    {
+        try
+        {
+            string fullRoot = Path.GetFullPath(rootDir);
+            _ = AppEnvironment.AssertPathContained(Path.GetFullPath(Path.Combine(fullRoot, relPath)), fullRoot);
+            return null;
+        }
+        catch (InvalidOperationException ex)
+        {
+            return ex.Message;
+        }
     }
 
     private InstalledEngineCandidate? ResolveCompatibleEngine(string enginesRootDir, string kind, LoadedPackage pkg, ReEngineSettings? settings, List<string> violations)

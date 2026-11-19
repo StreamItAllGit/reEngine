@@ -41,13 +41,16 @@
   <ItemGroup>
     <Compile Include="..\..\src\reEngine.Launcher\LauncherArgsHelper.cs" Link="Linked\LauncherArgsHelper.cs" />
     <Compile Include="..\..\src\reEngine.App\Program.Bootstrap.cs" Link="Linked\Program.Bootstrap.cs" />
+    <Compile Include="..\..\src\reEngine.App\Program.Verify.cs" Link="Linked\Program.Verify.cs" />
     <Compile Include="..\..\src\reEngine.App\SettingsMigrationHelper.cs" Link="Linked\SettingsMigrationHelper.cs" />
     <Compile Include="..\..\src\reEngine.App\RecompLaunchOptions.cs" Link="Linked\RecompLaunchOptions.cs" />
     <Compile Include="..\..\src\reEngine.App\RecompLaunchPlanBuilder.cs" Link="Linked\RecompLaunchPlanBuilder.cs" />
+    <Compile Include="..\..\src\reEngine.App\GracefulProcessTreeShutdown.cs" Link="Linked\GracefulProcessTreeShutdown.cs" />
     <Compile Include="..\..\src\reEngine.App\RecompLaunchCoordinator.cs" Link="Linked\RecompLaunchCoordinator.cs" />
     <Compile Include="..\..\src\reEngine.App\ReEngineAppStatusHelper.cs" Link="Linked\ReEngineAppStatusHelper.cs" />
     <Compile Include="..\..\src\reEngine.App\Ui\ReEngineTheme.cs" Link="Linked\ReEngineTheme.cs" />
     <Compile Include="..\..\src\reEngine.App\Ui\LibraryShelfPanel.cs" Link="Linked\LibraryShelfPanel.cs" />
+    <Compile Include="..\..\src\reEngine.App\Ui\BringUpShelfPanel.cs" Link="Linked\BringUpShelfPanel.cs" />
   </ItemGroup>
 
   <ItemGroup>

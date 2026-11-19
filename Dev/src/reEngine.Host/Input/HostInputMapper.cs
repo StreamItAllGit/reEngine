@@ -141,6 +141,20 @@ public sealed class HostInputMapper
         if (!_providers.Contains(provider)) _providers.Add(provider);
     }
 
+    public bool UnregisterProvider(IHostInputProvider provider) => _providers.Remove(provider);
+
+    internal bool TryConsumeFirstLatchedCode(out int code)
+    {
+        foreach (int candidate in _latchedCodes)
+        {
+            _latchedCodes.Remove(candidate);
+            code = candidate;
+            return true;
+        }
+        code = 0;
+        return false;
+    }
+
     public bool RequestRumble(HostRumbleRequest request)
     {
         bool sent = false;

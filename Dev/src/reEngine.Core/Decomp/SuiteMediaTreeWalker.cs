@@ -86,8 +86,12 @@ public static partial class SuiteMediaTreeWalker
         if (IsSafeDir(suiteRoot))
         {
             string gamesDir = Path.Combine(suiteRoot!, "games");
-            if (!string.IsNullOrWhiteSpace(moduleId) && Path.Combine(gamesDir, moduleId.Trim()) is string slugDir && HasSafeAncestors(slugDir, suiteRoot!))
-                ScanGameSubfolders(slugDir, suiteRoot!, slugDir, false, true, state);
+            if (!string.IsNullOrWhiteSpace(moduleId) && IsSafeSingleSegment(moduleId.Trim()))
+            {
+                string slugDir = TryContain(Path.Combine(gamesDir, moduleId.Trim()), gamesDir) ?? string.Empty;
+                if (!string.IsNullOrEmpty(slugDir) && HasSafeAncestors(slugDir, suiteRoot!))
+                    ScanGameSubfolders(slugDir, suiteRoot!, slugDir, false, true, state);
+            }
             if (IsSafeDir(gamesDir))
                 foreach (string gameDir in Directory.EnumerateDirectories(gamesDir))
                     if (!ExcludedDirectories.Contains(Path.GetFileName(gameDir)) && !IsReparsePoint(gameDir))
@@ -257,8 +261,13 @@ public static partial class SuiteMediaTreeWalker
             if (ExcludedDirectories.Contains(Path.GetFileName(cur))) return false;
             cur = Path.GetDirectoryName(cur);
         }
-        return true;
+        return false;
     }
+
+    private static bool IsSafeSingleSegment(string segment) =>
+        !string.IsNullOrWhiteSpace(segment) &&
+        segment.IndexOfAny(['/', '\\', ':']) < 0 &&
+        !segment.Contains("..", StringComparison.Ordinal);
 
     private static bool IsSafeDir(string? path) => !string.IsNullOrWhiteSpace(path) && Directory.Exists(path) && !IsReparsePoint(path);
     private static bool IsReparsePoint(string path) => (File.Exists(path) || Directory.Exists(path)) && (File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0;

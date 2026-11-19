@@ -111,7 +111,7 @@ public sealed class SettingsMigrationAndLaunchTests : IDisposable
             RecompLaunchOptions.FromArgs(["--data-dir", dataDir, "--scale", "3"], appEnv));
 
         RecompLaunchOptions strictOpts = opts with { RequireBackend = true };
-        Assert.Throws<InvalidOperationException>(() =>
+        Assert.Throws<BackendUnavailableException>(() =>
             RecompLaunchPlanBuilder.Build(loaded, appEnv, _tempRoot, strictOpts, child028));
     }
 
@@ -169,6 +169,7 @@ public sealed class SettingsMigrationAndLaunchTests : IDisposable
             int exitCode = await coordinator.LaunchAsync(pkgPath, Path.Combine(_tempRoot, "engines"), settings, appEnv, _tempRoot, opts, CancellationToken.None);
 
             Assert.Equal(0, exitCode);
+            for (int w = 0; w < 20 && !File.Exists(pidFile); w++) await Task.Delay(100);
             Assert.True(File.Exists(pidFile), "Detached launcher stub should have recorded grandchild PID before exiting 0.");
             detachedPid = int.Parse(File.ReadAllText(pidFile).Trim());
 
@@ -223,7 +224,7 @@ public sealed class SettingsMigrationAndLaunchTests : IDisposable
                 Assert.Equal(4, panel.SelectedResolutionScale);
                 Assert.Equal("opengl", panel.SelectedBackend);
                 Assert.True(panel.JitBringupCheckBox.Checked);
-                Assert.Equal(new[] { "opengl", "software" }, panel.BackendCombo.Items.Cast<string>().ToArray());
+                Assert.Equal(new[] { "opengl", "vulkan", "directx", "parallelCpu", "software" }, panel.BackendCombo.Items.Cast<string>().ToArray());
                 Assert.False(panel.HeaderLabel.UseMnemonic);
             }
             catch (Exception ex)

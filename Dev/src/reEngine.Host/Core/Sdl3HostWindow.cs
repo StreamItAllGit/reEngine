@@ -95,7 +95,10 @@ internal sealed unsafe class Sdl3HostWindow : IDisposable
         return true;
     }
 
-    public bool PollEvents(HostInputMapper inputMapper, Action<int, int> onLeftClick)
+    public bool PollEvents(HostInputMapper inputMapper, Action<int, int> onLeftClick) =>
+        PollEvents(inputMapper, onLeftClick, onRightClick: null);
+
+    public bool PollEvents(HostInputMapper inputMapper, Action<int, int> onLeftClick, Action<int, int>? onRightClick)
     {
         if (!_videoGamepadInitialized) return true;
         byte* ev = stackalloc byte[128];
@@ -130,10 +133,12 @@ internal sealed unsafe class Sdl3HostWindow : IDisposable
                 {
                     byte button = Sdl3Native.EventMouseButton(ev);
                     inputMapper.SetMouseButton(button, true);
-                    if (button == 1)
+                    if (button is 1 or 3)
                     {
                         (float mx, float my) = Sdl3Native.EventMousePosition(ev);
-                        onLeftClick((int)MathF.Round(mx), (int)MathF.Round(my));
+                        int px = (int)MathF.Round(mx), py = (int)MathF.Round(my);
+                        if (button == 1) onLeftClick(px, py);
+                        else onRightClick?.Invoke(px, py);
                     }
                     break;
                 }

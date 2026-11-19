@@ -61,7 +61,12 @@ internal sealed class RecompLaunchCoordinator
             return 1;
         }
 
-        ChildLaunchPlan plan = RecompLaunchPlanBuilder.Build(loaded, appEnv, containmentRoot, launchOptions, resolution.SelectedEngine, _log);
+        RecompLaunchOptions effectiveOpts = (launchOptions ?? new RecompLaunchOptions()) with
+        {
+            Fullscreen = (launchOptions?.Fullscreen == true) || settings.IsFullscreen,
+            AudioDriverOverride = !string.IsNullOrWhiteSpace(launchOptions?.AudioDriverOverride) ? launchOptions!.AudioDriverOverride : settings.AudioDriver
+        };
+        ChildLaunchPlan plan = RecompLaunchPlanBuilder.Build(loaded, appEnv, containmentRoot, effectiveOpts, resolution.SelectedEngine, _log);
         _log("INFO", resolution.DiagnosticMessage);
         Console.WriteLine(resolution.DiagnosticMessage);
         Console.WriteLine($"Preload media detected: {loaded.PreloadMedia.DiscoveredMediaFiles.Count} file(s) -> {loaded.PreloadMedia.PrimaryMediaPath ?? "none"}");
@@ -81,7 +86,8 @@ internal sealed class RecompLaunchCoordinator
         return await SpawnEngineAsync(
             resolution.SelectedEngine,
             plan,
-            waitForChildExit: launchOptions?.ShouldWaitForExit == true,
+            waitForChildExit: effectiveOpts.ShouldWaitForExit,
+            shutdownTimeoutMs: effectiveOpts.ShutdownTimeoutMs ?? settings.ShutdownTimeoutMs ?? 3000,
             ct).ConfigureAwait(false);
     }
 
@@ -125,6 +131,7 @@ internal sealed class RecompLaunchCoordinator
         InstalledEngineCandidate engine,
         ChildLaunchPlan plan,
         bool waitForChildExit,
+        int shutdownTimeoutMs,
         CancellationToken ct)
     {
         Directory.CreateDirectory(plan.ModuleDataDirectory);
@@ -152,8 +159,16 @@ internal sealed class RecompLaunchCoordinator
         {
             using var guard = new JobObjectGuard();
             guard.TryAttachProcess(proc);
-            await proc.WaitForExitAsync(ct).ConfigureAwait(false);
-            return proc.ExitCode;
+            try
+            {
+                await proc.WaitForExitAsync(ct).ConfigureAwait(false);
+                return proc.ExitCode;
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                await GracefulProcessTreeShutdown.RequestShutdownAsync(proc, shutdownTimeoutMs, _log).ConfigureAwait(false);
+                throw;
+            }
         }
 
         // Interactive / detached launch: never bind a kill-on-close JobObject because launcher stubs

@@ -7,6 +7,7 @@ using System.Globalization;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using Foundation.Core;
+using reEngine.Core.Decomp;
 using reEngine.Core.Manifests;
 using reEngine.Core.Resolution;
 
@@ -68,12 +69,13 @@ internal static partial class RecompLaunchPlanBuilder
         string? screenshotPath = ResolveOptionalContainedPath(opts.DumpScreenshotPath, effectiveBoundary);
         string? audioPath = ResolveOptionalContainedPath(opts.DumpAudioPath, effectiveBoundary);
         string? saveDir = ResolveOptionalContainedPath(opts.SaveDirOverride, effectiveBoundary);
+        string? preloadMediaPath = ResolvePreloadMediaPath(loaded, appEnv, opts, selectedEngine, effectiveBoundary);
 
         var args = new List<string> { "--module", loaded.PackagePath };
-        if (!string.IsNullOrWhiteSpace(loaded.PreloadMedia.PrimaryMediaPath))
+        if (!string.IsNullOrWhiteSpace(preloadMediaPath))
         {
             args.Add("--preload-media");
-            args.Add(loaded.PreloadMedia.PrimaryMediaPath);
+            args.Add(preloadMediaPath);
         }
         if (opts.ShouldWaitForExit) args.Add("--wait");
         if (opts.TrayOnly || appEnv.TrayOnly) args.Add("--tray-only");
@@ -103,8 +105,35 @@ internal static partial class RecompLaunchPlanBuilder
     private static readonly SemVer Track027Threshold = new(0, 2, 7);
 
     private static bool IsLegacyCompatibleBackend(string? backendId) =>
-        string.Equals(backendId, "opengl", StringComparison.OrdinalIgnoreCase) ||
-        string.Equals(backendId, "software", StringComparison.OrdinalIgnoreCase);
+        string.Equals(backendId, HostRenderBackendIds.OpenGl, StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(backendId, HostRenderBackendIds.Software, StringComparison.OrdinalIgnoreCase);
+
+    private static string? ResolvePreloadMediaPath(
+        RecompPackageLoadResult loaded, AppEnvironment appEnv, RecompLaunchOptions opts,
+        InstalledEngineCandidate? selectedEngine, string? boundary)
+    {
+        if (!string.IsNullOrWhiteSpace(opts.MediaPathOverride))
+            return ResolveOptionalContainedPath(opts.MediaPathOverride, boundary);
+        if (!string.IsNullOrWhiteSpace(loaded.PreloadMedia.PrimaryMediaPath))
+            return loaded.PreloadMedia.PrimaryMediaPath;
+
+        string? moduleRoot = Path.GetDirectoryName(loaded.PackagePath);
+        string? engineFamilyDir = selectedEngine is not null ? Path.GetDirectoryName(selectedEngine.EngineDirectory) : null;
+        string? enginesRoot = engineFamilyDir is not null ? Path.GetDirectoryName(engineFamilyDir) : null;
+        if (enginesRoot is not null && !string.Equals(Path.GetFileName(enginesRoot), "engines", StringComparison.OrdinalIgnoreCase))
+        {
+            enginesRoot = null;
+        }
+        string? suiteRoot = SuiteMediaTreeWalker.DeriveSuiteRootDirectory(enginesRoot, appEnv.DataDirectory, boundary);
+        string? expectedSha = loaded.Manifest.ExtensionData is not null &&
+                              loaded.Manifest.ExtensionData.TryGetValue("expectedSha256", out JsonElement shaEl) &&
+                              shaEl.ValueKind == JsonValueKind.String
+            ? shaEl.GetString()
+            : null;
+        SuiteMediaDiscoveryResult walk = SuiteMediaTreeWalker.Discover(
+            moduleRoot, suiteRoot, loaded.Manifest.ModuleId, expectedSha, loaded.Manifest.PreloadRomDir, boundary);
+        return walk.Found ? walk.PrimaryMediaPath : null;
+    }
 
     private static void AppendV030Flags(
         List<string> args,
@@ -115,8 +144,16 @@ internal static partial class RecompLaunchPlanBuilder
     {
         bool supports030 = selectedEngine is null || Supports030Routing(selectedEngine);
         bool supports027 = selectedEngine is null || selectedEngine.Version.CompareTo(Track027Threshold) >= 0;
-        string? effectiveBackend = opts.BackendId ?? manifest.BackendId;
+        string? rawBackend = opts.BackendId ?? manifest.BackendId;
+        string? effectiveBackend = HostRenderBackendIds.TryNormalize(rawBackend, out string canonical) ? canonical : rawBackend;
         bool wantsJitBringup = opts.JitBringup || string.Equals(manifest.ExecutionTierMode, "jitBringup", StringComparison.OrdinalIgnoreCase);
+
+        if (OperatingSystem.IsWindows() &&
+            string.Equals(effectiveBackend, HostRenderBackendIds.Metal, StringComparison.OrdinalIgnoreCase) &&
+            opts.RequireBackend)
+        {
+            throw new BackendUnavailableException(HostRenderBackendIds.Metal, "Apple Metal backend is not supported on Windows.");
+        }
 
         if (!supports030)
         {
@@ -131,7 +168,7 @@ internal static partial class RecompLaunchPlanBuilder
                 {
                     if (opts.RequireBackend)
                     {
-                        throw new InvalidOperationException(
+                        throw new BackendUnavailableException(effectiveBackend!,
                             $"Selected engine '{selectedEngine!.EngineId}' v{selectedEngine.Version} does not support required '--backend {effectiveBackend}' routing (requires >= 0.3.0).");
                     }
                     log?.Invoke("WARN", $"Omitting 0.3.0+ backend '{effectiveBackend}' for pre-0.3.0 child '{selectedEngine!.EngineId}' v{selectedEngine.Version}.");
@@ -158,6 +195,12 @@ internal static partial class RecompLaunchPlanBuilder
             args.Add(effectiveBackend);
         }
         if (opts.RequireBackend) args.Add("--require-backend");
+        if (opts.Fullscreen) args.Add("--fullscreen");
+        if (!string.IsNullOrWhiteSpace(opts.AudioDriverOverride))
+        {
+            args.Add("--audio-driver");
+            args.Add(opts.AudioDriverOverride.Trim().ToLowerInvariant());
+        }
         if (wantsJitBringup)
         {
             args.Add("--jit-bringup");

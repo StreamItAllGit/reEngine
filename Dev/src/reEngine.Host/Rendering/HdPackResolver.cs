@@ -71,24 +71,48 @@ public sealed class HdPackResolver : IHdTexturePackResolver
 
     private void IndexDirectory(string rootDir)
     {
-        foreach (string manifestPath in Directory.EnumerateFiles(rootDir, "hdpack.manifest.json", SearchOption.AllDirectories))
+        foreach (string safeDir in EnumerateSafeDirectories(rootDir))
         {
-            string containedManifest = AssertSafeFile(manifestPath, rootDir);
-            IndexManifestFile(containedManifest, rootDir);
+            string manifestPath = Path.Combine(safeDir, "hdpack.manifest.json");
+            if (File.Exists(manifestPath))
+            {
+                string containedManifest = AssertSafeFile(manifestPath, rootDir);
+                IndexManifestFile(containedManifest, rootDir);
+            }
         }
 
-        foreach (string pngPath in Directory.EnumerateFiles(rootDir, "*.png", SearchOption.AllDirectories))
+        foreach (string safeDir in EnumerateSafeDirectories(rootDir))
         {
-            string containedPng = AssertSafeFile(pngPath, rootDir);
-            string stem = Path.GetFileNameWithoutExtension(containedPng);
-            int sep = stem.IndexOf('_');
-            if (sep <= 0 || sep >= stem.Length - 1) continue;
+            foreach (string pngPath in Directory.EnumerateFiles(safeDir, "*.png", SearchOption.TopDirectoryOnly))
+            {
+                string containedPng = AssertSafeFile(pngPath, rootDir);
+                string stem = Path.GetFileNameWithoutExtension(containedPng);
+                int sep = stem.IndexOf('_');
+                if (sep <= 0 || sep >= stem.Length - 1) continue;
 
-            string clut = stem[..sep];
-            string rect = stem[(sep + 1)..];
-            if (!IsValidHexToken(clut) || !IsValidHexToken(rect)) continue;
+                string clut = stem[..sep];
+                string rect = stem[(sep + 1)..];
+                if (!IsValidHexToken(clut) || !IsValidHexToken(rect)) continue;
 
-            AddEntry(clut, rect, containedPng, rootDir);
+                AddEntry(clut, rect, containedPng, rootDir);
+            }
+        }
+    }
+
+    private static IEnumerable<string> EnumerateSafeDirectories(string rootDir)
+    {
+        var pending = new Queue<string>();
+        pending.Enqueue(rootDir);
+        while (pending.Count > 0)
+        {
+            string cur = pending.Dequeue();
+            if ((File.GetAttributes(cur) & FileAttributes.ReparsePoint) != 0) continue;
+            yield return cur;
+            foreach (string sub in Directory.EnumerateDirectories(cur))
+            {
+                if ((File.GetAttributes(sub) & FileAttributes.ReparsePoint) != 0) continue;
+                pending.Enqueue(AppEnvironment.AssertPathContained(Path.GetFullPath(sub), rootDir));
+            }
         }
     }
 

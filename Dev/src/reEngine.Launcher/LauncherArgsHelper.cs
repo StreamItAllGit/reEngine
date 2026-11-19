@@ -16,19 +16,20 @@ internal static class LauncherArgsHelper
         "--open", "--module", "--verify-module", "--engines-dir", "--engine-dir", "--toolchain-dir", "--output-dir", "--stage",
         "--data-dir", "--config", "--log-dir", "--save-dir", "--feed", "--port", "--ui",
         "--backend", "--scale", "--suite-tab", "--profile", "--automation-port", "--automation-token",
-        "--frames", "--fixture", "--dump-screenshot", "--dump-audio"
+        "--frames", "--fixture", "--dump-screenshot", "--dump-audio",
+        "--shutdown-timeout-ms", "--audio-driver", "--media-path"
     };
 
     private static readonly HashSet<string> PathOptions = new(StringComparer.OrdinalIgnoreCase)
     {
-        "--open", "--module", "--engines-dir", "--engine-dir", "--toolchain-dir", "--output-dir",
+        "--open", "--module", "--verify-module", "--engines-dir", "--engine-dir", "--toolchain-dir", "--output-dir",
         "--data-dir", "--config", "--log-dir", "--save-dir", "--feed",
-        "--fixture", "--dump-screenshot", "--dump-audio"
+        "--fixture", "--dump-screenshot", "--dump-audio", "--media-path"
     };
 
     private static readonly HashSet<string> SyncFlags = new(StringComparer.OrdinalIgnoreCase)
     {
-        "decomp", "--open", "--wait", "--check-updates", "--register-assoc",
+        "decomp", "--open", "--wait", "--verify-module", "--headless", "--json", "--check-updates", "--register-assoc",
         "--verify", "--doctor", "--automation-port", "--jit-bringup", "--require-backend",
         "--preload-media", "--host-demo", "--dry-run", "--tray-only", "--help", "-h", "/?", "help", "--version", "-v"
     };
@@ -76,7 +77,7 @@ internal static class LauncherArgsHelper
             if (hasInlineValue)
             {
                 string inlineVal = trimmed[(key.Length + 1)..];
-                normalized[i] = PathOptions.Contains(key) && ShouldNormalizeValue(key, inlineVal)
+                normalized[i] = PathOptions.Contains(key) && ShouldNormalizeValue(key, inlineVal, baseDir)
                     ? $"{key}={Path.GetFullPath(inlineVal.Trim(), baseDir)}"
                     : raw;
                 continue;
@@ -89,7 +90,7 @@ internal static class LauncherArgsHelper
                 {
                     i++;
                     string val = args[i] ?? string.Empty;
-                    normalized[i] = PathOptions.Contains(key) && ShouldNormalizeValue(key, val)
+                    normalized[i] = PathOptions.Contains(key) && ShouldNormalizeValue(key, val, baseDir)
                         ? Path.GetFullPath(val.Trim(), baseDir)
                         : val;
                 }
@@ -118,7 +119,7 @@ internal static class LauncherArgsHelper
         return (trimmed, false);
     }
 
-    private static bool ShouldNormalizeValue(string optionKey, string rawValue)
+    private static bool ShouldNormalizeValue(string optionKey, string rawValue, string baseDir)
     {
         string trimmedVal = (rawValue ?? string.Empty).Trim();
         if (trimmedVal.Length == 0) return false;
@@ -130,6 +131,22 @@ internal static class LauncherArgsHelper
         {
             return false;
         }
+        if (string.Equals(optionKey, "--verify-module", StringComparison.OrdinalIgnoreCase))
+        {
+            return LooksLikePackageOrFilePath(trimmedVal, baseDir);
+        }
         return true;
+    }
+
+    private static bool LooksLikePackageOrFilePath(string val, string baseDir)
+    {
+        if (Path.IsPathRooted(val) || val.Contains('/') || val.Contains('\\') || val.StartsWith('.'))
+            return true;
+        if (val.EndsWith(".recomp", StringComparison.OrdinalIgnoreCase) ||
+            val.EndsWith(".decomp", StringComparison.OrdinalIgnoreCase) ||
+            val.EndsWith(".json", StringComparison.OrdinalIgnoreCase))
+            return true;
+        string cand = Path.Combine(baseDir, val);
+        return File.Exists(cand) || Directory.Exists(cand);
     }
 }

@@ -42,7 +42,9 @@ internal sealed partial class ReEngineMainForm : Form
         UpdateCoordinator updateCoordinator,
         IFileAssociationStore assocStore,
         Action<string, string> log,
-        string? containmentRoot = null)
+        string? containmentRoot = null,
+        string? initialDecompPath = null,
+        string? initialDecompStage = null)
     {
         _appEnv = appEnv ?? throw new ArgumentNullException(nameof(appEnv));
         _enginesDir = enginesDir ?? throw new ArgumentNullException(nameof(enginesDir));
@@ -66,6 +68,7 @@ internal sealed partial class ReEngineMainForm : Form
         TryApplyEmbeddedIcon();
         InitializeControls();
         RefreshAllState();
+        ApplyInitialDecompLaunch(initialDecompPath, initialDecompStage);
     }
 
     protected override void OnHandleCreated(EventArgs e)
@@ -141,10 +144,18 @@ internal sealed partial class ReEngineMainForm : Form
         _settings.BackendId = backendId;
         _settings.ResolutionScale = scale;
         _settings.PreferredResolutionScale = null;
+        _settings.IsFullscreen = _libraryShelf.FullscreenCheckBox.Checked;
         ReEngineAppStatusHelper.SetJitBringup(_settings, jitBringup);
         _updateCoordinator.SaveSettings(_settings);
         _lblStatusText.Text = $"Launch defaults saved: backend={backendId}, scale={scale}x, liveJitFallback={(jitBringup ? "on" : "off")}.";
         UpdateDrawerSummary(_enginesShelf.SelectedCandidate);
+    }
+
+    private void OnFullscreenToggled()
+    {
+        _settings.IsFullscreen = _libraryShelf.FullscreenCheckBox.Checked;
+        _updateCoordinator.SaveSettings(_settings);
+        _lblStatusText.Text = $"Default fullscreen presentation {(_settings.IsFullscreen ? "enabled" : "disabled")}.";
     }
 
     private void OnEngineOptionsChanged(bool shouldCheckUpdates, bool shouldAutoStage, string profile)
@@ -232,35 +243,6 @@ internal sealed partial class ReEngineMainForm : Form
         }
     }
 
-    private async void OnOpenPackageClicked()
-    {
-        using var dlg = new OpenFileDialog { Title = "Open .recomp Package", Filter = "reEngine Packages (*.recomp;*.recomp.json)|*.recomp;*.recomp.json|All Files (*.*)|*.*" };
-        if (dlg.ShowDialog(this) != DialogResult.OK) return;
-        _libraryShelf.OpenPackageButton.Enabled = false;
-        _lblStatusText.Text = $"Launching '{Path.GetFileName(dlg.FileName)}'...";
-        try
-        {
-            var opts = new RecompLaunchOptions
-            {
-                BackendId = _libraryShelf.SelectedBackend,
-                ResolutionScale = _libraryShelf.SelectedResolutionScale,
-                JitBringup = _libraryShelf.JitBringupCheckBox.Checked
-            };
-            int code = await new RecompLaunchCoordinator(_updateCoordinator, _log).LaunchAsync(dlg.FileName, _enginesDir, _settings, _appEnv, _containmentRoot, opts, CancellationToken.None);
-            if (IsDisposed) return;
-            _lblStatusText.Text = code == 0 ? $"Launched '{Path.GetFileName(dlg.FileName)}' cleanly." : $"Launch failed with exit code {code}.";
-        }
-        catch (Exception ex)
-        {
-            if (IsDisposed) return;
-            _lblStatusText.Text = $"Launch blocked: {ex.Message}";
-        }
-        finally
-        {
-            if (!IsDisposed) _libraryShelf.OpenPackageButton.Enabled = true;
-        }
-    }
-
     private void OnSaveSettingsClicked()
     {
         _settings.ShouldCheckUpdates = _enginesShelf.CheckUpdatesCheckBox.Checked;
@@ -268,6 +250,7 @@ internal sealed partial class ReEngineMainForm : Form
         _settings.BackendId = _libraryShelf.SelectedBackend;
         _settings.ResolutionScale = _libraryShelf.SelectedResolutionScale;
         _settings.PreferredResolutionScale = null;
+        _settings.IsFullscreen = _libraryShelf.FullscreenCheckBox.Checked;
         ReEngineAppStatusHelper.SetJitBringup(_settings, _libraryShelf.JitBringupCheckBox.Checked);
         ReEngineAppStatusHelper.SetInstallProfile(_settings, _enginesShelf.InstallProfileCombo.SelectedItem as string);
         _settings.WindowWidth = ClientSize.Width;
@@ -282,12 +265,14 @@ internal sealed partial class ReEngineMainForm : Form
         bool windowResized = _settings.WindowWidth != ClientSize.Width || _settings.WindowHeight != ClientSize.Height;
         bool libraryDiff = !string.Equals(_settings.BackendId, _libraryShelf.SelectedBackend, StringComparison.OrdinalIgnoreCase) ||
                            _settings.ResolutionScale != _libraryShelf.SelectedResolutionScale ||
+                           _settings.IsFullscreen != _libraryShelf.FullscreenCheckBox.Checked ||
                            ReEngineAppStatusHelper.GetJitBringup(_settings) != _libraryShelf.JitBringupCheckBox.Checked;
         if (windowResized || libraryDiff)
         {
             _settings.BackendId = _libraryShelf.SelectedBackend;
             _settings.ResolutionScale = _libraryShelf.SelectedResolutionScale;
             _settings.PreferredResolutionScale = null;
+            _settings.IsFullscreen = _libraryShelf.FullscreenCheckBox.Checked;
             ReEngineAppStatusHelper.SetJitBringup(_settings, _libraryShelf.JitBringupCheckBox.Checked);
             _settings.WindowWidth = ClientSize.Width;
             _settings.WindowHeight = ClientSize.Height;

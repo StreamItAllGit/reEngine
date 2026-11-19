@@ -82,9 +82,11 @@ internal sealed partial class ReEngineMainForm
         _btnToggleDrawer.Click += (_, _) => ToggleRightDrawer();
         _navStrip.Controls.AddRange(new Control[] { _pillLibrary, _pillEngines, _pillBringUp, _btnToggleDrawer });
 
-        _libraryShelf = new LibraryShelfPanel(OnOpenPackageClicked, OnLibrarySelectionChanged);
+        _libraryShelf = new LibraryShelfPanel(OnOpenPackageClicked, OnLibrarySelectionChanged, () => OnVerifyPackageClicked(null));
+        _libraryShelf.FullscreenToggled += OnFullscreenToggled;
         _enginesShelf = new EnginesShelfPanel(OnRegisterAssociationClicked, OnCheckUpdatesClicked, OnPinTrackClicked, OnEngineSelected, OnEngineOptionsChanged);
         _bringUpShelf = new BringUpShelfPanel();
+        _bringUpShelf.BindActions(OnOpenDecompClicked, OnLocateMediaClicked, () => OnVerifyPackageClicked(_loadedDecompPath), OnRunDecompStageClicked);
         _rightDrawer = new DetailsRightDrawer(() => SetDrawerVisible(false), OnClearPinsClicked);
 
         _btnSaveSettings = ReEngineTheme.CreateActionButton("Btn_SaveSettings", "Save Settings", ReEngineTheme.Surface3, ReEngineTheme.TextPrimary);

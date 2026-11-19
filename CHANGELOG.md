@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-19
+
+### Added
+- **Unified `reEngine.Host` Native GPU Presenters, `hdpacks\` & Native Audio (`SDL_AUDIO_DRIVER`):** Implemented native OpenGL 3.3+, Vulkan 1.3+, and DirectX 12 (`directx` / CLI `dx12`) contexts and swapchain presenters via direct OS bindings (without attaching `SDL_CreateRenderer` to GPU windows), deterministic 16px horizontal-band `ParallelCpuPresenter` matching `Software` bit-for-bit at `1x`, path-contained `<dataDir>\hdpacks\` `(clutSha256Hex, rectSha256Hex)` overrides, native OS audio pinning (`wasapi` on Windows set prior to `SDL_InitSubSystem`), `--require-backend` (`ExitCode = 6`), and fullscreen presentation.
+- **3-Slot Multi-Bind Input, Xbox/HID Gamepads, Dynamic `ControlOptions` & Touch Contracts:** Added `HostMultiBindRegistry` (3-slot `[1st, 2nd, 3rd]` simultaneous KBM + mouse/wheel `1001..1007`, repeat filtering, single-edge isolation), `Sdl3GamepadProvider` (Xbox & open-standard HID `2001..2032`, `0.15f` deadzone, `0.40f` trigger threshold, rumble), dynamic `ControlOptions` (`ControlsTabView`), interactive 5-column `KeybindsTabView`, and cross-platform `IHostInputProvider` / `HostTouchOverlayView`.
+- **Interactive `.decomp` Bring-Up Runner, `SuiteMediaTreeWalker` & Missing-Media Prompt:** Opening `.decomp` files from Windows Explorer now launches the **Bring-Up** shelf pre-loaded with the recipe, `D0..D5` stage picker, automatic suite-tree media discovery (`SuiteMediaTreeWalker`), `MissingMediaPromptDialog` (defaulting to use-in-place with opt-in `.cue`/`.bin` staging into `data\rom\`), and live logs.
+- **Standalone `--verify-module` & Frontend `--wait` / `--fullscreen` / `--save-dir` Bridge:** Added `PackageVerificationService` emitting Standard 18 camelCase JSON reports (`--json`, `--require-media`), normalized `--verify-module` selectively in `reEngine.Launcher` while preserving bare engine slugs, and added bounded `<= 3s` graceful `WM_CLOSE` tree teardown in `GracefulProcessTreeShutdown` so saves flush into `--save-dir` before process-tree termination.
+- **Canonical `D4_CleanSource` & Expanded Verification:** Switched `DecompD4StrictnessValidator.CanonicalCorpusTiers` to `D4_CleanSource` (keeping `D4_FunctionalRewrite` as a non-double-counted transition alias) and added four modular xUnit suites (`97` total tests across Release & Debug+Automation builds).
+
+### Changed
+- Upgraded the `Library` shelf **Backend** dropdown to expose all five Windows backends (`opengl`, `vulkan`, `directx`, `parallelCpu`, `software`), added the **Fullscreen** checkbox and **Verify Package...** action, and aligned all UI/CLI/documentation terminology to static recompilation without emulator framing.
+- Updated `reEngine.Installer` to preserve `v0.4.0` keys (`backendId: "directx"`, `isFullscreen`, `audioDriver`, `isHdTexturePackEnabled`) with `.bak` recovery and enforced the 3-MINOR retention policy on `Releases\` (pruning `v0.1.*.7z`, unpacked `v0.2.1`, and `v0.2.1-hf.1`).
+- Trimmed `0.1.x` changelog history entries per Dev Bible Standard 04 (`<= 3` prior `MINOR` series retained).
+
+### Fixed
+- Fixed `LauncherArgsHelper` dropping synchronous execution on `--verify-module`, `--headless`, and `--json`, and fixed `SDL_AUDIO_DRIVER` hint ordering in `Sdl3HostWindow` / `NativeAudioDriverSelector`.
+- Fixed `RecompLaunchPlanBuilder` mapping `--require-backend` failures to Exit `1` instead of Exit `6` (`BackendUnavailableException`), and fixed child suite-root derivation when `engines\<id>\v<Ver>` sits two levels below the suite root.
+
 ## [0.3.0] - 2026-11-18
 
 ### Added
@@ -59,38 +77,3 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - Preserved the `decomp` CLI subcommand token verbatim during launcher argument normalization instead of treating it as a relative file path.
-
-## [0.1.3] - 2026-11-14
-
-### Added
-- Added explicit `## License & Legal` documentation covering `MPL-2.0`, `7-Zip` notices, trademark non-affiliation, and clean-room user-supplied media guarantees, plus automated release leak checks.
-
-### Changed
-- Expanded all four technical and user manuals inside `Dev\docs\`, bundled verbatim root `LICENSE` into `Builds\` and `SharedLibs\`, and cleaned workspace-specific paths out of manifests and packaged documentation.
-
-### Fixed
-- Fixed UTF-8 character encoding and relative link stripping when generating end-user markdown files inside `Releases\`.
-
-## [0.1.2] - 2026-11-14
-
-### Added
-- Added parent-directory resolution for packaged `app\*.recomp` cartridges so `data\rom\` preload media is discovered reliably under `<InstallRoot>\data\rom\`.
-
-### Changed
-- Automatically pruned unpacked `Releases\v*` directories past the 2 most recent versions while retaining archives.
-
-## [0.1.1] - 2026-11-14
-
-### Added
-- Added synchronous child waiting and caller working-directory path resolution to `reEngine.Launcher`, multi-engine `(EngineId, Track)` update sweeps with offline resilience, per-module runtime isolation (`<dataDir>\modules\<moduleId>\`), and contextual crash log snapshots (`33/33` tests passing).
-
-### Changed
-- Propagated exact exit codes `(0, 1, 2, 3, 4, 5, 6, 130)` synchronously through the root launcher and improved UI layout and test isolation guards.
-
-### Fixed
-- Eliminated crashes during offline update checks (logging `[WARN]` unless `--strict` is specified), removed duplicate `[HEARTBEAT]` log prefixes, and fixed update sweeps skipping `0.1.x` tracks when `0.2.0+` existed side-by-side.
-
-## [0.1.0] - 2026-11-13
-
-### Added
-- Initial repository scaffold, build configuration, original branding assets, `reEngine.Core`, `reEngine.App`, `reEngine.Launcher`, `reEngine.Installer` (no auto-start), initial unit tests (`14/14` passing), and initial signed release packaging.

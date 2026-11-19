@@ -5,6 +5,7 @@
 
 using Foundation.Core;
 using reEngine.Core.Associations;
+using reEngine.Core.Bootstrap;
 using reEngine.Core.Decomp;
 using reEngine.Core.Resolution;
 using reEngine.Core.Updates;
@@ -69,6 +70,49 @@ internal static partial class Program
         return 0;
     }
 
+    private static int RunVerifyModuleCli(
+        string target,
+        string enginesDir,
+        ReEngineSettings settings,
+        IFileAssociationStore assocStore,
+        AppEnvironment appEnv,
+        bool isIsolatedTest,
+        RecompLaunchOptions launchOpts,
+        string? containmentRoot,
+        Action<string, string> log)
+    {
+        if (!IsPackageVerifyTarget(target))
+        {
+            return RunTrayDiagnostics(enginesDir, settings, assocStore, appEnv, isIsolatedTest, target, log);
+        }
+
+        string? suiteRoot = SuiteMediaTreeWalker.DeriveSuiteRootDirectory(enginesDir, appEnv.DataDirectory, containmentRoot);
+        PackageVerificationReport report = new PackageVerificationService().Verify(
+            target,
+            enginesDir,
+            appEnv.DataDirectory,
+            suiteRoot,
+            requireMedia: launchOpts.RequireMedia,
+            settings: settings,
+            containmentRoot: containmentRoot);
+
+        if (launchOpts.Json)
+        {
+            Console.WriteLine(report.ToJson(indented: true));
+        }
+        else
+        {
+            string summary = FormatVerificationSummary(report, target);
+            if (report.IsPassed) Console.WriteLine(summary);
+            else Console.Error.WriteLine(summary);
+            foreach (string w in report.Warnings) Console.WriteLine($"WARN: {w}");
+            foreach (string v in report.Violations) Console.Error.WriteLine($"VIOLATION: {v}");
+        }
+
+        log(report.IsPassed ? "INFO" : "ERROR", $"Verified '{target}': passed={report.IsPassed}, exitCode={report.ExitCode}, mediaReady={report.HasMediaReady}.");
+        return report.ExitCode;
+    }
+
     private static async Task<int> RunDecompCliAsync(
         string[] args,
         string enginesDir,
@@ -94,6 +138,20 @@ internal static partial class Program
         if (!string.IsNullOrWhiteSpace(stageRaw) && !Enum.TryParse(stageRaw, ignoreCase: true, out stage))
             throw new ArgumentException($"Invalid --stage '{stageRaw}'; expected D0..D5.");
 
+        string? mediaPath = RecompLaunchOptions.GetOptionValue(args, "--media-path", requiredIfPresent: true);
+        Dictionary<string, string>? platformArgs = null;
+        if (!string.IsNullOrWhiteSpace(mediaPath) || !string.IsNullOrWhiteSpace(containmentRoot))
+        {
+            platformArgs = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            if (!string.IsNullOrWhiteSpace(mediaPath))
+            {
+                string fullMedia = Path.GetFullPath(mediaPath.Trim());
+                if (!string.IsNullOrWhiteSpace(containmentRoot)) AppEnvironment.AssertPathContained(fullMedia, containmentRoot);
+                platformArgs["discPath"] = fullMedia;
+            }
+            if (!string.IsNullOrWhiteSpace(containmentRoot)) platformArgs["containmentRoot"] = containmentRoot;
+        }
+
         var options = new DecompRunOptions(
             PackagePath: fullModulePath,
             OutputDirectory: outputDir,
@@ -102,7 +160,8 @@ internal static partial class Program
             EngineDirectoryOverride: RecompLaunchOptions.GetOptionValue(args, "--engine-dir", requiredIfPresent: true),
             ToolchainDirectory: RecompLaunchOptions.GetOptionValue(args, "--toolchain-dir", requiredIfPresent: true),
             DryRun: appEnv.DryRun,
-            Headless: true);
+            Headless: true,
+            PlatformArguments: platformArgs);
 
         DecompDispatchResult result = await new DecompPipelineCoordinator().DispatchAsync(options, enginesDir, ct).ConfigureAwait(false);
         if (result.UnbuiltEngineError is not null)
@@ -126,11 +185,13 @@ internal static partial class Program
         Action<string, string> log,
         CancellationToken ct)
     {
-        var descriptor = HostDrawerDescriptor.CreateDefault("reEngine Visible Host Demo", "reEngine.Host v0.3.0");
+        HostRenderBackendKind preferredKind = ParseHostBackendKind(opts.BackendId);
+        string verLabel = $"reEngine.Host v{ReEnginePackagingConstants.Version}";
+        var descriptor = HostDrawerDescriptor.CreateDefault("reEngine Visible Host Demo", verLabel);
         var runner = new HostSessionRunner(1280, 720, descriptor);
         var hostOpts = new HostSessionOptions
         {
-            WindowTitle = "reEngine.Host v0.3.0 — Live Clean-Room Session",
+            WindowTitle = $"{verLabel} — Live Clean-Room Session",
             WindowWidth = 1280,
             WindowHeight = 720,
             ContentWidth = 320,
@@ -144,14 +205,31 @@ internal static partial class Program
             AllowedSnapshotRoot = containmentRoot ?? appEnv.DataDirectory,
             RequireVisibleWindow = true,
             ShowMediaGateInitially = opts.PreloadMediaFlag,
+            PreferredBackend = preferredKind,
+            RequireBackend = opts.RequireBackend,
+            IsFullscreen = opts.Fullscreen,
+            AudioDriverOverride = opts.AudioDriverOverride,
+            HdPacksDirectory = Path.Combine(appEnv.DataDirectory, "hdpacks"),
+            IsHdTexturePackEnabled = opts.HdTexturePacks,
             DrawerDescriptor = descriptor
         };
 
-        log("INFO", $"Starting HostSessionRunner (visible={hostOpts.RequireVisibleWindow}, automationPort={hostOpts.AutomationPort?.ToString() ?? "off"}).");
+        log("INFO", $"Starting HostSessionRunner (backend={preferredKind}, require={hostOpts.RequireBackend}, fullscreen={hostOpts.IsFullscreen}, automationPort={hostOpts.AutomationPort?.ToString() ?? "off"}).");
         HostSessionResult res = await runner.RunAsync(hostOpts, new DemoHostCallbacks(), msg => log("HEARTBEAT", msg), ct).ConfigureAwait(false);
-        Console.WriteLine(res.Summary);
+        if (res.ExitCode != 0) Console.Error.WriteLine(res.Summary);
+        else Console.WriteLine(res.Summary);
         return res.ExitCode;
     }
+
+    private static HostRenderBackendKind ParseHostBackendKind(string? backendId) => backendId?.ToLowerInvariant() switch
+    {
+        HostRenderBackendIds.OpenGl => HostRenderBackendKind.OpenGl,
+        HostRenderBackendIds.Vulkan => HostRenderBackendKind.Vulkan,
+        HostRenderBackendIds.DirectX => HostRenderBackendKind.DirectX,
+        "parallelcpu" => HostRenderBackendKind.ParallelCpu,
+        HostRenderBackendIds.Metal => HostRenderBackendKind.Metal,
+        _ => HostRenderBackendKind.Software
+    };
 
     private sealed class DemoHostCallbacks : IHostSessionCallbacks
     {

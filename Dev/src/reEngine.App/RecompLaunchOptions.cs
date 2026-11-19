@@ -5,6 +5,7 @@
 
 using System.Globalization;
 using Foundation.Core;
+using reEngine.Core.Resolution;
 
 namespace reEngine.App;
 
@@ -15,18 +16,30 @@ internal sealed record RecompLaunchOptions
         "--open", "--module", "--verify-module", "--engines-dir", "--engine-dir", "--toolchain-dir", "--output-dir", "--stage",
         "--data-dir", "--config", "--log-dir", "--save-dir", "--feed", "--port", "--ui",
         "--backend", "--scale", "--suite-tab", "--profile", "--automation-port", "--automation-token",
-        "--frames", "--fixture", "--dump-screenshot", "--dump-audio"
+        "--frames", "--fixture", "--dump-screenshot", "--dump-audio",
+        "--shutdown-timeout-ms", "--audio-driver", "--media-path"
     };
 
     public static readonly IReadOnlyDictionary<string, string> SupportedBackends = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
     {
-        ["opengl"] = "opengl",
-        ["vulkan"] = "vulkan",
-        ["parallelCpu"] = "parallelCpu",
-        ["software"] = "software"
+        ["opengl"] = HostRenderBackendIds.OpenGl,
+        ["gl"] = HostRenderBackendIds.OpenGl,
+        ["vulkan"] = HostRenderBackendIds.Vulkan,
+        ["vk"] = HostRenderBackendIds.Vulkan,
+        ["directx"] = HostRenderBackendIds.DirectX,
+        ["dx12"] = HostRenderBackendIds.DirectX,
+        ["d3d12"] = HostRenderBackendIds.DirectX,
+        ["directx12"] = HostRenderBackendIds.DirectX,
+        ["parallelCpu"] = HostRenderBackendIds.ParallelCpu,
+        ["software"] = HostRenderBackendIds.Software,
+        ["metal"] = HostRenderBackendIds.Metal
     };
 
     public bool ShouldWaitForExit { get; init; }
+    public bool Fullscreen { get; init; }
+    public bool Headless { get; init; }
+    public bool Json { get; init; }
+    public bool RequireMedia { get; init; }
     public bool TrayOnly { get; init; }
     public bool ShouldEnableRuntimeLogs { get; init; }
     public bool Verify { get; init; }
@@ -36,9 +49,13 @@ internal sealed record RecompLaunchOptions
     public bool JitBringup { get; init; }
     public bool PreloadMediaFlag { get; init; }
     public bool HostDemo { get; init; }
+    public bool HdTexturePacks { get; init; }
     public string? BackendId { get; init; }
     public int? ResolutionScale { get; init; }
     public string? SaveDirOverride { get; init; }
+    public string? AudioDriverOverride { get; init; }
+    public string? MediaPathOverride { get; init; }
+    public int? ShutdownTimeoutMs { get; init; }
     public string? SuiteTab { get; init; }
     public string? Profile { get; init; }
     public int? AutomationPort { get; init; }
@@ -57,20 +74,26 @@ internal sealed record RecompLaunchOptions
 
         int? frames = ParseOptionalPositiveInt(GetOptionValue(args, "--frames", requiredIfPresent: true), "--frames");
         int? automationPort = ParseOptionalNonNegativeInt(GetOptionValue(args, "--automation-port", requiredIfPresent: true), "--automation-port");
+        int? shutdownTimeoutMs = ParseOptionalBoundedInt(GetOptionValue(args, "--shutdown-timeout-ms", requiredIfPresent: true), "--shutdown-timeout-ms", 100, 30000);
         string? rawBackend = GetOptionValue(args, "--backend", requiredIfPresent: true);
         string? normalizedBackend = null;
         if (!string.IsNullOrWhiteSpace(rawBackend))
         {
-            if (!SupportedBackends.TryGetValue(rawBackend.Trim(), out normalizedBackend))
+            if (!HostRenderBackendIds.TryNormalize(rawBackend, out string canonical))
             {
-                throw new ArgumentException($"Unsupported --backend '{rawBackend}'; expected opengl, vulkan, parallelCpu, or software.");
+                throw new ArgumentException($"Unsupported --backend '{rawBackend}'; expected opengl, vulkan, directx, parallelCpu, or software.");
             }
+            normalizedBackend = canonical;
         }
         int? resolutionScale = ParseOptionalResolutionScale(GetOptionValue(args, "--scale", requiredIfPresent: true));
 
         return new RecompLaunchOptions
         {
             ShouldWaitForExit = CliArgumentHelper.HasFlag(args, "--wait"),
+            Fullscreen = CliArgumentHelper.HasFlag(args, "--fullscreen"),
+            Headless = CliArgumentHelper.HasFlag(args, "--headless"),
+            Json = CliArgumentHelper.HasFlag(args, "--json"),
+            RequireMedia = CliArgumentHelper.HasFlag(args, "--require-media"),
             TrayOnly = appEnv.TrayOnly || appEnv.PresentationMode == UiPresentationMode.TrayOrBackground || CliArgumentHelper.HasFlag(args, "--tray-only"),
             ShouldEnableRuntimeLogs = CliArgumentHelper.HasFlag(args, "--enable-logs"),
             Verify = CliArgumentHelper.HasFlag(args, "--verify"),
@@ -80,9 +103,13 @@ internal sealed record RecompLaunchOptions
             JitBringup = CliArgumentHelper.HasFlag(args, "--jit-bringup"),
             PreloadMediaFlag = CliArgumentHelper.HasFlag(args, "--preload-media"),
             HostDemo = CliArgumentHelper.HasFlag(args, "--host-demo"),
+            HdTexturePacks = CliArgumentHelper.HasFlag(args, "--hd-packs"),
             BackendId = normalizedBackend,
             ResolutionScale = resolutionScale,
             SaveDirOverride = GetOptionValue(args, "--save-dir", requiredIfPresent: true),
+            AudioDriverOverride = GetOptionValue(args, "--audio-driver", requiredIfPresent: true),
+            MediaPathOverride = GetOptionValue(args, "--media-path", requiredIfPresent: true),
+            ShutdownTimeoutMs = shutdownTimeoutMs,
             SuiteTab = GetOptionValue(args, "--suite-tab", requiredIfPresent: true),
             Profile = GetOptionValue(args, "--profile", requiredIfPresent: true),
             AutomationPort = automationPort,
@@ -174,6 +201,14 @@ internal sealed record RecompLaunchOptions
         if (raw is null) return null;
         if (!int.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out int val) || val < 0 || val > 65535)
             throw new ArgumentException($"Invalid {optionName} value '{raw}'; expected port 0..65535.");
+        return val;
+    }
+
+    private static int? ParseOptionalBoundedInt(string? raw, string optionName, int min, int max)
+    {
+        if (raw is null) return null;
+        if (!int.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out int val) || val < min || val > max)
+            throw new ArgumentException($"Invalid {optionName} value '{raw}'; expected integer in {min}..{max}.");
         return val;
     }
 }

@@ -94,6 +94,7 @@ internal static partial class Program
     internal static int MapExceptionToExitCode(Exception ex) => ex switch
     {
         OperationCanceledException => 130,
+        BackendUnavailableException => 6,
         ArgumentException or InvalidDataException or JsonException => 2,
         InvalidOperationException ioe when IsContainmentViolation(ioe.Message) => 2,
         _ => 1
@@ -146,8 +147,32 @@ internal static partial class Program
                 return 0;
         }
 
-        if (string.Equals(openTarget, "decomp", StringComparison.OrdinalIgnoreCase))
-            return await RunDecompCliAsync(args, enginesDir, appEnv, containmentRoot, log, ct).ConfigureAwait(false);
+        bool explicitWindow = CliArgumentHelper.HasFlag(args, "--window") ||
+                              string.Equals(RecompLaunchOptions.GetOptionValue(args, "--ui"), "desktop", StringComparison.OrdinalIgnoreCase) ||
+                              launchOpts.AutomationPort.HasValue;
+        bool isDecompOpen = string.Equals(openTarget, "decomp", StringComparison.OrdinalIgnoreCase) ||
+                            (!string.IsNullOrWhiteSpace(openTarget) &&
+                             (openTarget.EndsWith(".decomp", StringComparison.OrdinalIgnoreCase) ||
+                              openTarget.EndsWith(".decomp.json", StringComparison.OrdinalIgnoreCase)));
+        if (isDecompOpen)
+        {
+            if (!ShouldOpenInteractiveDecompUi(launchOpts, appEnv, isIsolatedTest, explicitWindow, Console.IsOutputRedirected))
+            {
+                string[] cliArgs = string.Equals(openTarget, "decomp", StringComparison.OrdinalIgnoreCase)
+                    ? args
+                    : new[] { "decomp", "--module", openTarget! }.Concat(args.Where(a => !string.Equals(a, openTarget, StringComparison.OrdinalIgnoreCase))).ToArray();
+                return await RunDecompCliAsync(cliArgs, enginesDir, appEnv, containmentRoot, log, ct).ConfigureAwait(false);
+            }
+
+            string? decompPath = string.Equals(openTarget, "decomp", StringComparison.OrdinalIgnoreCase)
+                ? (RecompLaunchOptions.GetOptionValue(args, "--module", requiredIfPresent: true) ?? RecompLaunchOptions.GetPositionalArg(args, 1))
+                : openTarget;
+            string? stageRaw = RecompLaunchOptions.GetOptionValue(args, "--stage", requiredIfPresent: true);
+            return RunVisibleMainForm(args, appEnv, enginesDir, updateCoordinator, assocStore, containmentRoot, log, decompPath, stageRaw);
+        }
+
+        if (launchOpts.VerifyModule is not null)
+            return RunVerifyModuleCli(launchOpts.VerifyModule, enginesDir, settings, assocStore, appEnv, isIsolatedTest, launchOpts, containmentRoot, log);
         if (CliArgumentHelper.HasFlag(args, "--check-updates"))
             return await RunUpdateCheckCliAsync(updateCoordinator, settings, enginesDir, RecompLaunchOptions.GetOptionValue(args, "--feed", requiredIfPresent: true), containmentRoot, CliArgumentHelper.HasFlag(args, "--strict"), log, ct).ConfigureAwait(false);
         if (launchOpts.HostDemo)
@@ -155,21 +180,21 @@ internal static partial class Program
         if (!string.IsNullOrWhiteSpace(openTarget))
             return await new RecompLaunchCoordinator(updateCoordinator, log).LaunchAsync(openTarget, enginesDir, settings, appEnv, containmentRoot, launchOpts, ct).ConfigureAwait(false);
 
-        bool explicitWindow = CliArgumentHelper.HasFlag(args, "--window") ||
-                              string.Equals(RecompLaunchOptions.GetOptionValue(args, "--ui"), "desktop", StringComparison.OrdinalIgnoreCase) ||
-                              launchOpts.AutomationPort.HasValue;
-        if (launchOpts.Verify || launchOpts.Doctor || launchOpts.VerifyModule is not null || launchOpts.TrayOnly || (isIsolatedTest && !explicitWindow))
-            return RunTrayDiagnostics(enginesDir, settings, assocStore, appEnv, isIsolatedTest, launchOpts.VerifyModule, log);
+        if (launchOpts.Verify || launchOpts.Doctor || launchOpts.TrayOnly || (isIsolatedTest && !explicitWindow))
+            return RunTrayDiagnostics(enginesDir, settings, assocStore, appEnv, isIsolatedTest, null, log);
 
         return RunVisibleMainForm(args, appEnv, enginesDir, updateCoordinator, assocStore, containmentRoot, log);
     }
 
-    private static int RunVisibleMainForm(string[] args, AppEnvironment appEnv, string enginesDir, UpdateCoordinator updateCoordinator, IFileAssociationStore assocStore, string? containmentRoot, Action<string, string> log)
+    private static int RunVisibleMainForm(
+        string[] args, AppEnvironment appEnv, string enginesDir, UpdateCoordinator updateCoordinator,
+        IFileAssociationStore assocStore, string? containmentRoot, Action<string, string> log,
+        string? initialDecompPath = null, string? initialDecompStage = null)
     {
         Application.EnableVisualStyles();
         Application.SetCompatibleTextRenderingDefault(false);
         Application.SetHighDpiMode(HighDpiMode.PerMonitorV2);
-        using var form = new ReEngineMainForm(appEnv, enginesDir, updateCoordinator, assocStore, log, containmentRoot);
+        using var form = new ReEngineMainForm(appEnv, enginesDir, updateCoordinator, assocStore, log, containmentRoot, initialDecompPath, initialDecompStage);
 
 #if REENGINE_ENABLE_AUTOMATION
         AutomationLoopbackServer? autoServer = null;
@@ -247,8 +272,8 @@ internal static partial class Program
 
     private static void PrintUsage()
     {
-        Console.WriteLine("reEngine - Zero-Daemon .recomp & .decomp Suite Router");
-        Console.WriteLine("Usage: reEngine.exe [--open <path> | <file.recomp>] [--backend opengl|vulkan|parallelCpu|software] [--scale 1|2|4|8] [--jit-bringup] [--wait] [--register-assoc] [--check-updates [--strict]] [--verify] [--doctor] [--host-demo]");
-        Console.WriteLine("       reEngine.exe decomp --module <file.decomp> [--stage D0..D5] [--engine-dir <dir>] [--toolchain-dir <dir>] [--output-dir <dir>] [--data-dir <dir>] [--log-dir <dir>] [--config <path>] [--dry-run] [--window] [--version] [--help]");
+        Console.WriteLine("reEngine - Zero-Daemon .recomp & .decomp Static Recompilation Suite Router");
+        Console.WriteLine("Usage: reEngine.exe [--open <path> | <file.recomp>] [--backend opengl|vulkan|directx|parallelCpu|software] [--scale 1|2|4|8] [--fullscreen] [--save-dir <dir>] [--audio-driver <drv>] [--shutdown-timeout-ms <ms>] [--jit-bringup] [--wait] [--register-assoc] [--verify-module <pkg|engine> [--json] [--require-media]] [--check-updates [--strict]] [--verify] [--doctor] [--host-demo]");
+        Console.WriteLine("       reEngine.exe decomp --module <file.decomp> [--stage D0..D5] [--media-path <path>] [--engine-dir <dir>] [--toolchain-dir <dir>] [--output-dir <dir>] [--data-dir <dir>] [--log-dir <dir>] [--config <path>] [--headless] [--dry-run] [--window] [--version] [--help]");
     }
 }

@@ -28,7 +28,10 @@ public sealed class HostSessionRunner : IHostAutomationTarget
     private readonly F3HudOverlayView _hud = new();
     private readonly FirstRunMediaGateView _mediaGate = new();
     private readonly object _commandSync = new();
-    private readonly Queue<(int X, int Y, string? TargetId)> _pendingClicks = new();
+    private readonly Queue<(int X, int Y, string? TargetId, bool IsRightClick)> _pendingClicks = new();
+    private HostTouchOverlayView? _touchOverlay;
+    private uint _prevCaptureGpMask;
+    private bool _swallowNextEscapeHotkey;
     private volatile bool _stopRequested;
 
     public IHostGraphicsContext? ActiveGraphicsContext { get; private set; }
@@ -60,6 +63,13 @@ public sealed class HostSessionRunner : IHostAutomationTarget
 
         if (options.InputProviders is not null)
             foreach (IHostInputProvider p in options.InputProviders) _inputMapper.RegisterProvider(p);
+
+        using var defaultGamepad = options.InputProviders?.Any(p => p is Sdl3GamepadProvider) == true ? null : new Sdl3GamepadProvider();
+        if (defaultGamepad is not null) _inputMapper.RegisterProvider(defaultGamepad);
+
+        using HostTouchOverlayView? touchOverlay = options.EnableTouchOverlay ? new HostTouchOverlayView(_surface.SurfaceWidth, _surface.SurfaceHeight) : null;
+        if (touchOverlay is not null) _inputMapper.RegisterProvider(touchOverlay);
+        _touchOverlay = touchOverlay;
 
         HostBackendCapability probed = HostBackendProbe.Probe(options.PreferredBackend);
         HostRenderBackendKind activeKind = options.PreferredBackend;
@@ -100,12 +110,25 @@ public sealed class HostSessionRunner : IHostAutomationTarget
             while (!ct.IsCancellationRequested && !_stopRequested)
             {
                 if (options.HeadlessFrameCount is int limit && frameNumber >= limit) break;
-                if (windowOpened && !window.PollEvents(_inputMapper, (x, y) => EnqueuePointerClick(x, y, null))) break;
+                if (windowOpened && !window.PollEvents(_inputMapper, (x, y) => EnqueuePointerClick(x, y, null, false), (x, y) => EnqueuePointerClick(x, y, null, true))) break;
 #if REENGINE_ENABLE_AUTOMATION
                 automation?.DrainPendingCommands();
 #endif
-                ProcessQueuedClicks();
+                bool capturing = _drawer.IsOpen && _drawer.ActiveTab == HostDrawerTabId.Keybinds && _drawer.KeybindsTab.IsCapturing;
+                if (capturing && _inputMapper.TryConsumeFirstLatchedCode(out int capturedCode))
+                {
+                    if (_drawer.TryCaptureInputCode(capturedCode, _inputMapper) && capturedCode == HostScancodes.Escape)
+                        _swallowNextEscapeHotkey = true;
+                    if (HostMultiBindRegistry.IsMouseOrWheelCode(capturedCode))
+                        lock (_commandSync) _pendingClicks.Clear();
+                }
+                else
+                {
+                    ProcessQueuedClicks();
+                }
                 HostInputFrame frameInput = _inputMapper.BuildFrame();
+                if (capturing) CaptureGamepadInputIfPressed(frameInput.GamepadButtonsMask);
+                else _prevCaptureGpMask = frameInput.GamepadButtonsMask;
                 ApplyHotkeys(frameInput);
 
                 _surface.BeginFrame(contentW, contentH);
@@ -137,6 +160,9 @@ public sealed class HostSessionRunner : IHostAutomationTarget
         }
         finally
         {
+            if (defaultGamepad is not null) _inputMapper.UnregisterProvider(defaultGamepad);
+            if (touchOverlay is not null) _inputMapper.UnregisterProvider(touchOverlay);
+            _touchOverlay = null;
             ActiveGraphicsContext = null;
             heartbeat.Complete(frameNumber, "Host session closed.");
             _surface.Dispose();
@@ -148,11 +174,13 @@ public sealed class HostSessionRunner : IHostAutomationTarget
         var list = new List<HostWidgetBounds> { new("HostViewport", "Panel", "SDL3 Host Viewport", new System.Drawing.Rectangle(0, 0, _surface.SurfaceWidth, _surface.SurfaceHeight), true) };
         list.AddRange(_drawer.GetWidgets());
         list.AddRange(_mediaGate.GetWidgets());
+        if (_touchOverlay is not null) list.AddRange(_touchOverlay.GetWidgets());
         if (_hud.TryBuildWidgetBounds() is { } hudWidget) list.Add(hudWidget);
         return list;
     }
 
-    public void EnqueuePointerClick(int x, int y, string? targetId) { lock (_commandSync) _pendingClicks.Enqueue((x, y, targetId)); }
+    public void EnqueuePointerClick(int x, int y, string? targetId) => EnqueuePointerClick(x, y, targetId, false);
+    public void EnqueuePointerClick(int x, int y, string? targetId, bool isRightClick) { lock (_commandSync) _pendingClicks.Enqueue((x, y, targetId, isRightClick)); }
     public void EnqueueKeyPress(string key, IReadOnlyList<string>? modifiers = null) => _inputMapper.InjectSyntheticKey(key);
     public bool TryCaptureFramebufferPng(out int width, out int height, out byte[] rgbaBytes) => _surface.TryCopyRgbaFrame(out width, out height, out rgbaBytes);
 
@@ -199,15 +227,24 @@ public sealed class HostSessionRunner : IHostAutomationTarget
     {
         while (true)
         {
-            (int X, int Y, string? TargetId) click;
+            (int X, int Y, string? TargetId, bool IsRightClick) click;
             lock (_commandSync)
             {
                 if (_pendingClicks.Count == 0) break;
                 click = _pendingClicks.Dequeue();
             }
             if (_mediaGate.TryHandleClick(click.X, click.Y, click.TargetId)) continue;
-            _ = _drawer.TryHandleClick(click.X, click.Y, click.TargetId, _inputMapper);
+            _ = _drawer.TryHandleClick(click.X, click.Y, click.TargetId, _inputMapper, click.IsRightClick);
         }
+    }
+
+    private void CaptureGamepadInputIfPressed(uint gamepadMask)
+    {
+        uint newlyPressed = gamepadMask & ~_prevCaptureGpMask;
+        _prevCaptureGpMask = gamepadMask;
+        if (newlyPressed == 0) return;
+        int bindingCode = HostBindingCodes.GamepadMin + System.Numerics.BitOperations.TrailingZeroCount(newlyPressed);
+        if (bindingCode <= HostBindingCodes.GamepadMax) _ = _drawer.TryCaptureInputCode(bindingCode, _inputMapper);
     }
 
     private void ApplyHotkeys(HostInputFrame input)
@@ -216,6 +253,7 @@ public sealed class HostSessionRunner : IHostAutomationTarget
         if ((input.HotkeyFlags & (uint)HostHotkeyFlags.ToggleHud) != 0) _hud.IsVisible = !_hud.IsVisible;
         if ((input.HotkeyFlags & (uint)HostHotkeyFlags.Escape) != 0)
         {
+            if (_swallowNextEscapeHotkey) { _swallowNextEscapeHotkey = false; return; }
             if (_drawer.IsOpen) _drawer.IsOpen = false;
             else _stopRequested = true;
         }
@@ -223,7 +261,8 @@ public sealed class HostSessionRunner : IHostAutomationTarget
 
     private void RenderOverlays(HostSessionOptions options, HighResFramePacer pacer, Sdl3AudioPump audioPump)
     {
-        if (_drawer.IsOpen) _drawer.Render(_surface.Canvas, options.DrawerDescriptor);
+        _touchOverlay?.Render(_surface.Canvas);
+        if (_drawer.IsOpen) _drawer.Render(_surface.Canvas, options.DrawerDescriptor, _inputMapper.Bindings);
         if (_mediaGate.IsVisible) _mediaGate.Render(_surface.Canvas, options.DrawerDescriptor);
         if (_hud.IsVisible)
             _hud.Render(_surface.Canvas, new F3HudTelemetry(pacer.CurrentFps, pacer.AverageFrameMs, _drawer.SelectedBackend.ToString(), _drawer.ResolutionScale, _drawer.ExecutionTierLabel, audioPump.FillRatio));

@@ -48,7 +48,7 @@ public sealed class RecompPackageManifest
     [JsonPropertyName("supportedEngineTracks")]
     public List<string>? SupportedEngineTracks { get; set; }
 
-    /// <summary>Optional preferred render backend identifier (<c>opengl</c>, <c>vulkan</c>, <c>parallelCpu</c>, <c>software</c>).</summary>
+    /// <summary>Optional preferred render backend identifier (<c>opengl</c>, <c>vulkan</c>, <c>directx</c>, <c>parallelCpu</c>, <c>software</c>).</summary>
     [JsonPropertyName("backendId")]
     public string? BackendId { get; set; }
 

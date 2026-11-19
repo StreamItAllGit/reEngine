@@ -11,12 +11,12 @@
   "activeMilestone": "0.4.0",
   "goalMajorVersion": "1.0.0",
   "stateChangedDate": "2026-11-19",
-  "lastVersionDate": "2026-11-18",
+  "lastVersionDate": "2026-11-19",
   "productionSubpath": null,
   "supersededBy": null,
   "tasklistDetailLevel": 3,
-  "openTaskCount": 8,
-  "completedTaskCount": 31,
+  "openTaskCount": 0,
+  "completedTaskCount": 39,
   "openReportCount": 0,
   "isPublicRepo": true,
   "requireHumanReviewBeforePush": false,
@@ -33,10 +33,10 @@
   "gates": {
     "isGate0ScopePassed": true,
     "isGate1PlanPassed": true,
-    "isGate2BuildPassed": false,
-    "isInspecterVerified": false,
-    "isTessaSynced": false
+    "isGate2BuildPassed": true,
+    "isInspecterVerified": true,
+    "isTessaSynced": true
   },
-  "notes": "v0.4.0 In Execution (@devv): Unified reEngine.Host GPU/Input/Audio, .decomp UI + Root-Tree Media Walk, D4_CleanSource, Frontend --wait/--fullscreen/--save-dir Bridge & --verify-module.",
-  "updatedAtUtc": "2026-11-19T10:39:00.000Z"
+  "notes": "v0.4.0 Released: Unified reEngine.Host GPU/Input/Audio, .decomp UI + Root-Tree Media Walk, D4_CleanSource, Frontend --wait/--fullscreen/--save-dir Bridge, --verify-module, Dual-Build 98/98 + Full Live Stage 2 E2E verified.",
+  "updatedAtUtc": "2026-11-19T23:58:30.000Z"
 }

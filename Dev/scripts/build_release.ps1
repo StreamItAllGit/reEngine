@@ -3,6 +3,7 @@
 param(
     [string]$Version = "",
     [string]$CertThumbprint = "A5414BDD36F7F113C7B2356F189B7A43F69C35E6",
+    [switch]$SkipSigning,
     [switch]$SkipSourceArchive,
     [switch]$SkipTests
 )
@@ -26,8 +27,9 @@ $sevenZip = Join-Path $devDir "assets\native\7z.exe"
 if (-not (Test-Path $licensePath)) { throw "LICENSE missing at $licensePath" }
 if (-not (Test-Path $sevenZip)) { throw "7z.exe missing at $sevenZip" }
 
-$cert = Get-Item "Cert:\CurrentUser\My\$CertThumbprint" -ErrorAction Stop
+$cert = if ($SkipSigning) { $null } else { Get-Item "Cert:\CurrentUser\My\$CertThumbprint" -ErrorAction Stop }
 function Invoke-Sign([string]$PathToSign) {
+    if ($SkipSigning) { return }
     $res = Set-AuthenticodeSignature -Certificate $cert -HashAlgorithm SHA256 -FilePath $PathToSign
     if ($res.Status -ne "Valid") { throw "Signing failed for ${PathToSign}: $($res.Status)" }
 }
@@ -223,7 +225,7 @@ $hubJunction = Join-Path $hubReleasesParent "reEngine"
 if (-not (Test-Path $hubJunction)) { & cmd /c mklink /J "`"$hubJunction`"" "`"$releasesDir`"" | Out-Null }
 
 $auditScript = Join-Path $env:USERPROFILE ".gemini\config\skills\dev\scripts\audit_installer.ps1"
-if (Test-Path $auditScript) {
+if ((-not $SkipSigning) -and (Test-Path $auditScript)) {
     & powershell -NoProfile -ExecutionPolicy Bypass -File $auditScript -InstallerPath $relVerDir -StagingDir $stageDir -ExpectedVersion $Version
     if ($LASTEXITCODE -ne 0) { throw "audit_installer.ps1 failed ($LASTEXITCODE)" }
 }

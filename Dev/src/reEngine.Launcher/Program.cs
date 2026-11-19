@@ -97,23 +97,26 @@ internal static class Program
         {
             e.Cancel = true;
             Interlocked.Exchange(ref cancelled, 1);
-            try
-            {
-                if (!proc.HasExited)
-                {
-                    proc.Kill(entireProcessTree: true);
-                }
-            }
-            catch (Exception ex) when (ex is InvalidOperationException or Win32Exception or NotSupportedException)
-            {
-                Trace.WriteLine($"Launcher cancel teardown skipped already-exited child: {ex.Message}");
-            }
         };
 
         Console.CancelKeyPress += cancelHandler;
         try
         {
-            proc.WaitForExit();
+            while (!proc.WaitForExit(100))
+            {
+                if (Volatile.Read(ref cancelled) == 1)
+                {
+                    if (!proc.WaitForExit(4000) && !proc.HasExited)
+                    {
+                        try { proc.Kill(entireProcessTree: true); }
+                        catch (Exception ex) when (ex is InvalidOperationException or Win32Exception or NotSupportedException)
+                        {
+                            Trace.WriteLine($"Launcher cancel teardown skipped already-exited child: {ex.Message}");
+                        }
+                    }
+                    break;
+                }
+            }
             return Volatile.Read(ref cancelled) == 1 ? 130 : proc.ExitCode;
         }
         finally
