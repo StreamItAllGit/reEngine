@@ -1,5 +1,5 @@
 // @module: reEngine.Host.Core.Sdl3Native
-// @purpose: Minimal SDL3 C-ABI P/Invokes and native resolver for windowing, textures, audio streams, input events, and OpenGL context helpers.
+// @purpose: Minimal SDL3 C-ABI P/Invokes and native resolver for windowing, textures, audio streams, input events, GL33, and Vulkan surfaces.
 // @depends-on: System, System.Reflection, System.Runtime.InteropServices, System.Text
 // @exports: SdlAudioSpec, SdlFRect, Sdl3Native
 
@@ -41,26 +41,48 @@ internal static unsafe class Sdl3Native
     public const int TextureAccessStreaming = 1;
     public const int ScaleModeNearest = 0;
 
+    public const ulong WindowFullscreen = 0x01UL;
     public const ulong WindowOpenGl = 0x02UL;
     public const ulong WindowHidden = 0x08UL;
     public const ulong WindowResizable = 0x20UL;
+    public const ulong WindowVulkan = 0x10000000UL;
+
+    public const int GlRedSize = 0;
+    public const int GlGreenSize = 1;
+    public const int GlBlueSize = 2;
+    public const int GlAlphaSize = 3;
+    public const int GlDoubleBuffer = 5;
+    public const int GlContextMajorVersion = 17;
+    public const int GlContextMinorVersion = 18;
+    public const int GlContextFlags = 19;
+    public const int GlContextProfileMask = 20;
+    public const int GlContextProfileCore = 1;
 
     public const uint EventQuit = 0x100U;
-    public const uint EventWindowCloseRequested = 0x203U;
+    public const uint EventWindowCloseRequested = 0x210U;
     public const uint EventKeyDown = 0x300U;
     public const uint EventKeyUp = 0x301U;
     public const uint EventMouseMotion = 0x400U;
     public const uint EventMouseButtonDown = 0x401U;
     public const uint EventMouseButtonUp = 0x402U;
+    public const uint EventMouseWheel = 0x403U;
 
     [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)] public static extern byte SDL_Init(uint flags);
+    [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)] public static extern byte SDL_InitSubSystem(uint flags);
+    [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)] public static extern void SDL_QuitSubSystem(uint flags);
+    [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)] public static extern uint SDL_WasInit(uint flags);
     [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)] public static extern void SDL_Quit();
+    [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)] public static extern byte SDL_SetHint(byte* name, byte* value);
     [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)] public static extern byte* SDL_GetError();
+    [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)] public static extern byte* SDL_GetCurrentAudioDriver();
+    [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)] public static extern int SDL_GetNumAudioDrivers();
+    [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)] public static extern byte* SDL_GetAudioDriver(int index);
     [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)] public static extern IntPtr SDL_CreateWindow(byte* title, int w, int h, ulong flags);
     [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)] public static extern void SDL_DestroyWindow(IntPtr window);
     [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)] public static extern byte SDL_ShowWindow(IntPtr window);
     [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)] public static extern byte SDL_RaiseWindow(IntPtr window);
     [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)] public static extern byte SDL_GetWindowSize(IntPtr window, out int w, out int h);
+    [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)] public static extern byte SDL_GetWindowSizeInPixels(IntPtr window, out int w, out int h);
     [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)] public static extern uint SDL_GetWindowProperties(IntPtr window);
     [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)] public static extern IntPtr SDL_GetPointerProperty(uint props, byte* name, IntPtr defaultValue);
     [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)] public static extern IntPtr SDL_CreateRenderer(IntPtr window, byte* name);
@@ -80,12 +102,20 @@ internal static unsafe class Sdl3Native
     [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)] public static extern byte SDL_PutAudioStreamData(IntPtr stream, void* buf, int len);
     [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)] public static extern int SDL_GetAudioStreamQueued(IntPtr stream);
     [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)] public static extern void SDL_DestroyAudioStream(IntPtr stream);
+    [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)] public static extern void SDL_GL_ResetAttributes();
     [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)] public static extern byte SDL_GL_SetAttribute(int attr, int value);
     [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)] public static extern IntPtr SDL_GL_CreateContext(IntPtr window);
     [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)] public static extern byte SDL_GL_MakeCurrent(IntPtr window, IntPtr context);
+    [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)] public static extern byte SDL_GL_SetSwapInterval(int interval);
     [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)] public static extern byte SDL_GL_SwapWindow(IntPtr window);
     [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)] public static extern byte SDL_GL_DestroyContext(IntPtr context);
     [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)] public static extern IntPtr SDL_GL_GetProcAddress(byte* proc);
+    [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)] public static extern byte SDL_Vulkan_LoadLibrary(byte* path);
+    [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)] public static extern void SDL_Vulkan_UnloadLibrary();
+    [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)] public static extern IntPtr SDL_Vulkan_GetVkGetInstanceProcAddr();
+    [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)] public static extern byte** SDL_Vulkan_GetInstanceExtensions(out uint count);
+    [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)] public static extern byte SDL_Vulkan_CreateSurface(IntPtr window, IntPtr instance, IntPtr allocator, out ulong surface);
+    [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)] public static extern void SDL_Vulkan_DestroySurface(IntPtr instance, ulong surface, IntPtr allocator);
     [DllImport("user32.dll", ExactSpelling = true)] private static extern int SetForegroundWindow(IntPtr hWnd);
 
     public static void InstallResolver()
@@ -98,11 +128,14 @@ internal static unsafe class Sdl3Native
         }
     }
 
-    public static bool TryInit(uint flags, out string error)
+    public static bool TryInit(uint flags, out string error) => TryInitCore(() => SDL_Init(flags), out error);
+    public static bool TryInitSubSystem(uint flags, out string error) => TryInitCore(() => SDL_InitSubSystem(flags), out error);
+
+    private static bool TryInitCore(Func<byte> initCall, out string error)
     {
         try
         {
-            if (SDL_Init(flags) != 0)
+            if (initCall() != 0)
             {
                 error = string.Empty;
                 return true;
@@ -117,10 +150,33 @@ internal static unsafe class Sdl3Native
         }
     }
 
+    public static bool SetHintUtf8(string name, string value)
+    {
+        byte[] nameBytes = Encoding.UTF8.GetBytes(name + "\0");
+        byte[] valueBytes = Encoding.UTF8.GetBytes(value + "\0");
+        fixed (byte* n = nameBytes)
+        fixed (byte* v = valueBytes)
+        {
+            return SDL_SetHint(n, v) != 0;
+        }
+    }
+
     public static string GetErrorString()
     {
         byte* p = SDL_GetError();
         return p == null ? string.Empty : Marshal.PtrToStringUTF8((IntPtr)p) ?? string.Empty;
+    }
+
+    public static string? GetCurrentAudioDriverString()
+    {
+        byte* p = SDL_GetCurrentAudioDriver();
+        return p == null ? null : Marshal.PtrToStringUTF8((IntPtr)p);
+    }
+
+    public static IntPtr GetGlProcAddress(string procName)
+    {
+        byte[] bytes = Encoding.UTF8.GetBytes(procName + "\0");
+        fixed (byte* p = bytes) return SDL_GL_GetProcAddress(p);
     }
 
     public static IntPtr CreateWindowUtf8(string title, int w, int h, ulong flags)
@@ -129,26 +185,33 @@ internal static unsafe class Sdl3Native
         fixed (byte* ptr = bytes) return SDL_CreateWindow(ptr, w, h, flags);
     }
 
+    public static IntPtr GetWin32Hwnd(IntPtr window)
+    {
+        if (window == IntPtr.Zero || !OperatingSystem.IsWindows()) return IntPtr.Zero;
+        uint props = SDL_GetWindowProperties(window);
+        if (props == 0) return IntPtr.Zero;
+        byte[] name = Encoding.UTF8.GetBytes("SDL.window.win32.hwnd\0");
+        fixed (byte* p = name) return SDL_GetPointerProperty(props, p, IntPtr.Zero);
+    }
+
     public static void BringToForeground(IntPtr window)
     {
         if (window == IntPtr.Zero) return;
         _ = SDL_ShowWindow(window);
         _ = SDL_RaiseWindow(window);
-        if (!OperatingSystem.IsWindows()) return;
-
-        uint props = SDL_GetWindowProperties(window);
-        if (props == 0) return;
-        byte[] name = Encoding.UTF8.GetBytes("SDL.window.win32.hwnd\0");
-        IntPtr hwnd;
-        fixed (byte* p = name) hwnd = SDL_GetPointerProperty(props, p, IntPtr.Zero);
+        IntPtr hwnd = GetWin32Hwnd(window);
         if (hwnd != IntPtr.Zero) _ = SetForegroundWindow(hwnd);
     }
 
     public static uint EventType(byte* ev) => *(uint*)ev;
     public static int EventScancode(byte* ev) => *(int*)(ev + 24);
+    public static bool EventKeyIsDown(byte* ev) => *(ev + 36) != 0;
+    public static bool EventKeyIsRepeat(byte* ev) => *(ev + 37) != 0;
     public static byte EventMouseButton(byte* ev) => *(ev + 24);
+    public static int EventMouseMotionButtons(byte* ev) => (int)(*(uint*)(ev + 24) & 0x1Fu);
     public static (float X, float Y) EventMousePosition(byte* ev) => (*(float*)(ev + 28), *(float*)(ev + 32));
     public static (float Dx, float Dy) EventMouseRelative(byte* ev) => (*(float*)(ev + 36), *(float*)(ev + 40));
+    public static float EventMouseWheelDeltaY(byte* ev) => *(float*)(ev + 28);
 
     private static IntPtr ResolveSdl3(string libraryName, Assembly assembly, DllImportSearchPath? searchPath)
     {

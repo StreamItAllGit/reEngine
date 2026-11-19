@@ -1,12 +1,13 @@
 // @module: reEngine.Host.Core.HostRgbaSurfaceBackend
-// @purpose: Reusable RGBA framebuffer composite backend directly atop Foundation.Core.PixelOverlayCanvas and RgbaPngWriter.
-// @depends-on: System, System.Drawing, Foundation.Core, Foundation.Retro, reEngine.Host.Contracts, reEngine.Host.Ui
+// @purpose: Reusable RGBA framebuffer composite backend atop PixelOverlayCanvas and RgbaPngWriter with shared row-range blit helper.
+// @depends-on: System, System.Drawing, Foundation.Core, Foundation.Retro, reEngine.Host.Contracts, reEngine.Host.Rendering, reEngine.Host.Ui
 // @exports: HostRgbaSurfaceBackend
 
 using System.Drawing;
 using Foundation.Core;
 using Foundation.Retro;
 using reEngine.Host.Contracts;
+using reEngine.Host.Rendering;
 using reEngine.Host.Ui;
 
 namespace reEngine.Host.Core;
@@ -22,6 +23,7 @@ public sealed class HostRgbaSurfaceBackend : IHostRenderBackend
 
     public string BackendId { get; }
     public int ScaleFactor { get; set; }
+    public bool UseParallelBandBlit { get; set; }
     public int SurfaceWidth => Canvas.Width;
     public int SurfaceHeight => Canvas.Height;
     public PixelOverlayCanvas Canvas { get; }
@@ -49,7 +51,14 @@ public sealed class HostRgbaSurfaceBackend : IHostRenderBackend
         if (width <= 0 || height <= 0 || rgba.Length < checked(width * height * 4)) return;
 
         Rectangle dst = HostOverlayLayoutHelpers.ComputeAspectFitRect(width, height, Canvas.Width, Canvas.Height, ScaleFactor);
-        BlitNearest(width, height, rgba, dst);
+        if (UseParallelBandBlit)
+        {
+            ParallelCpuPresenter.BlitParallelBands(width, height, rgba, Canvas.Buffer, Canvas.Width, Canvas.Height, dst);
+        }
+        else
+        {
+            BlitNearest(width, height, rgba, dst);
+        }
         PublishSnapshot();
     }
 
@@ -88,16 +97,38 @@ public sealed class HostRgbaSurfaceBackend : IHostRenderBackend
         RgbaPngWriter.WritePng(outputPath, w, h, rgba);
     }
 
-    private void BlitNearest(int srcW, int srcH, ReadOnlySpan<byte> src, Rectangle dst)
+    private unsafe void BlitNearest(int srcW, int srcH, ReadOnlySpan<byte> src, Rectangle dst)
     {
-        byte[] dstBuf = Canvas.Buffer;
-        int dstStride = Canvas.Width * 4;
+        fixed (byte* srcPtr = src)
+        {
+            BlitNearestRowRange(srcW, srcH, srcPtr, src.Length, Canvas.Buffer, Canvas.Width, Canvas.Height, dst, 0, dst.Height);
+        }
+    }
+
+    internal static unsafe void BlitNearestRowRange(
+        int srcW,
+        int srcH,
+        byte* src,
+        int srcByteLength,
+        byte[] dstBuf,
+        int dstCanvasW,
+        int dstCanvasH,
+        Rectangle dst,
+        int startDy,
+        int endDy)
+    {
+        if (src == null || srcW <= 0 || srcH <= 0 || dst.Width <= 0 || dst.Height <= 0) return;
+        if (srcByteLength < checked(srcW * srcH * 4)) return;
+
+        int clampedStart = Math.Max(0, startDy);
+        int clampedEnd = Math.Min(dst.Height, endDy);
+        int dstStride = dstCanvasW * 4;
         int srcStride = srcW * 4;
 
-        for (int dy = 0; dy < dst.Height; dy++)
+        for (int dy = clampedStart; dy < clampedEnd; dy++)
         {
             int targetY = dst.Y + dy;
-            if ((uint)targetY >= (uint)Canvas.Height) continue;
+            if ((uint)targetY >= (uint)dstCanvasH) continue;
             int sy = (int)((long)dy * srcH / dst.Height);
             int dstRowOffset = (targetY * dstStride) + (dst.X * 4);
             int srcRowOffset = sy * srcStride;
@@ -105,7 +136,7 @@ public sealed class HostRgbaSurfaceBackend : IHostRenderBackend
             for (int dx = 0; dx < dst.Width; dx++)
             {
                 int targetX = dst.X + dx;
-                if ((uint)targetX >= (uint)Canvas.Width) continue;
+                if ((uint)targetX >= (uint)dstCanvasW) continue;
                 int sx = (int)((long)dx * srcW / dst.Width);
                 int sIdx = srcRowOffset + (sx * 4);
                 int dIdx = dstRowOffset + (dx * 4);
