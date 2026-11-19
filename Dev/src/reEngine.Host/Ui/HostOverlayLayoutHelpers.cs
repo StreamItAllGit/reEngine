@@ -1,5 +1,5 @@
 // @module: reEngine.Host.Ui.HostOverlayLayoutHelpers
-// @purpose: Shared palette constants, aspect-correct scaling rects, and drawing helpers atop Foundation.Core.PixelOverlayCanvas.
+// @purpose: Shared palette constants, aspect-correct scaling rects, text fitting, and drawing helpers atop PixelOverlayCanvas.
 // @depends-on: System, System.Drawing, Foundation.Core
 // @exports: HostOverlayPalette, HostOverlayLayoutHelpers
 
@@ -18,6 +18,9 @@ internal static class HostOverlayPalette
     public static readonly RgbaColor AccentCyan = new(56, 189, 248, 255);
     public static readonly RgbaColor AccentSuccess = new(16, 185, 129, 255);
     public static readonly RgbaColor AccentWarning = new(245, 158, 11, 255);
+    public static readonly RgbaColor WarnFill = new(54, 30, 22, 238);
+    public static readonly RgbaColor TouchPadFill = new(24, 28, 36, 175);
+    public static readonly RgbaColor TouchPadActive = new(56, 189, 248, 215);
     public static readonly RgbaColor TextPrimary = new(244, 244, 245, 255);
     public static readonly RgbaColor TextMuted = new(161, 161, 170, 255);
     public static readonly RgbaColor DarkText = new(12, 14, 18, 255);
@@ -74,10 +77,49 @@ internal static class HostOverlayLayoutHelpers
         canvas.FillRect(rect.X, rect.Y, rect.Width, rect.Height, fill);
         canvas.StrokeRect(rect.X, rect.Y, rect.Width, rect.Height, border, 1);
 
-        (int tw, int th) = canvas.MeasureText(label, 1);
+        string fitted = FitText(label, Math.Max(8, rect.Width - 8), 1);
+        (int tw, int th) = canvas.MeasureText(fitted, 1);
         int tx = rect.X + Math.Max(4, (rect.Width - tw) / 2);
-        int ty = rect.Y + Math.Max(4, (rect.Height - th) / 2);
-        canvas.DrawText(tx, ty, label, textCol, 1);
+        int ty = rect.Y + Math.Max(3, (rect.Height - th) / 2);
+        canvas.DrawText(tx, ty, fitted, textCol, 1);
         return rect;
+    }
+
+    public static Rectangle DrawToggleRow(
+        PixelOverlayCanvas canvas,
+        Rectangle rect,
+        string label,
+        bool isOn,
+        RgbaColor accent)
+    {
+        DrawPanel(canvas, rect, HostOverlayPalette.Surface3Glass, isOn ? accent : HostOverlayPalette.Border);
+        string fitted = FitText(label, Math.Max(20, rect.Width - 56), 1);
+        canvas.DrawText(rect.X + 8, rect.Y + Math.Max(4, (rect.Height - 7) / 2), fitted, HostOverlayPalette.TextPrimary, 1);
+
+        var badge = new Rectangle(rect.Right - 42, rect.Y + 3, 36, Math.Max(14, rect.Height - 6));
+        _ = DrawPillButton(canvas, badge, isOn ? "ON" : "OFF", isOn, accent);
+        return rect;
+    }
+
+    public static void DrawBanner(
+        PixelOverlayCanvas canvas,
+        Rectangle rect,
+        string text,
+        RgbaColor fill,
+        RgbaColor border,
+        RgbaColor textColor)
+    {
+        DrawPanel(canvas, rect, fill, border);
+        string fitted = FitText(text, Math.Max(12, rect.Width - 12), 1);
+        canvas.DrawText(rect.X + 6, rect.Y + Math.Max(4, (rect.Height - 7) / 2), fitted, textColor, 1);
+    }
+
+    public static string FitText(string? text, int maxWidthPixels, int scale = 1)
+    {
+        if (string.IsNullOrEmpty(text)) return string.Empty;
+        int advance = 6 * Math.Max(1, scale);
+        int maxChars = Math.Max(1, maxWidthPixels / advance);
+        if (text.Length <= maxChars) return text;
+        return maxChars > 3 ? text[..(maxChars - 2)] + ".." : text[..maxChars];
     }
 }
