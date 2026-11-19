@@ -26,8 +26,15 @@ public static partial class DecompD4StrictnessValidator
     /// <summary>Canonical preserved decompilation tier directory names under <c>Corpus\tiers\</c>.</summary>
     public static readonly string[] CanonicalCorpusTiers =
     [
-        "D1_Raw", "D2_Structured", "D3_Mapped", "D4_FunctionalRewrite", "D5_ByteExact"
+        "D1_Raw", "D2_Structured", "D3_Mapped", "D4_CleanSource", "D5_ByteExact"
     ];
+
+    /// <summary>Scoped legacy transition tier directory aliases mapped to canonical <c>Corpus\tiers\</c> names.</summary>
+    public static readonly IReadOnlyDictionary<string, string> LegacyCorpusTierAliases =
+        new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["D4_FunctionalRewrite"] = "D4_CleanSource"
+        };
 
     private static readonly string[] BannedSuppressionFlags =
     [
@@ -130,12 +137,31 @@ public static partial class DecompD4StrictnessValidator
         return BuildResult(violations, Array.Empty<string>());
     }
 
-    /// <summary>Discovers preserved tier folders inside <c>Corpus\tiers\</c>.</summary>
+    /// <summary>Discovers preserved tier folders inside <c>Corpus\tiers\</c>, resolving legacy aliases to canonical names without duplication.</summary>
     public static IReadOnlyList<string> DiscoverCorpusTiers(string rootDir)
     {
+        ArgumentException.ThrowIfNullOrWhiteSpace(rootDir);
         string tiersRoot = Path.Combine(rootDir, "Corpus", "tiers");
         if (!Directory.Exists(tiersRoot)) return Array.Empty<string>();
-        return CanonicalCorpusTiers.Where(t => Directory.Exists(Path.Combine(tiersRoot, t))).ToList();
+
+        var discovered = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (string canonical in CanonicalCorpusTiers)
+        {
+            if (Directory.Exists(Path.Combine(tiersRoot, canonical)))
+            {
+                discovered.Add(canonical);
+            }
+        }
+
+        foreach ((string alias, string canonical) in LegacyCorpusTierAliases)
+        {
+            if (!discovered.Contains(canonical) && Directory.Exists(Path.Combine(tiersRoot, alias)))
+            {
+                discovered.Add(canonical);
+            }
+        }
+
+        return CanonicalCorpusTiers.Where(discovered.Contains).ToList();
     }
 
     /// <summary>Detects embedded C function bodies or <c>cBody</c>/<c>functionBody</c> schema payloads.</summary>

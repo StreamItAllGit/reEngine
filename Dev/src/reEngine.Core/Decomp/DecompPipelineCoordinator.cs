@@ -88,7 +88,8 @@ public sealed class DecompPipelineCoordinator
             return new DecompDispatchResult(false, manifest, engine, null, null, null, $"Resolved engine '{engine.EngineId}' v{engine.Version} at '{engine.EngineDirectory}', but no IDecompPlatformProvider for platform '{manifest.PlatformId}' was found.{trace}");
         }
 
-        DecompStageResult stageResult = await provider.RunDecompAsync(options, ct).ConfigureAwait(false);
+        DecompRunOptions effectiveOptions = EnrichOptionsWithSuiteMedia(options, manifest, enginesRootDir);
+        DecompStageResult stageResult = await provider.RunDecompAsync(effectiveOptions, ct).ConfigureAwait(false);
         if (!stageResult.Success) return new DecompDispatchResult(false, manifest, engine, null, stageResult, null, stageResult.Message);
 
         string? outDir = stageResult.OutputDirectory ?? options.OutputDirectory;
@@ -129,6 +130,39 @@ public sealed class DecompPipelineCoordinator
             ? new DecompCleanRoomValidationResult(true, Array.Empty<string>(), "Clean-room output verified.")
             : new DecompCleanRoomValidationResult(false, violations, $"Found {violations.Count} non-clean-room artifact(s).");
     }
+
+    private static DecompRunOptions EnrichOptionsWithSuiteMedia(DecompRunOptions options, DecompPackageManifest manifest, string enginesRootDir)
+    {
+        IReadOnlyDictionary<string, string>? args = options.PlatformArguments;
+        if (!string.IsNullOrWhiteSpace(GetPlatformArg(args, "discPath")) ||
+            !string.IsNullOrWhiteSpace(GetPlatformArg(args, "exePath")) ||
+            !string.IsNullOrWhiteSpace(GetPlatformArg(args, "gamedataDir")))
+            return options;
+
+        string? containmentRoot = GetPlatformArg(args, "containmentRoot");
+        string fullPackage = Path.GetFullPath(options.PackagePath);
+        string moduleRoot = Directory.Exists(fullPackage) ? fullPackage : RecompPackageReader.ResolveModuleRootDirectory(fullPackage);
+        string? suiteRoot = SuiteMediaTreeWalker.DeriveSuiteRootDirectory(enginesRootDir, options.DataDirectory, containmentRoot);
+
+        SuiteMediaDiscoveryResult media = SuiteMediaTreeWalker.Discover(
+            moduleRoot, suiteRoot, manifest.ModuleId, manifest.ExpectedSha256, manifest.PreloadRomDir, containmentRoot);
+        if (!media.Found && !media.IsAmbiguous && !string.IsNullOrWhiteSpace(options.DataDirectory) &&
+            !string.Equals(Path.GetFullPath(options.DataDirectory), suiteRoot, StringComparison.OrdinalIgnoreCase))
+        {
+            media = SuiteMediaTreeWalker.Discover(
+                moduleRoot, options.DataDirectory, manifest.ModuleId, manifest.ExpectedSha256, manifest.PreloadRomDir, containmentRoot);
+        }
+        if (!media.Found || media.SelectedCandidate is null) return options;
+
+        var cloned = args is not null
+            ? new Dictionary<string, string>(args, StringComparer.OrdinalIgnoreCase)
+            : new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        cloned[media.SelectedCandidate.IsPsxExecutable ? "exePath" : "discPath"] = media.SelectedCandidate.FilePath;
+        return options with { PlatformArguments = cloned };
+    }
+
+    private static string? GetPlatformArg(IReadOnlyDictionary<string, string>? args, string key) =>
+        args is null ? null : (args.TryGetValue(key, out string? v) ? v : args.FirstOrDefault(kv => kv.Key.Equals(key, StringComparison.OrdinalIgnoreCase)).Value);
 
     private InstalledEngineCandidate? ResolveEngine(DecompPackageManifest manifest, string enginesRootDir, string? engineDirOverride)
     {
@@ -205,7 +239,7 @@ public sealed class DecompPipelineCoordinator
         return paths;
     }
 
-    private static bool IsZipArchive(string path) { using FileStream fs = File.OpenRead(path); return fs.ReadByte() == 'P' && fs.ReadByte() == 'K'; }
+    internal static bool IsZipArchive(string path) { using FileStream fs = File.OpenRead(path); return fs.ReadByte() == 'P' && fs.ReadByte() == 'K'; }
 
     private static string ReadManifestJsonFromZip(string zipPath)
     {
@@ -222,13 +256,7 @@ public sealed class DecompPipelineCoordinator
     private sealed class ProviderLoadContext : AssemblyLoadContext
     {
         private static readonly HashSet<string> HostSharedAssemblies = new(StringComparer.OrdinalIgnoreCase)
-        {
-            "reEngine.Core",
-            "reEngine.Host",
-            "Foundation.Core",
-            "Foundation.Retro"
-        };
-
+            { "reEngine.Core", "reEngine.Host", "Foundation.Core", "Foundation.Retro" };
         private readonly AssemblyDependencyResolver _resolver;
         private readonly string _pluginDirectory;
 
@@ -240,17 +268,9 @@ public sealed class DecompPipelineCoordinator
 
         protected override Assembly? Load(AssemblyName assemblyName)
         {
-            if (string.IsNullOrWhiteSpace(assemblyName.Name) || HostSharedAssemblies.Contains(assemblyName.Name))
-            {
-                return null;
-            }
-
+            if (string.IsNullOrWhiteSpace(assemblyName.Name) || HostSharedAssemblies.Contains(assemblyName.Name)) return null;
             string? path = _resolver.ResolveAssemblyToPath(assemblyName);
-            if (path is not null)
-            {
-                return LoadFromAssemblyPath(path);
-            }
-
+            if (path is not null) return LoadFromAssemblyPath(path);
             string siblingDll = Path.Combine(_pluginDirectory, $"{assemblyName.Name}.dll");
             return File.Exists(siblingDll) ? LoadFromAssemblyPath(siblingDll) : null;
         }
