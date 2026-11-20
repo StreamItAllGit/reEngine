@@ -1,181 +1,217 @@
 // @module: reEngine.Host.Ui.F1DrawerTabRenderers
-// @purpose: Internal tab renderers (Video, System, DiscMedia, ExtraRows) keeping F1SettingsDrawerView concise under 250 SLOC.
-// @depends-on: System, System.Collections.Generic, System.Drawing, Foundation.Core, reEngine.Host.Contracts
-// @exports: DrawerControl, F1DrawerTabRenderers
+// @purpose: Scrollable Video and Media tab renderers plus ExtraRows helpers for F1SettingsDrawerView.
+// @depends-on: System, System.Collections.Generic, System.Drawing, System.Globalization, Foundation.Core, reEngine.Host.Contracts
+// @exports: F1DrawerTabRenderers
 
 using System.Drawing;
+using System.Globalization;
 using Foundation.Core;
 using reEngine.Host.Contracts;
 
 namespace reEngine.Host.Ui;
 
-internal sealed record DrawerControl(string ControlId, string ControlType, string Label, Rectangle Bounds, Action<bool> OnClick);
-
 internal static class F1DrawerTabRenderers
 {
-    private static readonly (HostRenderBackendKind Kind, string Label)[] VideoBackends =
+    private static readonly (HostRenderBackendKind Kind, string Id, string Label)[] VideoBackends =
     [
-        (HostRenderBackendKind.OpenGl, "OpenGl"),
-        (HostRenderBackendKind.Vulkan, "Vulkan"),
-        (HostRenderBackendKind.DirectX, "DirectX"),
-        (HostRenderBackendKind.ParallelCpu, "ParallelCpu"),
-        (HostRenderBackendKind.Software, "Software")
+        (HostRenderBackendKind.OpenGl, "OpenGl", "OpenGL"),
+        (HostRenderBackendKind.Vulkan, "Vulkan", "Vulkan"),
+        (HostRenderBackendKind.DirectX, "DirectX", "DirectX"),
+        (HostRenderBackendKind.ParallelCpu, "ParallelCpu", "ParallelCpu"),
+        (HostRenderBackendKind.Software, "Software", "Software")
     ];
+
+    private static readonly int[] Scales = [1, 2, 4, 8];
+    private static readonly int[] TargetFpsPresets = [30, 60, 120, 144, 240, 0];
 
     public static void RenderVideoTab(
         PixelOverlayCanvas canvas, Rectangle body, F1SettingsDrawerView view,
-        HostDrawerDescriptor descriptor, List<DrawerControl> controls, out Rectangle cyclePrimaryRect)
+        HostDrawerDescriptor descriptor, List<DrawerControl> controls,
+        ref int scrollOffset, out int maxScroll, out Rectangle cyclePrimaryRect)
     {
-        canvas.DrawText(body.X, body.Y, "VIDEO & SCALING", HostOverlayPalette.AccentCyan, 1);
-        canvas.DrawText(body.X, body.Y + 14, $"Backend: {view.SelectedBackend}", HostOverlayPalette.TextPrimary, 1);
-        const int gap = 4;
-        int colW3 = Math.Max(60, (body.Width - (gap * 2)) / 3), colW2 = Math.Max(80, (body.Width - gap) / 2);
-        for (int i = 0; i < VideoBackends.Length; i++)
-        {
-            (HostRenderBackendKind kind, string label) = VideoBackends[i];
-            int row = i < 3 ? 0 : 1, col = i < 3 ? i : i - 3, w = row == 0 ? colW3 : colW2;
-            var rect = new Rectangle(body.X + (col * (w + gap)), body.Y + 28 + (row * 26), w, 22);
-            HostOverlayLayoutHelpers.DrawPillButton(canvas, rect, label, view.SelectedBackend == kind, HostOverlayPalette.AccentCyan);
-            controls.Add(new($"Video_Backend_{label}", "Button", label, rect, _ => view.SelectedBackend = kind));
-        }
+        cyclePrimaryRect = Rectangle.Empty;
+        var layout = new HostDrawerScrollLayout(body, view.UiTextScale, view.FocusedControlId);
 
-        canvas.DrawText(body.X, body.Y + 82, $"Resolution Scale: {view.ResolutionScale}x", HostOverlayPalette.TextPrimary, 1);
-        int[] scales = [1, 2, 4];
-        for (int i = 0; i < scales.Length; i++)
-        {
-            int sc = scales[i];
-            var rect = new Rectangle(body.X + (i * (colW3 + gap)), body.Y + 96, colW3, 22);
-            HostOverlayLayoutHelpers.DrawPillButton(canvas, rect, $"{sc}x", view.ResolutionScale == sc, HostOverlayPalette.AccentCyan);
-            controls.Add(new($"Video_Scale_{sc}x", "Button", $"{sc}x", rect, _ => view.ResolutionScale = sc));
-        }
+        layout.AddText($"Backend: {FormatBackendName(view.SelectedBackend)}", HostOverlayPalette.TextPrimary);
+        layout.AddColumns(controls,
+            BuildBackendCol(VideoBackends[0], view),
+            BuildBackendCol(VideoBackends[1], view),
+            BuildBackendCol(VideoBackends[2], view));
+        layout.AddColumns(controls,
+            BuildBackendCol(VideoBackends[3], view),
+            BuildBackendCol(VideoBackends[4], view));
 
-        cyclePrimaryRect = new Rectangle(body.X, body.Y + 124, Math.Min(220, body.Width), 22);
-        HostOverlayLayoutHelpers.DrawPillButton(canvas, cyclePrimaryRect, "Cycle Scale (1x/2x/4x)", true, HostOverlayPalette.AccentCyan);
+        layout.AddText($"Resolution Scale: {view.ResolutionScale}x", HostOverlayPalette.TextPrimary);
+        var scaleCols = new (string, string, bool, bool, RgbaColor, Action<bool>, Action<Rectangle>?)[Scales.Length];
+        for (int i = 0; i < Scales.Length; i++)
+        {
+            int sc = Scales[i];
+            scaleCols[i] = ($"Video_Scale_{sc}x", $"{sc}x", view.ResolutionScale == sc, false, HostOverlayPalette.AccentCyan,
+                _ => { view.ResolutionScale = sc; view.EventCallbacks?.OnResolutionScaleChanged(sc); }, null);
+        }
+        layout.AddColumns(controls, scaleCols);
+
+        string frLabel = $"Framerate: {HostFrameRateModeCodec.ToDisplayLabel(view.FrameRateMode)}";
+        layout.AddPill("Video_FrameRateMode", frLabel, view.FrameRateMode == HostFrameRateMode.Enhanced, HostOverlayPalette.AccentCyan, isRight =>
+        {
+            view.FrameRateMode = isRight
+                ? HostFrameRateMode.Enhanced
+                : (view.FrameRateMode == HostFrameRateMode.Enhanced ? HostFrameRateMode.Original : HostFrameRateMode.Enhanced);
+            view.EventCallbacks?.OnFrameRateModeChanged(view.FrameRateMode);
+        }, controls);
+
+        string fpsTitle = view.TargetFps <= 0 ? "Target FPS: Max" : $"Target FPS: {view.TargetFps}";
+        layout.AddText(fpsTitle, HostOverlayPalette.TextPrimary);
+        var fpsCols = new (string, string, bool, bool, RgbaColor, Action<bool>, Action<Rectangle>?)[TargetFpsPresets.Length];
+        for (int i = 0; i < TargetFpsPresets.Length; i++)
+        {
+            int fps = TargetFpsPresets[i];
+            string lbl = fps == 0 ? "Max" : fps.ToString(CultureInfo.InvariantCulture);
+            fpsCols[i] = ($"Video_TargetFps_{fps}", lbl, view.TargetFps == fps, false, HostOverlayPalette.AccentCyan,
+                _ => { view.TargetFps = fps; view.EventCallbacks?.OnTargetFpsChanged(fps); }, null);
+        }
+        layout.AddColumns(controls, fpsCols);
 
         string aspectLabel = $"Aspect: {HostAspectRatioModeCodec.ToDisplayLabel(view.AspectRatioMode)}";
-        var aspectRect = new Rectangle(body.X, body.Y + 152, body.Width, 22);
-        HostOverlayLayoutHelpers.DrawPillButton(canvas, aspectRect, aspectLabel, true, HostOverlayPalette.AccentCyan);
-        controls.Add(new("Video_AspectRatio", "Button", aspectLabel, aspectRect, _ =>
-        {
-            view.AspectRatioMode = HostAspectRatioModeCodec.CycleNext(view.AspectRatioMode);
-            view.EventCallbacks?.OnAspectRatioChanged(view.AspectRatioMode);
-        }));
-
         bool overscanOn = IsOverscanEnabled(view.OverscanCropPx);
-        string overscanLabel = overscanOn ? $"Overscan Crop: {FormatOverscan(view.OverscanCropPx)}" : "Overscan Crop: 0px";
-        AddToggle(canvas, new(body.X, body.Y + 178, body.Width, 22), "Video_Toggle_Overscan", overscanLabel, overscanOn, HostOverlayPalette.AccentCyan, controls, _ =>
-        {
-            view.OverscanCropPx = IsOverscanEnabled(view.OverscanCropPx) ? HostOverscanCrop.None : new HostOverscanCrop(8, 8, 8, 8);
-            view.EventCallbacks?.OnOverscanCropChanged(view.OverscanCropPx);
-        });
+        string overscanLabel = overscanOn ? $"Overscan: {FormatOverscan(view.OverscanCropPx)}" : "Overscan: 0px";
+        layout.AddColumns(controls,
+            ("Video_AspectRatio", aspectLabel, view.AspectRatioMode != HostAspectRatioMode.NativePar, false, HostOverlayPalette.AccentCyan, isRight =>
+            {
+                view.AspectRatioMode = isRight ? HostAspectRatioMode.NativePar : HostAspectRatioModeCodec.CycleNext(view.AspectRatioMode);
+                view.EventCallbacks?.OnAspectRatioChanged(view.AspectRatioMode);
+            }, null),
+            ("Video_Toggle_Overscan", overscanLabel, overscanOn, false, HostOverlayPalette.AccentCyan, isRight =>
+            {
+                view.OverscanCropPx = isRight ? HostOverscanCrop.None : CycleOverscan(view.OverscanCropPx);
+                view.EventCallbacks?.OnOverscanCropChanged(view.OverscanCropPx);
+            }, null));
 
-        AddToggle(canvas, new(body.X, body.Y + 204, body.Width, 22), "Video_Toggle_Fullscreen", "Fullscreen", view.IsFullscreen, HostOverlayPalette.AccentCyan, controls, _ =>
-        {
-            view.IsFullscreen = !view.IsFullscreen;
-            view.EventCallbacks?.OnFullscreenChanged(view.IsFullscreen);
-        });
+        layout.AddColumns(controls,
+            ("Video_Toggle_Vsync", "VSync", view.IsVsyncEnabled, true, HostOverlayPalette.AccentCyan, _ =>
+            {
+                view.IsVsyncEnabled = !view.IsVsyncEnabled;
+                view.EventCallbacks?.OnVsyncChanged(view.IsVsyncEnabled);
+            }, null),
+            ("Video_Toggle_Fullscreen", "Fullscreen", view.IsFullscreen, true, HostOverlayPalette.AccentCyan, _ =>
+            {
+                view.IsFullscreen = !view.IsFullscreen;
+                view.EventCallbacks?.OnFullscreenChanged(view.IsFullscreen);
+            }, null));
 
-        AddToggle(canvas, new(body.X, body.Y + 230, body.Width, 22), "Video_Toggle_FastForward", "Fast-Forward", view.IsFastForwardEnabled, HostOverlayPalette.AccentWarning, controls, _ =>
-        {
-            view.IsFastForwardEnabled = !view.IsFastForwardEnabled;
-            view.EventCallbacks?.OnFastForwardChanged(view.IsFastForwardEnabled);
-        });
+        layout.AddToggle("Video_Toggle_FpsHud", "FPS Overlay (F3)", view.IsFpsOverlayVisible, HostOverlayPalette.AccentCyan,
+            _ => view.IsFpsOverlayVisible = !view.IsFpsOverlayVisible, controls);
 
-        AddToggle(canvas, new(body.X, body.Y + 256, body.Width, 22), "Video_Toggle_HdPacks", "HD Packs", view.IsHdTexturePackEnabled, HostOverlayPalette.AccentSuccess, controls, _ =>
-            view.IsHdTexturePackEnabled = !view.IsHdTexturePackEnabled);
-
-        string filterLabel = $"Filter: {HostVideoFilterModeCodec.ToDisplayLabel(view.VideoFilterMode)}";
-        var filterRect = new Rectangle(body.X, body.Y + 282, body.Width, 22);
-        HostOverlayLayoutHelpers.DrawPillButton(canvas, filterRect, filterLabel, view.VideoFilterMode != HostVideoFilterMode.Nearest, HostOverlayPalette.AccentCyan);
-        controls.Add(new("Video_FilterMode", "Button", filterLabel, filterRect, _ =>
-        {
-            view.VideoFilterMode = HostVideoFilterModeCodec.CycleNext(view.VideoFilterMode);
-            view.EventCallbacks?.OnVideoFilterChanged(view.VideoFilterMode);
-        }));
-
-        AddToggle(canvas, new(body.X, body.Y + 308, colW2, 22), "Video_Toggle_TrueColor", "24-Bit", view.IsTrueColor24BitEnabled, HostOverlayPalette.AccentCyan, controls, _ =>
-        {
-            view.IsTrueColor24BitEnabled = !view.IsTrueColor24BitEnabled;
-            view.EventCallbacks?.OnTrueColorChanged(view.IsTrueColor24BitEnabled);
-        });
-        AddToggle(canvas, new(body.X + colW2 + gap, body.Y + 308, body.Width - colW2 - gap, 22), "Video_Toggle_Dither", "Dither", view.IsDitheringEnabled, HostOverlayPalette.AccentCyan, controls, _ =>
-        {
-            view.IsDitheringEnabled = !view.IsDitheringEnabled;
-            view.EventCallbacks?.OnDitheringChanged(view.IsDitheringEnabled);
-        });
-
-        AddToggle(canvas, new(body.X, body.Y + 334, colW2, 22), "Video_Toggle_Vsync", "VSync", view.IsVsyncEnabled, HostOverlayPalette.AccentCyan, controls, _ =>
-        {
-            view.IsVsyncEnabled = !view.IsVsyncEnabled;
-            view.EventCallbacks?.OnVsyncChanged(view.IsVsyncEnabled);
-        });
         string shotLabel = view.ScreenshotCaptureMode == HostScreenshotCaptureMode.FilteredComposite ? "F12: Filtered" : "F12: Clean";
-        var shotRect = new Rectangle(body.X + colW2 + gap, body.Y + 334, body.Width - colW2 - gap, 22);
-        HostOverlayLayoutHelpers.DrawPillButton(canvas, shotRect, shotLabel, view.ScreenshotCaptureMode == HostScreenshotCaptureMode.FilteredComposite, HostOverlayPalette.AccentCyan);
-        controls.Add(new("Video_ShotMode", "Button", shotLabel, shotRect, _ =>
+        layout.AddColumns(controls,
+            ("Video_Toggle_HdPacks", "HD Packs", view.IsHdTexturePackEnabled, true, HostOverlayPalette.AccentSuccess,
+                _ => view.IsHdTexturePackEnabled = !view.IsHdTexturePackEnabled, null),
+            ("Video_Toggle_FastForward", "Fast-Forward", view.IsFastForwardEnabled, true, HostOverlayPalette.AccentWarning, _ =>
+            {
+                view.IsFastForwardEnabled = !view.IsFastForwardEnabled;
+                view.EventCallbacks?.OnFastForwardChanged(view.IsFastForwardEnabled);
+            }, null));
+
+        layout.AddPill("Video_ShotMode", shotLabel, view.ScreenshotCaptureMode == HostScreenshotCaptureMode.FilteredComposite, HostOverlayPalette.AccentCyan, _ =>
         {
             view.ScreenshotCaptureMode = view.ScreenshotCaptureMode == HostScreenshotCaptureMode.CleanNative
                 ? HostScreenshotCaptureMode.FilteredComposite
                 : HostScreenshotCaptureMode.CleanNative;
             view.EventCallbacks?.OnScreenshotModeChanged(view.ScreenshotCaptureMode);
-        }));
+        }, controls);
 
-        int nextY = body.Y + 362;
-        if (!string.IsNullOrWhiteSpace(view.FallbackBanner) && nextY + 24 <= body.Bottom)
+        double clampedUiScale = HostOverlayTextRenderer.ClampUiTextScale(view.UiTextScale);
+        string scaleText = string.Create(CultureInfo.InvariantCulture, $"{clampedUiScale:0.00}x");
+        layout.AddStepper("Video_UiTextScale", "Video_UiTextScale_Dec", "Video_UiTextScale_Inc",
+            "UI Text Scale", scaleText, HostOverlayPalette.AccentCyan,
+            isRight => SetUiScale(view, isRight ? 1.0 : StepUiScale(view.UiTextScale, decrease: false)),
+            _ => SetUiScale(view, StepUiScale(view.UiTextScale, decrease: true)),
+            _ => SetUiScale(view, StepUiScale(view.UiTextScale, decrease: false)),
+            controls);
+
+        string filterLabel = $"Filter: {HostVideoFilterModeCodec.ToDisplayLabel(view.VideoFilterMode)}";
+        layout.AddPill("Video_FilterMode", filterLabel, view.VideoFilterMode != HostVideoFilterMode.Nearest, HostOverlayPalette.AccentCyan, isRight =>
         {
-            var bannerRect = new Rectangle(body.X, nextY, body.Width, 24);
-            HostOverlayLayoutHelpers.DrawBanner(canvas, bannerRect, view.FallbackBanner!, HostOverlayPalette.WarnFill, HostOverlayPalette.AccentWarning, HostOverlayPalette.AccentWarning);
-            controls.Add(new("Video_FallbackBanner", "Label", view.FallbackBanner!, bannerRect, static _ => { }));
-            nextY += 30;
+            view.VideoFilterMode = isRight ? HostVideoFilterMode.Nearest : HostVideoFilterModeCodec.CycleNext(view.VideoFilterMode);
+            view.EventCallbacks?.OnVideoFilterChanged(view.VideoFilterMode);
+        }, controls);
+
+        layout.AddColumns(controls,
+            ("Video_Toggle_TrueColor", "24-Bit", view.IsTrueColor24BitEnabled, true, HostOverlayPalette.AccentCyan, _ =>
+            {
+                view.IsTrueColor24BitEnabled = !view.IsTrueColor24BitEnabled;
+                view.EventCallbacks?.OnTrueColorChanged(view.IsTrueColor24BitEnabled);
+            }, null),
+            ("Video_Toggle_Dither", "Dither", view.IsDitheringEnabled, true, HostOverlayPalette.AccentCyan, _ =>
+            {
+                view.IsDitheringEnabled = !view.IsDitheringEnabled;
+                view.EventCallbacks?.OnDitheringChanged(view.IsDitheringEnabled);
+            }, null));
+
+        if (!string.IsNullOrWhiteSpace(view.FallbackBanner))
+        {
+            layout.AddBanner("Video_FallbackBanner", view.FallbackBanner!, HostOverlayPalette.WarnFill, HostOverlayPalette.AccentWarning, HostOverlayPalette.AccentWarning, controls);
         }
-        RenderExtraRows(canvas, body, nextY, HostDrawerTabId.Video, descriptor.ExtraRows, view, controls);
+
+        HostDrawerScrollLayout.AppendExtraRows(layout, HostDrawerTabId.Video, descriptor.ExtraRows, view, controls);
+        _ = layout.Render(canvas, "VIDEO & SCALING", "Video", ref scrollOffset, out maxScroll, controls, d => view.ScrollActiveTab(d));
     }
 
     public static void RenderDiscMediaTab(
         PixelOverlayCanvas canvas, Rectangle body, F1SettingsDrawerView view,
-        HostDrawerDescriptor descriptor, List<DrawerControl> controls)
+        HostDrawerDescriptor descriptor, List<DrawerControl> controls,
+        ref int scrollOffset, out int maxScroll)
     {
-        canvas.DrawText(body.X, body.Y, "DISC / MEDIA", HostOverlayPalette.AccentCyan, 1);
-        canvas.DrawText(body.X, body.Y + 22, HostOverlayLayoutHelpers.FitText($"Media: {descriptor.MediaLabel}", body.Width, 1), HostOverlayPalette.TextPrimary, 1);
-        canvas.DrawText(body.X, body.Y + 40, "Storage: gitignored data\\rom\\", HostOverlayPalette.TextMuted, 1);
-        RenderExtraRows(canvas, body, body.Y + 66, HostDrawerTabId.DiscMedia, descriptor.ExtraRows, view, controls);
-    }
-
-    public static void RenderExtraRows(
-        PixelOverlayCanvas canvas, Rectangle body, int startY, HostDrawerTabId tab,
-        IReadOnlyList<HostDrawerRowDescriptor>? rows, F1SettingsDrawerView view, List<DrawerControl> controls)
-    {
-        if (rows is null) return;
-        int y = startY;
-        foreach (HostDrawerRowDescriptor row in rows)
+        var layout = new HostDrawerScrollLayout(body, view.UiTextScale, view.FocusedControlId);
+        layout.AddText($"Media: {descriptor.MediaLabel}", HostOverlayPalette.TextPrimary);
+        layout.AddText("Drag & drop media or .recomp onto window:", HostOverlayPalette.TextMuted);
+        layout.AddText(".cue, .bin, .iso, .chd, .nes, .fds, .7z, .zip, .recomp", HostOverlayPalette.TextMuted);
+        layout.AddPill("Media_ChangeMedia", "Change Media...", true, HostOverlayPalette.AccentCyan, _ =>
         {
-            if (row.Tab != tab) continue;
-            string text = string.IsNullOrWhiteSpace(row.Value) ? row.Label : $"{row.Label}: {row.Value}";
-            if (row.IsInteractive)
-            {
-                if (y + 22 > body.Bottom) continue;
-                var rowRect = new Rectangle(body.X, y, body.Width, 22);
-                HostOverlayLayoutHelpers.DrawPillButton(canvas, rowRect, text, false, HostOverlayPalette.AccentCyan);
-                HostDrawerRowDescriptor captured = row;
-                controls.Add(new($"ExtraRow_{row.RowId}", "Button", text, rowRect, isRight => view.EventCallbacks?.OnExtraRowActivated(captured.RowId, isRight)));
-                y += 26;
-            }
-            else
-            {
-                if (y + 16 > body.Bottom) continue;
-                canvas.DrawText(body.X, y, HostOverlayLayoutHelpers.FitText(text, body.Width, 1), HostOverlayPalette.TextMuted, 1);
-                y += 16;
-            }
-        }
+            string? picked = view.OnBrowseMediaRequested?.Invoke();
+            view.EventCallbacks?.OnChangeMediaRequested(picked);
+        }, controls);
+        layout.AddPill("Media_LoadModule", "Load .recomp...", false, HostOverlayPalette.AccentCyan, _ =>
+        {
+            string? picked = view.OnBrowseModuleRequested?.Invoke();
+            view.EventCallbacks?.OnLoadModuleRequested(picked);
+        }, controls);
+
+        HostDrawerScrollLayout.AppendExtraRows(layout, HostDrawerTabId.DiscMedia, descriptor.ExtraRows, view, controls);
+        _ = layout.Render(canvas, "DISC / MEDIA", "Media", ref scrollOffset, out maxScroll, controls, d => view.ScrollActiveTab(d));
     }
 
-    private static void AddToggle(
-        PixelOverlayCanvas canvas, Rectangle rect, string id, string label, bool val, RgbaColor accent,
-        List<DrawerControl> controls, Action<bool> onClick)
+    private static (string, string, bool, bool, RgbaColor, Action<bool>, Action<Rectangle>?) BuildBackendCol(
+        (HostRenderBackendKind Kind, string Id, string Label) b, F1SettingsDrawerView view) =>
+        ($"Video_Backend_{b.Id}", b.Label, view.SelectedBackend == b.Kind, false, HostOverlayPalette.AccentCyan, _ =>
+        {
+            view.SelectedBackend = b.Kind;
+            view.EventCallbacks?.OnBackendChanged(b.Kind);
+        }, null);
+
+    private static string FormatBackendName(HostRenderBackendKind kind) =>
+        kind == HostRenderBackendKind.OpenGl ? "OpenGL" : kind.ToString();
+
+    private static void SetUiScale(F1SettingsDrawerView view, double next)
     {
-        HostOverlayLayoutHelpers.DrawToggleRow(canvas, rect, label, val, accent);
-        controls.Add(new(id, "CheckBox", label, rect, onClick));
+        double clamped = HostOverlayTextRenderer.ClampUiTextScale(next);
+        view.UiTextScale = clamped;
+        view.EventCallbacks?.OnUiTextScaleChanged(clamped);
     }
+
+    private static double StepUiScale(double current, bool decrease)
+    {
+        double clamped = HostOverlayTextRenderer.ClampUiTextScale(current);
+        double next = decrease ? Math.Round(clamped - 0.25, 2) : Math.Round(clamped + 0.25, 2);
+        return HostOverlayTextRenderer.ClampUiTextScale(next);
+    }
+
+    private static HostOverscanCrop CycleOverscan(HostOverscanCrop crop) => crop.Top switch
+    {
+        <= 0 => new HostOverscanCrop(8, 8, 8, 8),
+        < 16 => new HostOverscanCrop(16, 16, 16, 16),
+        _ => HostOverscanCrop.None
+    };
 
     private static bool IsOverscanEnabled(HostOverscanCrop crop) =>
         crop.Top > 0 || crop.Bottom > 0 || crop.Left > 0 || crop.Right > 0;

@@ -1,9 +1,10 @@
 // @module: reEngine.Host.Ui.ControlsTabView
-// @purpose: Renders Schema A/B/C selector and dynamic module ControlOptions pills onto PixelOverlayCanvas with click/cycle and live callback support.
-// @depends-on: System, System.Collections.Generic, System.Drawing, Foundation.Core, reEngine.Host.Contracts, reEngine.Host.Input
+// @purpose: Expressive Controls tab renderer (tier profile selector, Modern WASD+Mouse, mouse sensitivity stepper, menu chord, and dynamic ControlOptions).
+// @depends-on: System, System.Collections.Generic, System.Drawing, System.Globalization, Foundation.Core, reEngine.Host.Contracts, reEngine.Host.Input
 // @exports: ControlsTabView
 
 using System.Drawing;
+using System.Globalization;
 using Foundation.Core;
 using reEngine.Host.Contracts;
 using reEngine.Host.Input;
@@ -11,21 +12,26 @@ using reEngine.Host.Input;
 namespace reEngine.Host.Ui;
 
 /// <summary>
-/// Renders and handles clicks for the active input schema selector and dynamic per-game <c>ControlOptions</c>.
+/// Renders and handles clicks for input profiles, PC camera/mouse controls, menu chord, and per-game <c>ControlOptions</c>.
 /// </summary>
 public sealed class ControlsTabView
 {
-    private sealed record ClickTarget(string ControlId, Rectangle Bounds, Func<IHostSessionEventCallbacks?, bool> OnActivate);
+    private sealed record ClickAction(string ControlId, Rectangle Bounds, Func<HostInputMapper, IHostSessionEventCallbacks?, bool> OnActivate);
 
-    private readonly List<ClickTarget> _targets = new();
+    private readonly List<ClickAction> _actions = new();
     private readonly List<HostWidgetBounds> _widgets = new();
     private readonly Dictionary<string, string> _selectedChoices = new(StringComparer.OrdinalIgnoreCase);
     private HostInputSchemaKind? _pendingSchema;
+    private HostControlTierMode _displayTier = HostControlTierMode.PerGameModern;
+    private HostControlMode _displayMode = HostControlMode.ModernWasdMouse;
+    private double _displayMouseSens = 1.0;
+    private HostMenuControllerChord _displayMenuChord = HostMenuControllerChord.L3PlusR3;
+    private int _standaloneScroll;
 
     /// <summary>Gets the current selected choice per <c>optionId</c>.</summary>
     public IReadOnlyDictionary<string, string> SelectedChoices => _selectedChoices;
 
-    /// <summary>Gets the bounds of the schema cycle button rendered inside the Controls tab.</summary>
+    /// <summary>Gets the bounds of the profile cycle button rendered inside the Controls tab.</summary>
     public Rectangle CycleSchemaButtonRect { get; private set; }
 
     /// <summary>Gets the bottom Y coordinate occupied by rendered Controls tab content.</summary>
@@ -42,75 +48,140 @@ public sealed class ControlsTabView
     public void SetSelectedChoice(string optionId, string choice)
     {
         if (!string.IsNullOrWhiteSpace(optionId) && !string.IsNullOrWhiteSpace(choice))
-        {
             _selectedChoices[optionId] = choice;
-        }
     }
 
-    /// <summary>Renders the schema selector and dynamic per-game control option pills into <paramref name="bodyRect"/>.</summary>
+    /// <summary>Renders the Controls tab into <paramref name="bodyRect"/>.</summary>
     public void Render(
         PixelOverlayCanvas canvas,
         Rectangle bodyRect,
         HostInputSchemaKind selectedSchema,
-        IReadOnlyList<HostControlOptionDescriptor>? controlOptions)
+        IReadOnlyList<HostControlOptionDescriptor>? controlOptions) =>
+        RenderCore(canvas, bodyRect, selectedSchema, controlOptions, view: null, tierStore: null, ref _standaloneScroll, out _);
+
+    internal void Render(
+        PixelOverlayCanvas canvas,
+        Rectangle bodyRect,
+        F1SettingsDrawerView view,
+        HostDrawerDescriptor descriptor,
+        HostControlTierStore? tierStore,
+        ref int scrollOffset,
+        out int maxScroll)
+    {
+        ArgumentNullException.ThrowIfNull(view);
+        ArgumentNullException.ThrowIfNull(descriptor);
+        _displayTier = tierStore?.ActiveTier ?? _displayTier;
+        _displayMode = view.ControlMode;
+        _displayMouseSens = view.MouseSensitivity;
+        _displayMenuChord = view.MenuControllerChord;
+        RenderCore(canvas, bodyRect, view.SelectedSchema, descriptor.ControlOptions, view, tierStore, ref scrollOffset, out maxScroll, descriptor.ExtraRows);
+    }
+
+    internal void RenderCore(
+        PixelOverlayCanvas canvas,
+        Rectangle bodyRect,
+        HostInputSchemaKind selectedSchema,
+        IReadOnlyList<HostControlOptionDescriptor>? controlOptions,
+        F1SettingsDrawerView? view,
+        HostControlTierStore? tierStore,
+        ref int scrollOffset,
+        out int maxScroll,
+        IReadOnlyList<HostDrawerRowDescriptor>? extraRows = null)
     {
         ArgumentNullException.ThrowIfNull(canvas);
-        _targets.Clear();
+        _actions.Clear();
         _widgets.Clear();
+        CycleSchemaButtonRect = Rectangle.Empty;
 
-        canvas.DrawText(bodyRect.X, bodyRect.Y, "CONTROLLER SCHEMA", HostOverlayPalette.AccentCyan, 1);
-        canvas.DrawText(bodyRect.X, bodyRect.Y + 18, $"Active Profile: Schema {HostInputSchemas.ToShortCode(selectedSchema)}", HostOverlayPalette.TextPrimary, 1);
+        double uiScale = view?.UiTextScale ?? 1.0;
+        var layout = new HostDrawerScrollLayout(bodyRect, uiScale, view?.FocusedControlId);
+        var controls = new List<DrawerControl>();
+        HostControlTierMode activeTier = tierStore?.ActiveTier ?? _displayTier;
+        HostControlMode mode = view?.ControlMode ?? _displayMode;
+        double sens = Math.Clamp(double.IsFinite(view?.MouseSensitivity ?? _displayMouseSens) ? (view?.MouseSensitivity ?? _displayMouseSens) : 1.0, 0.25, 3.0);
+        HostMenuControllerChord chord = view?.MenuControllerChord ?? _displayMenuChord;
 
-        int gap = 6;
-        int pillW = Math.Max(48, (bodyRect.Width - (gap * 2)) / 3);
-        HostInputSchemaKind[] schemas = [HostInputSchemaKind.SchemaA, HostInputSchemaKind.SchemaB, HostInputSchemaKind.SchemaC];
-        for (int i = 0; i < schemas.Length; i++)
+        layout.AddText($"Preset: {HostInputSchemas.FormatPresetLabel(selectedSchema)}", HostOverlayPalette.TextPrimary);
+
+        layout.AddPill("Controls_Profile_ModernPc", "Modern PC (Per-Action)", activeTier == HostControlTierMode.PerGameModern,
+            HostOverlayPalette.AccentCyan, _ => { }, controls);
+        _actions.Add(new("Controls_Profile_ModernPc", Rectangle.Empty, (m, _) => ApplyTier(m, tierStore, HostControlTierMode.PerGameModern)));
+
+        layout.AddColumns(controls,
+            ("Controls_Profile_Game1to1", "Game 1:1", activeTier == HostControlTierMode.PerGameController, false, HostOverlayPalette.AccentCyan, _ => { }, null),
+            ("Controls_Profile_Global1to1", "Global 1:1", activeTier == HostControlTierMode.GlobalController, false, HostOverlayPalette.AccentCyan, _ => { }, null));
+        _actions.Add(new("Controls_Profile_Game1to1", Rectangle.Empty, (m, _) => ApplyTier(m, tierStore, HostControlTierMode.PerGameController)));
+        _actions.Add(new("Controls_Profile_Global1to1", Rectangle.Empty, (m, _) => ApplyTier(m, tierStore, HostControlTierMode.GlobalController)));
+
+        layout.AddToggle("Controls_Toggle_ModernWasdMouse", "Modern WASD + Mouse", mode == HostControlMode.ModernWasdMouse,
+            HostOverlayPalette.AccentCyan, _ => { }, controls);
+        _actions.Add(new("Controls_Toggle_ModernWasdMouse", Rectangle.Empty, (m, cb) =>
         {
-            HostInputSchemaKind schema = schemas[i];
-            string code = HostInputSchemas.ToShortCode(schema);
-            var rect = new Rectangle(bodyRect.X + (i * (pillW + gap)), bodyRect.Y + 36, pillW, 22);
-            HostOverlayLayoutHelpers.DrawPillButton(canvas, rect, $"Schema {code}", selectedSchema == schema, HostOverlayPalette.AccentCyan);
-            RegisterTarget($"Controls_Schema_{code}", $"Schema {code}", rect, _ => { _pendingSchema = schema; return true; });
-        }
+            HostControlMode next = m.ControlMode == HostControlMode.ModernWasdMouse ? HostControlMode.ClassicTank : HostControlMode.ModernWasdMouse;
+            m.ControlMode = next;
+            _displayMode = next;
+            if (view is not null) view.ControlMode = next;
+            cb?.OnControlModeChanged(next);
+            return true;
+        }));
 
-        CycleSchemaButtonRect = new Rectangle(bodyRect.X, bodyRect.Y + 64, Math.Min(220, bodyRect.Width), 24);
-        HostOverlayLayoutHelpers.DrawPillButton(canvas, CycleSchemaButtonRect, "Cycle Schema (A/B/C)", true, HostOverlayPalette.AccentCyan);
+        string sensText = string.Create(CultureInfo.InvariantCulture, $"{sens:0.00}x");
+        layout.AddStepper("Controls_MouseSens", "Controls_MouseSens_Dec", "Controls_MouseSens_Inc",
+            "Mouse Sensitivity", sensText, HostOverlayPalette.AccentCyan, _ => { }, _ => { }, _ => { }, controls);
+        _actions.Add(new("Controls_MouseSens_Dec", Rectangle.Empty, (m, cb) => StepSensitivity(m, view, cb, -0.25)));
+        _actions.Add(new("Controls_MouseSens_Inc", Rectangle.Empty, (m, cb) => StepSensitivity(m, view, cb, 0.25)));
+        _actions.Add(new("Controls_MouseSens", Rectangle.Empty, (m, cb) => StepSensitivity(m, view, cb, 0.25)));
 
-        ContentBottomY = RenderControlOptions(canvas, bodyRect, bodyRect.Y + 98, controlOptions);
+        string chordLabel = $"Chord: {HostMenuControllerChordCodec.ToDisplayLabel(chord)}";
+        layout.AddColumns(controls,
+            ("Controls_MenuChord", chordLabel, chord != HostMenuControllerChord.None, false, HostOverlayPalette.AccentCyan, _ => { }, null),
+            ("Drawer_ActionButton", "Cycle Control Profile", true, false, HostOverlayPalette.AccentCyan, _ => { }, r => CycleSchemaButtonRect = r));
+        _actions.Add(new("Controls_MenuChord", Rectangle.Empty, (m, cb) =>
+        {
+            HostMenuControllerChord next = HostMenuControllerChordCodec.CycleNext(m.MenuControllerChord);
+            m.MenuControllerChord = next;
+            _displayMenuChord = next;
+            if (view is not null) view.MenuControllerChord = next;
+            cb?.OnMenuControllerChordChanged(next);
+            return true;
+        }));
+        _actions.Add(new("Drawer_ActionButton", Rectangle.Empty, (m, _) =>
+        {
+            HostInputSchemaKind next = HostInputSchemas.CycleNext(m.ActiveSchema);
+            _pendingSchema = next;
+            return true;
+        }));
+
+        AppendControlOptions(layout, controlOptions, controls);
+        if (view is not null) HostDrawerScrollLayout.AppendExtraRows(layout, HostDrawerTabId.Controls, extraRows, view, controls);
+
+        ContentBottomY = layout.Render(canvas, "CONTROLS & INPUT", "Controls", ref scrollOffset, out maxScroll, controls, d => view?.ScrollActiveTab(d));
+        SyncRenderedBounds(controls);
     }
 
     /// <summary>Returns interactive widget bounds produced by the most recent render pass.</summary>
     public IReadOnlyList<HostWidgetBounds> GetWidgets() => _widgets;
 
     /// <summary>Processes a pointer click on the Controls tab using <see cref="EventCallbacks"/>.</summary>
-    public bool TryHandleClick(
-        int x,
-        int y,
-        string? targetId,
-        HostInputMapper inputMapper,
-        ref HostInputSchemaKind selectedSchema) =>
+    public bool TryHandleClick(int x, int y, string? targetId, HostInputMapper inputMapper, ref HostInputSchemaKind selectedSchema) =>
         TryHandleClick(x, y, targetId, inputMapper, ref selectedSchema, EventCallbacks);
 
     /// <summary>Processes a pointer click on the Controls tab and notifies <paramref name="eventCallbacks"/> on option changes.</summary>
     public bool TryHandleClick(
-        int x,
-        int y,
-        string? targetId,
-        HostInputMapper inputMapper,
-        ref HostInputSchemaKind selectedSchema,
-        IHostSessionEventCallbacks? eventCallbacks)
+        int x, int y, string? targetId, HostInputMapper inputMapper,
+        ref HostInputSchemaKind selectedSchema, IHostSessionEventCallbacks? eventCallbacks)
     {
         ArgumentNullException.ThrowIfNull(inputMapper);
         _pendingSchema = null;
 
-        foreach (ClickTarget target in _targets)
+        foreach (ClickAction action in _actions)
         {
             bool match = !string.IsNullOrEmpty(targetId)
-                ? string.Equals(targetId, target.ControlId, StringComparison.OrdinalIgnoreCase)
-                : target.Bounds.Contains(x, y);
+                ? string.Equals(targetId, action.ControlId, StringComparison.OrdinalIgnoreCase)
+                : (!action.Bounds.IsEmpty && action.Bounds.Contains(x, y));
             if (!match) continue;
 
-            _ = target.OnActivate(eventCallbacks ?? EventCallbacks);
+            _ = action.OnActivate(inputMapper, eventCallbacks ?? EventCallbacks);
             if (_pendingSchema is { } nextSchema)
             {
                 selectedSchema = nextSchema;
@@ -118,63 +189,90 @@ public sealed class ControlsTabView
             }
             return true;
         }
-
         return false;
     }
 
-    private int RenderControlOptions(
-        PixelOverlayCanvas canvas,
-        Rectangle bodyRect,
-        int startY,
-        IReadOnlyList<HostControlOptionDescriptor>? options)
+    private void AppendControlOptions(HostDrawerScrollLayout layout, IReadOnlyList<HostControlOptionDescriptor>? options, List<DrawerControl> controls)
     {
-        if (options is null || options.Count == 0) return startY;
-
-        int y = startY;
-        canvas.DrawText(bodyRect.X, y, "GAME CONTROL OPTIONS", HostOverlayPalette.AccentCyan, 1);
-        y += 16;
-
+        if (options is null || options.Count == 0) return;
+        layout.AddText("GAME CONTROL OPTIONS", HostOverlayPalette.AccentCyan);
         foreach (HostControlOptionDescriptor opt in options)
         {
-            if (opt.Choices.Count == 0 || y + 40 > bodyRect.Bottom) continue;
+            if (opt.Choices.Count == 0) continue;
             string current = ResolveChoice(opt);
-            canvas.DrawText(bodyRect.X, y, HostOverlayLayoutHelpers.FitText(opt.Label, bodyRect.Width, 1), HostOverlayPalette.TextPrimary, 1);
-            y += 13;
+            layout.AddText(opt.Label, HostOverlayPalette.TextPrimary);
 
             if (opt.Choices.Count <= 3)
             {
-                int gap = 5;
-                int cw = Math.Max(44, (bodyRect.Width - (gap * (opt.Choices.Count - 1))) / opt.Choices.Count);
+                var cols = new (string, string, bool, bool, RgbaColor, Action<bool>, Action<Rectangle>?)[opt.Choices.Count];
                 for (int i = 0; i < opt.Choices.Count; i++)
                 {
                     string choice = opt.Choices[i];
-                    var rect = new Rectangle(bodyRect.X + (i * (cw + gap)), y, cw, 22);
-                    bool active = string.Equals(current, choice, StringComparison.OrdinalIgnoreCase);
-                    HostOverlayLayoutHelpers.DrawPillButton(canvas, rect, choice, active, HostOverlayPalette.AccentCyan);
                     string optId = opt.OptionId;
-                    RegisterTarget($"Controls_Opt_{optId}_{choice}", choice, rect, cb =>
+                    string cid = $"Controls_Opt_{optId}_{choice}";
+                    cols[i] = (cid, choice, string.Equals(current, choice, StringComparison.OrdinalIgnoreCase), false, HostOverlayPalette.AccentCyan, _ => { }, null);
+                    _actions.Add(new(cid, Rectangle.Empty, (_, cb) =>
                     {
                         _selectedChoices[optId] = choice;
                         cb?.OnControlOptionChanged(optId, choice);
                         return true;
-                    });
+                    }));
                 }
+                layout.AddColumns(controls, cols);
             }
             else
             {
-                var rect = new Rectangle(bodyRect.X, y, bodyRect.Width, 22);
-                HostOverlayLayoutHelpers.DrawPillButton(canvas, rect, $"{current} (Cycle)", true, HostOverlayPalette.AccentCyan);
                 HostControlOptionDescriptor captured = opt;
-                RegisterTarget($"Controls_Opt_{opt.OptionId}", current, rect, cb =>
+                string cid = $"Controls_Opt_{opt.OptionId}";
+                layout.AddPill(cid, $"{current} (Cycle)", true, HostOverlayPalette.AccentCyan, _ => { }, controls);
+                _actions.Add(new(cid, Rectangle.Empty, (_, cb) =>
                 {
                     string next = CycleOption(captured);
                     cb?.OnControlOptionChanged(captured.OptionId, next);
                     return true;
-                });
+                }));
             }
-            y += 28;
         }
-        return y;
+    }
+
+    private void SyncRenderedBounds(List<DrawerControl> rendered)
+    {
+        var byId = new Dictionary<string, Rectangle>(StringComparer.OrdinalIgnoreCase);
+        foreach (DrawerControl c in rendered)
+        {
+            byId[c.ControlId] = c.Bounds;
+            _widgets.Add(new(c.ControlId, c.ControlType, c.Label, c.Bounds, true));
+            if (c.ControlId.StartsWith("Controls_Scroll", StringComparison.OrdinalIgnoreCase) ||
+                c.ControlId.StartsWith("ExtraRow_", StringComparison.OrdinalIgnoreCase))
+            {
+                DrawerControl captured = c;
+                _actions.Add(new(c.ControlId, c.Bounds, (_, _) => { captured.OnClick(false); return true; }));
+            }
+        }
+        for (int i = 0; i < _actions.Count; i++)
+        {
+            if (byId.TryGetValue(_actions[i].ControlId, out Rectangle r))
+                _actions[i] = _actions[i] with { Bounds = r };
+        }
+    }
+
+    private bool ApplyTier(HostInputMapper mapper, HostControlTierStore? tierStore, HostControlTierMode tier)
+    {
+        mapper.ActiveControlTier = tier;
+        if (tierStore is not null) tierStore.ActiveTier = tier;
+        _displayTier = tier;
+        return true;
+    }
+
+    private bool StepSensitivity(HostInputMapper mapper, F1SettingsDrawerView? view, IHostSessionEventCallbacks? cb, double delta)
+    {
+        double current = view?.MouseSensitivity ?? mapper.MouseSensitivity;
+        double next = Math.Clamp(Math.Round(current + delta, 2), 0.25, 3.0);
+        mapper.MouseSensitivity = next;
+        _displayMouseSens = next;
+        if (view is not null) view.MouseSensitivity = next;
+        cb?.OnMouseSensitivityChanged(next);
+        return true;
     }
 
     private string ResolveChoice(HostControlOptionDescriptor opt)
@@ -197,11 +295,5 @@ public sealed class ControlsTabView
         string next = opt.Choices[idx];
         _selectedChoices[opt.OptionId] = next;
         return next;
-    }
-
-    private void RegisterTarget(string id, string label, Rectangle rect, Func<IHostSessionEventCallbacks?, bool> onActivate)
-    {
-        _targets.Add(new ClickTarget(id, rect, onActivate));
-        _widgets.Add(new HostWidgetBounds(id, "Button", label, rect, true));
     }
 }
