@@ -206,144 +206,21 @@ internal static partial class Program
             }
         }
 
-        string effectiveBackendId = !string.IsNullOrWhiteSpace(opts.BackendId) ? opts.BackendId : video.BackendId;
-        HostRenderBackendKind preferredKind = ParseHostBackendKind(effectiveBackendId);
-        int effectiveScale = opts.ResolutionScale ?? video.ResolutionScale;
-        (HostDisplayMode displayMode, bool isFullscreen) = RecompLaunchFlagRouter.ResolveDisplayMode(opts, video, core);
-        HostAspectRatioMode aspectRatioMode = opts.AspectRatioMode ?? HostAspectRatioModeCodec.Parse(video.AspectRatioMode);
-        HostOverscanCrop overscanCropPx = video.OverscanCropPx is { } crop
-            ? new HostOverscanCrop(Math.Max(0, crop.Top), Math.Max(0, crop.Bottom), Math.Max(0, crop.Left), Math.Max(0, crop.Right))
-            : HostOverscanCrop.None;
-
+        string effectiveBackendId = !string.IsNullOrWhiteSpace(opts.BackendId) ? opts.BackendId : bundle.Video.BackendId;
+        HostRenderBackendKind preferredKind = DemoCartSessionHelper.ParseHostBackendKind(effectiveBackendId);
+        int effectiveScale = opts.ResolutionScale ?? bundle.Video.ResolutionScale;
         string executionTier = RecompLaunchFlagRouter.ResolveEffectiveExecutionTier(opts, manifest: null, core);
-        bool isJitEnabled = opts.JitBringup || core.IsJitEnabled ||
-                            (!string.Equals(executionTier, "staticAotOnly", StringComparison.OrdinalIgnoreCase) &&
-                             !string.Equals(executionTier, "interpreterOracle", StringComparison.OrdinalIgnoreCase));
-        double ffMultiplier = Math.Clamp(opts.FastForwardMultiplier ?? core.FastForwardMultiplier, 2.0, 4.0);
-        string? mediaPath = null;
-        if (!string.IsNullOrWhiteSpace(opts.MediaPathOverride))
-        {
-            string fullMedia = Path.GetFullPath(opts.MediaPathOverride.Trim());
-            mediaPath = containmentRoot is not null ? AppEnvironment.AssertPathContained(fullMedia, containmentRoot) : fullMedia;
-        }
-
-        var mixerSettings = new HostAudioMixerSettings
-        {
-            AudioOutputDevice = !string.IsNullOrWhiteSpace(opts.AudioOutputDevice) ? opts.AudioOutputDevice : audio.AudioOutputDevice,
-            MasterVolume = opts.MasterVolume ?? audio.MasterVolume,
-            IsAudioMuted = opts.AudioMuted ?? audio.IsAudioMuted,
-            BgmVolume = opts.BgmVolume ?? audio.BgmVolume,
-            SfxVolume = opts.SfxVolume ?? audio.SfxVolume,
-            VoiceVolume = opts.VoiceVolume ?? audio.VoiceVolume,
-            ShouldMuteOnFocusLoss = opts.MuteOnFocusLoss ?? audio.ShouldMuteOnFocusLoss,
-            AudioLowPassHz = opts.AudioLowPassHz ?? audio.AudioLowPassHz,
-            AudioHighPassHz = opts.AudioHighPassHz ?? audio.AudioHighPassHz,
-            AudioStereoWidthPercent = opts.AudioStereoWidthPercent ?? audio.AudioStereoWidthPercent,
-            ResamplingMode = opts.AudioResamplingMode ?? HostAudioResamplingModeCodec.Parse(audio.AudioResamplingMode),
-            FastForwardAudioMode = opts.FastForwardAudioMode ?? HostFastForwardAudioModeCodec.Parse(audio.FastForwardAudioMode)
-        };
-
-        var resilience = new HostExecutionResilienceOptions
-        {
-            DataDirectory = appEnv.DataDirectory,
-            ModuleId = "host-demo",
-            IsJitEnabled = isJitEnabled,
-            ExecutionTierMode = executionTier,
-            ShouldPreloadMediaToRam = opts.PreloadMediaToRam ?? core.ShouldPreloadMediaToRam,
-            PreloadMediaPath = mediaPath,
-            IsFastBootEnabled = opts.FastBoot ?? core.IsFastBootEnabled,
-            IsSafeModeActive = !opts.SafeModeReset && core.IsSafeModeActive,
-            ShouldFastLoadData = core.ShouldFastLoadData,
-            FastForwardMultiplier = ffMultiplier
-        };
-
         string verLabel = $"reEngine.Host v{ReEnginePackagingConstants.Version}";
-        var descriptor = new HostDrawerDescriptor("reEngine Visible Host Demo", verLabel, executionTier, effectiveBackendId, effectiveScale, "B");
+        string title = opts.DemoCart ? "reEngine Clean-Room Demo / Test Cart" : "reEngine Visible Host Demo";
+        var descriptor = new HostDrawerDescriptor(title, verLabel, executionTier, effectiveBackendId, effectiveScale, "B");
         var runner = new HostSessionRunner(1280, 720, descriptor);
-        var hostOpts = new HostSessionOptions
-        {
-            WindowTitle = $"{verLabel} — Live Clean-Room Session",
-            WindowWidth = 1280,
-            WindowHeight = 720,
-            ContentWidth = 320,
-            ContentHeight = 240,
-            TargetFps = opts.TargetFps ?? video.TargetFps,
-            HeadlessFrameCount = opts.Frames,
-            DumpFramePath = opts.DumpScreenshotPath,
-            DumpAudioPath = opts.DumpAudioPath,
-            AutomationPort = opts.AutomationPort,
-            AutomationToken = opts.AutomationToken,
-            AllowedSnapshotRoot = containmentRoot ?? appEnv.DataDirectory,
-            RequireVisibleWindow = true,
-            ShowMediaGateInitially = opts.PreloadMediaFlag,
-            PreferredBackend = preferredKind,
-            RequireBackend = opts.RequireBackend,
-            IsFullscreen = isFullscreen,
-            DisplayMode = displayMode,
-            MonitorIndex = opts.MonitorIndex ?? video.MonitorIndex,
-            BackgroundFpsCap = opts.BackgroundFpsCap ?? video.BackgroundFpsCap,
-            IsVsyncEnabled = opts.Vsync ?? video.IsVsyncEnabled,
-            FastForwardMultiplier = ffMultiplier,
-            HudAnchorMode = opts.HudAnchorMode ?? HostHudAnchorModeCodec.Parse(video.HudAnchorMode),
-            VideoFilterMode = opts.VideoFilterMode ?? HostVideoFilterModeCodec.Parse(video.VideoFilterMode),
-            IsTrueColor24BitEnabled = opts.TrueColor ?? video.IsTrueColor24BitEnabled,
-            IsDitheringEnabled = opts.Dithering ?? video.IsDitheringEnabled,
-            ScreenshotCaptureMode = opts.ScreenshotCaptureMode ?? HostScreenshotCaptureModeCodec.Parse(video.ScreenshotCaptureMode),
-            ScreenshotsDirectory = Path.Combine(appEnv.DataDirectory, "screenshots"),
-            ModuleId = "host-demo",
-            AudioDriverOverride = !string.IsNullOrWhiteSpace(opts.AudioDriverOverride) ? opts.AudioDriverOverride : audio.AudioDriver,
-            AudioSettings = mixerSettings,
-            ExecutionResilience = resilience,
-            HdPacksDirectory = Path.Combine(appEnv.DataDirectory, "hdpacks"),
-            IsHdTexturePackEnabled = opts.HdTexturePacks || video.IsHdTexturePackEnabled,
-            AspectRatioMode = aspectRatioMode,
-            OverscanCropPx = overscanCropPx,
-            IsFastForwardEnabled = video.IsFastForwardEnabled,
-            DrawerDescriptor = descriptor,
-            SafeModeCallback = active => { core.IsSafeModeActive = active; effectiveStore.SaveCore(core); }
-        };
+        HostSessionOptions hostOpts = DemoCartSessionHelper.BuildSessionOptions(
+            opts, appEnv, containmentRoot, bundle, effectiveStore, descriptor, preferredKind, verLabel);
 
-        log("INFO", $"Starting HostSessionRunner (backend={preferredKind}, displayMode={hostOpts.DisplayMode}, filter={hostOpts.VideoFilterMode}, aspect={hostOpts.AspectRatioMode}, tier={executionTier}, safeMode={resilience.IsSafeModeActive}, automationPort={hostOpts.AutomationPort?.ToString() ?? "off"}).");
+        log("INFO", $"Starting HostSessionRunner (demoCart={hostOpts.IsDemoCartMode}, backend={preferredKind}, displayMode={hostOpts.DisplayMode}, filter={hostOpts.VideoFilterMode}, aspect={hostOpts.AspectRatioMode}, tier={executionTier}, safeMode={hostOpts.ExecutionResilience?.IsSafeModeActive}, automationPort={hostOpts.AutomationPort?.ToString() ?? "off"}).");
         HostSessionResult res = await runner.RunAsync(hostOpts, new DemoHostCallbacks(), msg => log("HEARTBEAT", msg), ct).ConfigureAwait(false);
         if (res.ExitCode != 0) Console.Error.WriteLine(res.Summary);
         else Console.WriteLine(res.Summary);
         return res.ExitCode;
-    }
-
-    private static HostRenderBackendKind ParseHostBackendKind(string? backendId) => backendId?.ToLowerInvariant() switch
-    {
-        HostRenderBackendIds.OpenGl => HostRenderBackendKind.OpenGl,
-        HostRenderBackendIds.Vulkan => HostRenderBackendKind.Vulkan,
-        HostRenderBackendIds.DirectX => HostRenderBackendKind.DirectX,
-        "parallelcpu" => HostRenderBackendKind.ParallelCpu,
-        HostRenderBackendIds.Metal => HostRenderBackendKind.Metal,
-        _ => HostRenderBackendKind.Software
-    };
-
-    private sealed class DemoHostCallbacks : IHostSessionCallbacks
-    {
-        public ValueTask OnFrameTickAsync(long frameNumber, HostInputFrame input, Span<byte> rgbaFramebuffer, int width, int height, CancellationToken ct)
-        {
-            int shift = (int)(frameNumber % 256);
-            for (int y = 0; y < height; y++)
-            {
-                for (int x = 0; x < width; x++)
-                {
-                    int idx = ((y * width) + x) * 4;
-                    bool checker = ((x / 16) + (y / 16)) % 2 == 0;
-                    rgbaFramebuffer[idx] = checker ? (byte)((24 + shift) & 0x7F) : (byte)18;
-                    rgbaFramebuffer[idx + 1] = checker ? (byte)110 : (byte)42;
-                    rgbaFramebuffer[idx + 2] = checker ? (byte)168 : (byte)84;
-                    rgbaFramebuffer[idx + 3] = 255;
-                }
-            }
-            return ValueTask.CompletedTask;
-        }
-
-        public int ReadAudioSamples(Span<short> interleavedStereoPcm)
-        {
-            interleavedStereoPcm.Clear();
-            return Math.Min(interleavedStereoPcm.Length, 1024);
-        }
     }
 }

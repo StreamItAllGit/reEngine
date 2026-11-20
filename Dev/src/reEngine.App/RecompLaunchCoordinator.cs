@@ -14,6 +14,14 @@ using reEngine.Host.Settings;
 
 namespace reEngine.App;
 
+internal sealed record EngineCrashFallbackPrompt(
+    string ModuleId,
+    InstalledEngineCandidate FailedEngine,
+    InstalledEngineCandidate FallbackEngine,
+    int ExitCode,
+    SessionRecoveryCandidate RecoveryCandidate,
+    string Message);
+
 internal sealed class RecompLaunchCoordinator
 {
     private readonly UpdateCoordinator _updateCoordinator;
@@ -21,6 +29,8 @@ internal sealed class RecompLaunchCoordinator
     private readonly IReEngineSettingsStore? _settingsStore;
 
     internal Func<InstalledEngineCandidate, ChildLaunchPlan, ProcessStartInfo>? StartInfoOverride { get; init; }
+    internal Func<EngineCrashFallbackPrompt, bool>? CrashFallbackPrompter { get; init; }
+    internal string? BundledEnginesDirectoryOverride { get; init; }
 
     public RecompLaunchCoordinator(
         UpdateCoordinator updateCoordinator,
@@ -99,8 +109,9 @@ internal sealed class RecompLaunchCoordinator
         _log("INFO", $"Loaded module '{loaded.Manifest.ModuleId}' v{loaded.Manifest.Version} (engine={loaded.Manifest.EngineId}, track={loaded.Manifest.CompatibleEngineTrack}).");
         _log("INFO", $"Preload ROM directory '{loaded.PreloadMedia.PreloadDirectory}' exists={loaded.PreloadMedia.DirectoryExists}, files={loaded.PreloadMedia.DiscoveredMediaFiles.Count}, primary='{loaded.PreloadMedia.PrimaryMediaPath ?? "none"}'.");
 
+        string? bundledEnginesDir = ResolveBundledEnginesDir(loaded.ModuleRootDirectory, containmentRoot);
         var resolver = new EngineVersionResolver();
-        EngineResolutionResult resolution = resolver.ResolveForManifest(enginesDir, loaded.Manifest, settings);
+        EngineResolutionResult resolution = resolver.ResolveForManifest(enginesDir, loaded.Manifest, settings, bundledEnginesDir);
         if (!resolution.Found || resolution.SelectedEngine is null)
         {
             _log("ERROR", resolution.DiagnosticMessage);
@@ -108,9 +119,8 @@ internal sealed class RecompLaunchCoordinator
             return 1;
         }
 
-        bool effectiveFullscreen = launchOptions?.DisplayMode is HostDisplayMode dm
-            ? dm != HostDisplayMode.Windowed
-            : (launchOptions?.Fullscreen == true || settingsBundle.Video.IsFullscreen || settings.IsFullscreen);
+        (_, bool effectiveFullscreen) = RecompLaunchFlagRouter.ResolveDisplayMode(
+            launchOptions ?? new RecompLaunchOptions(), settingsBundle.Video, settings);
         string? effectiveAudioDriver = !string.IsNullOrWhiteSpace(launchOptions?.AudioDriverOverride)
             ? launchOptions!.AudioDriverOverride
             : (settingsBundle.Audio.AudioDriver ?? settings.AudioDriver);
@@ -138,12 +148,19 @@ internal sealed class RecompLaunchCoordinator
             return 0;
         }
 
-        return await SpawnEngineAsync(
+        int shutdownTimeoutMs = effectiveOpts.ShutdownTimeoutMs ?? settings.ShutdownTimeoutMs ?? 3000;
+        int exitCode = await SpawnEngineAsync(
             resolution.SelectedEngine,
             plan,
             waitForChildExit: effectiveOpts.ShouldWaitForExit,
-            shutdownTimeoutMs: effectiveOpts.ShutdownTimeoutMs ?? settings.ShutdownTimeoutMs ?? 3000,
+            shutdownTimeoutMs,
             ct).ConfigureAwait(false);
+
+        if (exitCode is 0 or 130 or 6) return exitCode;
+
+        return await TryCrashFallbackRelaunchAsync(
+            resolver, loaded, enginesDir, bundledEnginesDir, resolution.SelectedEngine, plan,
+            effectiveOpts, settingsBundle, appEnv, containmentRoot, shutdownTimeoutMs, exitCode, ct).ConfigureAwait(false);
     }
 
     internal static ChildLaunchPlan BuildChildLaunchPlan(
@@ -252,6 +269,65 @@ internal sealed class RecompLaunchCoordinator
 
         _log("INFO", $"Launched '{Path.GetFileName(engine.ExecutablePath)}' (PID {proc.Id}) interactively.");
         return 0;
+    }
+
+    private async Task<int> TryCrashFallbackRelaunchAsync(
+        EngineVersionResolver resolver, RecompPackageLoadResult loaded, string enginesDir, string? bundledEnginesDir,
+        InstalledEngineCandidate failedEngine, ChildLaunchPlan originalPlan, RecompLaunchOptions effectiveOpts,
+        ReEngineSettingsBundle settingsBundle, AppEnvironment appEnv, string? containmentRoot, int shutdownTimeoutMs, int exitCode, CancellationToken ct)
+    {
+        EngineResolutionResult fallback = resolver.TryResolveBundledOrTargetFallback(enginesDir, loaded.Manifest, failedEngine.Version, bundledEnginesDir);
+        if (!fallback.Found || fallback.SelectedEngine is null)
+        {
+            _log("WARN", $"Engine '{failedEngine.EngineId}' v{failedEngine.Version} exited abnormally (code {exitCode}); {fallback.DiagnosticMessage}");
+            return exitCode;
+        }
+
+        SessionRecoveryCandidate recovery = SessionRecoveryLocator.FindClosestRecovery(originalPlan.ModuleDataDirectory, effectiveOpts.SaveDirOverride, containmentRoot);
+        string recoveryNote = recovery.Found
+            ? $" Closest recovery point: {recovery.Kind} '{Path.GetFileName(recovery.FilePath)}' ({recovery.ModifiedAtUtc:yyyy-MM-dd HH:mm:ss} UTC)."
+            : string.Empty;
+        string msg = $"{failedEngine.EngineId} v{failedEngine.Version} exited unexpectedly (code {exitCode}).{Environment.NewLine}{Environment.NewLine}" +
+                     $"Relaunch '{loaded.Manifest.Title}' in this session on fallback {fallback.SelectedEngine.EngineId} v{fallback.SelectedEngine.Version}?{recoveryNote}";
+        var prompt = new EngineCrashFallbackPrompt(loaded.Manifest.ModuleId, failedEngine, fallback.SelectedEngine, exitCode, recovery, msg);
+
+        if (!ApproveCrashFallback(prompt, effectiveOpts, appEnv)) return exitCode;
+
+        _log("INFO", $"Relaunching '{loaded.Manifest.ModuleId}' on fallback {fallback.SelectedEngine.EngineId} v{fallback.SelectedEngine.Version} ({fallback.DiagnosticMessage}).");
+        if (recovery.Found) _log("INFO", $"Recovery artifact detected: {recovery.DiagnosticMessage}");
+        ChildLaunchPlan fallbackPlan = RecompLaunchPlanBuilder.Build(loaded, appEnv, containmentRoot, effectiveOpts, fallback.SelectedEngine, _log, settingsBundle);
+        return await SpawnEngineAsync(fallback.SelectedEngine, fallbackPlan, effectiveOpts.ShouldWaitForExit, shutdownTimeoutMs, ct).ConfigureAwait(false);
+    }
+
+    private bool ApproveCrashFallback(EngineCrashFallbackPrompt prompt, RecompLaunchOptions opts, AppEnvironment appEnv)
+    {
+        if (CrashFallbackPrompter is not null) return CrashFallbackPrompter(prompt);
+        if (opts.Headless || opts.Json || appEnv.DryRun || IsIsolatedTestEnv() || !Environment.UserInteractive)
+        {
+            _log("INFO", $"Crash fallback prompt suppressed in non-interactive mode (exit={prompt.ExitCode}, fallback={prompt.FallbackEngine.EngineId} v{prompt.FallbackEngine.Version}).");
+            return false;
+        }
+        return System.Windows.Forms.MessageBox.Show(
+            prompt.Message, "reEngine — Engine Crash Recovery",
+            System.Windows.Forms.MessageBoxButtons.YesNo, System.Windows.Forms.MessageBoxIcon.Warning) == System.Windows.Forms.DialogResult.Yes;
+    }
+
+    private string? ResolveBundledEnginesDir(string moduleRootDir, string? containmentRoot)
+    {
+        string? candidate = !string.IsNullOrWhiteSpace(BundledEnginesDirectoryOverride)
+            ? Path.GetFullPath(BundledEnginesDirectoryOverride.Trim())
+            : Path.Combine(moduleRootDir, "engines");
+        if (!Directory.Exists(candidate)) return null;
+        return !string.IsNullOrWhiteSpace(containmentRoot) ? AppEnvironment.AssertPathContained(candidate, containmentRoot) : candidate;
+    }
+
+    private static bool IsIsolatedTestEnv()
+    {
+        string? value = Environment.GetEnvironmentVariable("APP_ISOLATED_TEST");
+        return string.Equals(value, "1", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(value, "true", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(value, "yes", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(value, "on", StringComparison.OrdinalIgnoreCase);
     }
 
     private static string QuoteArg(string arg) =>

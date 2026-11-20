@@ -233,77 +233,175 @@ public sealed class EngineVersionResolver
             .ToList();
     }
 
-    /// <summary>Resolves the highest compatible installed engine matching <paramref name="manifest"/> tracks and minimum version.</summary>
+    /// <summary>Resolves the highest compatible installed engine matching <paramref name="manifest"/> minimum version and compatibility rules.</summary>
     public EngineResolutionResult ResolveForManifest(string enginesRootDir, RecompPackageManifest manifest) =>
         ResolveForManifest(enginesRootDir, manifest, settings: null);
 
-    /// <summary>Resolves the highest compatible installed engine honoring pinned overrides, <c>supportedEngineTracks</c>, and aliases.</summary>
+    /// <summary>Resolves the highest compatible installed engine honoring pinned overrides, compatibility exclusions, and aliases.</summary>
     public EngineResolutionResult ResolveForManifest(
         string enginesRootDir,
         RecompPackageManifest manifest,
-        ReEngineSettings? settings)
+        ReEngineSettings? settings) =>
+        ResolveForManifest(enginesRootDir, manifest, settings, bundledEnginesDir: null, excludedVersions: null);
+
+    /// <summary>
+    /// Resolves an installed <c>re*</c> engine following R01 §3.3 precedence:
+    /// per-module pin -&gt; per-engine alias pin -&gt; latest compatible <c>.ready</c> release -&gt; bundled fallback.
+    /// </summary>
+    /// <param name="enginesRootDir">Root directory containing side-by-side <c>&lt;engineId&gt;\v&lt;Ver&gt;\</c> installations.</param>
+    /// <param name="manifest">Loaded <c>.recomp</c> package manifest.</param>
+    /// <param name="settings">Optional suite settings supplying <c>pinnedEngineVersions</c>.</param>
+    /// <param name="bundledEnginesDir">Optional module-bundled engines root for <c>"bundled"</c> pins or fallback.</param>
+    /// <param name="excludedVersions">Optional set of versions excluded after prior boot crashes.</param>
+    public EngineResolutionResult ResolveForManifest(
+        string enginesRootDir,
+        RecompPackageManifest manifest,
+        ReEngineSettings? settings,
+        string? bundledEnginesDir = null,
+        IReadOnlySet<SemVer>? excludedVersions = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(enginesRootDir);
         ArgumentNullException.ThrowIfNull(manifest);
-
         if (!SemVer.TryParse(manifest.EngineVersion, out SemVer minVersion))
-        {
             return new EngineResolutionResult(false, null, Array.Empty<InstalledEngineCandidate>(), $"Invalid manifest engineVersion '{manifest.EngineVersion}'.");
-        }
 
         IReadOnlyList<InstalledEngineCandidate> candidates = DiscoverInstalledEngines(enginesRootDir, manifest.EngineId);
-        if (TryResolvePinned(candidates, manifest.EngineId, settings?.PinnedEngineVersions, out InstalledEngineCandidate? pinned))
-        {
-            return new EngineResolutionResult(true, pinned, candidates, $"Resolved pinned {pinned!.EngineId} v{pinned.Version}.");
-        }
+        if (TryResolvePinned(candidates, manifest, minVersion, settings?.PinnedEngineVersions, bundledEnginesDir, excludedVersions, out InstalledEngineCandidate? pinned, out string pinDesc))
+            return new EngineResolutionResult(true, pinned, candidates.Count > 0 ? candidates : [pinned!], pinDesc);
 
-        IReadOnlyList<string> tracks = manifest.SupportedEngineTracks is { Count: > 0 }
-            ? manifest.SupportedEngineTracks
-            : [manifest.CompatibleEngineTrack];
+        InstalledEngineCandidate? selected = candidates
+            .Where(c => c.Version.CompareTo(minVersion) >= 0 &&
+                        !EngineCompatibilityEvaluator.IsVersionIncompatible(c.Version, manifest.IncompatibleEngineVersions) &&
+                        !IsVersionExcluded(c.Version, excludedVersions))
+            .OrderByDescending(c => string.Equals(c.EngineId, manifest.EngineId, StringComparison.OrdinalIgnoreCase))
+            .ThenByDescending(c => c.Version)
+            .FirstOrDefault();
+        if (selected is not null)
+            return new EngineResolutionResult(true, selected, candidates, $"Resolved {selected.EngineId} v{selected.Version} (min '{minVersion}').");
 
-        InstalledEngineCandidate? selected = null;
-        string matchedTrack = manifest.CompatibleEngineTrack;
-        foreach (string track in tracks)
-        {
-            selected = candidates
-                .Where(c => EngineTrackMatcher.IsTrackCompatible(track, c.Version) && c.Version.CompareTo(minVersion) >= 0)
-                .OrderByDescending(c => string.Equals(c.EngineId, manifest.EngineId, StringComparison.OrdinalIgnoreCase))
-                .ThenByDescending(c => c.Version)
-                .FirstOrDefault();
-            if (selected is not null)
-            {
-                matchedTrack = track;
-                break;
-            }
-        }
+        if (TrySelectBundledCandidate(bundledEnginesDir, manifest, minVersion, excludedVersions, out InstalledEngineCandidate? bundled))
+            return new EngineResolutionResult(true, bundled, candidates.Count > 0 ? candidates : [bundled!], $"Resolved bundled fallback {bundled!.EngineId} v{bundled.Version} (min '{minVersion}').");
 
-        if (selected is null)
-        {
-            return new EngineResolutionResult(
-                false,
-                null,
-                candidates,
-                $"No installed '{manifest.EngineId}' engine satisfies tracks [{string.Join(", ", tracks)}] and min '{minVersion}' under '{enginesRootDir}'.");
-        }
-
-        return new EngineResolutionResult(true, selected, candidates, $"Resolved {selected.EngineId} v{selected.Version} (track '{matchedTrack}', min '{minVersion}').");
+        return new EngineResolutionResult(false, null, candidates, $"No installed '{manifest.EngineId}' engine satisfies min '{minVersion}' (excluding incompatible/crashed builds) under '{enginesRootDir}'.");
     }
 
-    private static bool TryResolvePinned(
-        IReadOnlyList<InstalledEngineCandidate> candidates,
-        string engineId,
-        IDictionary<string, string>? pinnedMap,
-        out InstalledEngineCandidate? pinned)
+    /// <summary>
+    /// Attempts to resolve a bundled runtime or exact declared target <c>engineVersion</c> fallback after <paramref name="failedVersion"/> crashes.
+    /// </summary>
+    /// <param name="enginesRootDir">Root directory containing installed side-by-side platform engines.</param>
+    /// <param name="manifest">Loaded <c>.recomp</c> package manifest.</param>
+    /// <param name="failedVersion">Engine version that crashed or exited abnormally.</param>
+    /// <param name="bundledEnginesDir">Optional module-bundled engines root inspected before installed target fallback.</param>
+    public EngineResolutionResult TryResolveBundledOrTargetFallback(
+        string enginesRootDir,
+        RecompPackageManifest manifest,
+        SemVer failedVersion,
+        string? bundledEnginesDir = null)
     {
-        pinned = null;
-        if (pinnedMap is null || pinnedMap.Count == 0) return false;
-        foreach (string eqId in EngineAliasCatalog.GetEquivalentIds(engineId))
+        ArgumentException.ThrowIfNullOrWhiteSpace(enginesRootDir);
+        ArgumentNullException.ThrowIfNull(manifest);
+        if (!SemVer.TryParse(manifest.EngineVersion, out SemVer minVersion))
+            return new EngineResolutionResult(false, null, Array.Empty<InstalledEngineCandidate>(), $"Invalid manifest engineVersion '{manifest.EngineVersion}'.");
+
+        HashSet<SemVer> excluded = [failedVersion];
+        if (TrySelectBundledCandidate(bundledEnginesDir, manifest, minVersion, excluded, out InstalledEngineCandidate? bundled))
+            return new EngineResolutionResult(true, bundled, [bundled!], $"Resolved bundled fallback {bundled!.EngineId} v{bundled.Version} after v{failedVersion} failed.");
+
+        IReadOnlyList<InstalledEngineCandidate> candidates = DiscoverInstalledEngines(enginesRootDir, manifest.EngineId);
+        InstalledEngineCandidate? target = candidates
+            .Where(c => c.Version.CompareTo(minVersion) == 0 &&
+                        c.Version.CompareTo(failedVersion) != 0 &&
+                        !EngineCompatibilityEvaluator.IsVersionIncompatible(c.Version, manifest.IncompatibleEngineVersions))
+            .OrderByDescending(c => string.Equals(c.EngineId, manifest.EngineId, StringComparison.OrdinalIgnoreCase))
+            .FirstOrDefault();
+
+        return target is not null
+            ? new EngineResolutionResult(true, target, candidates, $"Resolved target fallback {target.EngineId} v{target.Version} after v{failedVersion} failed.")
+            : new EngineResolutionResult(false, null, candidates, $"No bundled or target v{minVersion} fallback available for '{manifest.EngineId}' after v{failedVersion} failed.");
+    }
+
+    private bool TryResolvePinned(
+        IReadOnlyList<InstalledEngineCandidate> candidates, RecompPackageManifest manifest, SemVer minVersion,
+        IDictionary<string, string>? pinnedMap, string? bundledEnginesDir, IReadOnlySet<SemVer>? excludedVersions,
+        out InstalledEngineCandidate? pinned, out string diagnostic)
+    {
+        pinned = null; diagnostic = string.Empty;
+        if (!TryFindPinEntry(manifest, pinnedMap, out string pinKey, out string pinValue)) return false;
+        if (string.Equals(pinValue, "latest", StringComparison.OrdinalIgnoreCase)) return false;
+
+        if (string.Equals(pinValue, "bundled", StringComparison.OrdinalIgnoreCase))
         {
-            KeyValuePair<string, string> match = pinnedMap.FirstOrDefault(kvp => string.Equals(kvp.Key, eqId, StringComparison.OrdinalIgnoreCase));
-            if (string.IsNullOrWhiteSpace(match.Value) || !SemVer.TryParse(match.Value, out SemVer pinnedVer)) continue;
-            pinned = candidates.FirstOrDefault(c => c.Version.CompareTo(pinnedVer) == 0);
-            if (pinned is not null) return true;
+            if (TrySelectBundledCandidate(bundledEnginesDir, manifest, minVersion, excludedVersions, out pinned))
+            {
+                diagnostic = $"Resolved pinned bundled {pinned!.EngineId} v{pinned.Version} (pin='{pinKey}').";
+                return true;
+            }
+            pinned = FindExactCandidate(candidates, manifest.EngineId, minVersion, excludedVersions);
+            if (pinned is not null) { diagnostic = $"Resolved pinned bundled-target {pinned.EngineId} v{pinned.Version} (pin='{pinKey}')."; return true; }
+            return false;
         }
+
+        if (string.Equals(pinValue, "target", StringComparison.OrdinalIgnoreCase))
+        {
+            pinned = FindExactCandidate(candidates, manifest.EngineId, minVersion, excludedVersions);
+            if (pinned is not null) { diagnostic = $"Resolved pinned target {pinned.EngineId} v{pinned.Version} (pin='{pinKey}')."; return true; }
+            return false;
+        }
+
+        if (SemVer.TryParse(pinValue, out SemVer pinnedVer))
+        {
+            pinned = FindExactCandidate(candidates, manifest.EngineId, pinnedVer, excludedVersions);
+            if (pinned is not null) { diagnostic = $"Resolved pinned {pinned.EngineId} v{pinned.Version} (pin='{pinKey}')."; return true; }
+        }
+        return false;
+    }
+
+    private static bool TryFindPinEntry(RecompPackageManifest manifest, IDictionary<string, string>? pinnedMap, out string pinKey, out string pinValue)
+    {
+        pinKey = string.Empty; pinValue = string.Empty;
+        if (pinnedMap is null || pinnedMap.Count == 0) return false;
+        IEnumerable<string> lookupOrder = string.IsNullOrWhiteSpace(manifest.ModuleId)
+            ? EngineAliasCatalog.GetEquivalentIds(manifest.EngineId)
+            : new[] { manifest.ModuleId.Trim() }.Concat(EngineAliasCatalog.GetEquivalentIds(manifest.EngineId));
+
+        foreach (string keyCandidate in lookupOrder)
+        {
+            KeyValuePair<string, string> match = pinnedMap.FirstOrDefault(kvp => string.Equals(kvp.Key, keyCandidate, StringComparison.OrdinalIgnoreCase));
+            if (string.IsNullOrWhiteSpace(match.Value)) continue;
+            pinKey = match.Key; pinValue = match.Value.Trim();
+            return true;
+        }
+        return false;
+    }
+
+    private bool TrySelectBundledCandidate(
+        string? bundledEnginesDir, RecompPackageManifest manifest, SemVer minVersion, IReadOnlySet<SemVer>? excludedVersions, out InstalledEngineCandidate? selected)
+    {
+        selected = null;
+        if (string.IsNullOrWhiteSpace(bundledEnginesDir) || !Directory.Exists(bundledEnginesDir)) return false;
+
+        List<InstalledEngineCandidate> valid = DiscoverInstalledEngines(bundledEnginesDir, manifest.EngineId)
+            .Where(c => !IsVersionExcluded(c.Version, excludedVersions) &&
+                        !EngineCompatibilityEvaluator.IsVersionIncompatible(c.Version, manifest.IncompatibleEngineVersions))
+            .ToList();
+        if (valid.Count == 0) return false;
+
+        selected = valid.Where(c => c.Version.CompareTo(minVersion) == 0).OrderByDescending(c => string.Equals(c.EngineId, manifest.EngineId, StringComparison.OrdinalIgnoreCase)).FirstOrDefault()
+            ?? valid.Where(c => c.Version.CompareTo(minVersion) >= 0).OrderByDescending(c => string.Equals(c.EngineId, manifest.EngineId, StringComparison.OrdinalIgnoreCase)).ThenByDescending(c => c.Version).FirstOrDefault()
+            ?? valid.OrderByDescending(c => string.Equals(c.EngineId, manifest.EngineId, StringComparison.OrdinalIgnoreCase)).ThenByDescending(c => c.Version).FirstOrDefault();
+        return selected is not null;
+    }
+
+    private static InstalledEngineCandidate? FindExactCandidate(IReadOnlyList<InstalledEngineCandidate> candidates, string engineId, SemVer targetVersion, IReadOnlySet<SemVer>? excludedVersions) =>
+        IsVersionExcluded(targetVersion, excludedVersions)
+            ? null
+            : candidates.Where(c => c.Version.CompareTo(targetVersion) == 0).OrderByDescending(c => string.Equals(c.EngineId, engineId, StringComparison.OrdinalIgnoreCase)).FirstOrDefault();
+
+    private static bool IsVersionExcluded(SemVer version, IReadOnlySet<SemVer>? excludedVersions)
+    {
+        if (excludedVersions is null || excludedVersions.Count == 0) return false;
+        if (excludedVersions.Contains(version)) return true;
+        foreach (SemVer ex in excludedVersions) { if (ex.CompareTo(version) == 0) return true; }
         return false;
     }
 

@@ -181,7 +181,7 @@ internal static partial class Program
             return RunVerifyModuleCli(launchOpts.VerifyModule, enginesDir, settings, assocStore, appEnv, isIsolatedTest, launchOpts, containmentRoot, log);
         if (CliArgumentHelper.HasFlag(args, "--check-updates"))
             return await RunUpdateCheckCliAsync(updateCoordinator, settings, enginesDir, RecompLaunchOptions.GetOptionValue(args, "--feed", requiredIfPresent: true), containmentRoot, CliArgumentHelper.HasFlag(args, "--strict"), log, ct).ConfigureAwait(false);
-        if (launchOpts.HostDemo)
+        if (launchOpts.HostDemo || launchOpts.DemoCart)
             return await RunHostDemoSessionAsync(launchOpts, appEnv, containmentRoot, log, ct, settingsBundle, settingsStore).ConfigureAwait(false);
         if (!string.IsNullOrWhiteSpace(openTarget))
             return await new RecompLaunchCoordinator(updateCoordinator, log, settingsStore).LaunchAsync(openTarget, enginesDir, settingsBundle, appEnv, containmentRoot, launchOpts, ct).ConfigureAwait(false);
@@ -279,13 +279,13 @@ internal static partial class Program
     private static void PrintUsage()
     {
         Console.WriteLine("reEngine - Zero-Daemon .recomp & .decomp Static Recompilation Suite Router");
-        Console.WriteLine("Usage: reEngine.exe [--open <path> | <file.recomp>] [--backend opengl|vulkan|directx|parallelCpu|software] [--scale 1|2|4|8] [--aspect-mode nativePar|fourByThree|squareInteger|nativeFit|horPlus16By9|horPlus21By9]");
-        Console.WriteLine("       [--fullscreen | --display-mode windowed|borderlessFullscreen|exclusiveFullscreen] [--monitor <n>] [--target-fps <n>] [--bg-fps-cap <n>] [--vsync | --no-vsync]");
-        Console.WriteLine("       [--video-filter nearest|bilinear|sharpBilinear|scanlines|crtLite|crt-aperture|lcdGrid|xbrz|ntscComposite] [--true-color | --no-true-color] [--dithering | --no-dithering] [--hud-anchor safeFourByThree|screenEdges|custom] [--screenshot-mode cleanNative|filteredComposite]");
-        Console.WriteLine("       [--execution-tier staticAotOnly|aotWithJitFallback|aotWithThreadedIr|jitBringup|interpreterOracle] [--jit-bringup] [--preload-media] [--preload-media-to-ram | --no-preload-media-to-ram] [--fast-boot | --no-fast-boot] [--safe-mode-reset] [--ff-multiplier 2.0..4.0]");
+        Console.WriteLine("Usage: reEngine.exe [--open <path> | <file.recomp>] [--rom <path> | --disc <path>] [--backend opengl|vulkan|directx|parallelCpu|software] [--require-backend [<id>]] [--scale 1|2|4|8] [--aspect-mode nativePar|fourByThree|squareInteger|nativeFit|horPlus16By9|horPlus21By9]");
+        Console.WriteLine("       [--fullscreen | --window | --display-mode windowed|borderlessFullscreen|exclusiveFullscreen] [--monitor <n>] [--overscan <px|t,b,l,r>] [--fps-mode original|enhanced] [--target-fps <n>] [--bg-fps-cap <n>] [--vsync | --no-vsync]");
+        Console.WriteLine("       [--video-filter nearest|bilinear|sharpBilinear|scanlines|crtLite|crt-aperture|lcdGrid|xbrz|ntscComposite] [--true-color | --no-true-color] [--dithering | --no-dithering] [--hud-anchor safeFourByThree|screenEdges|custom] [--screenshot-mode cleanNative|filteredComposite] [--ui-text-scale 0.75..2.0]");
+        Console.WriteLine("       [--execution-tier staticAotOnly|aotWithJitFallback|aotWithThreadedIr|jitBringup|interpreterOracle] [--jit-bringup] [--force-zero-rwx] [--preload-media] [--preload-media-to-ram | --no-preload-media-to-ram] [--fast-boot | --no-fast-boot] [--safe-mode-reset] [--fast-forward] [--ff-multiplier 2.0..4.0]");
         Console.WriteLine("       [--audio-driver <drv>] [--audio-device <name>] [--master-volume 0..1] [--bgm-volume 0..1] [--sfx-volume 0..1] [--voice-volume 0..1] [--audio-muted | --no-audio-muted] [--mute-on-focus-loss | --no-mute-on-focus-loss]");
         Console.WriteLine("       [--audio-lowpass-hz <hz>] [--audio-highpass-hz <hz>] [--stereo-width 0..200] [--audio-resampling linear|sincCubic] [--ff-audio-mode attenuatedLowPass|muted|normal]");
-        Console.WriteLine("       [--save-dir <dir>] [--shutdown-timeout-ms <ms>] [--wait] [--register-assoc] [--verify-module <pkg|engine> [--json] [--require-media]] [--check-updates [--strict]] [--verify] [--doctor] [--host-demo]");
+        Console.WriteLine("       [--save-dir <dir>] [--shutdown-timeout-ms <ms>] [--wait] [--open-settings] [--show-fps] [--register-assoc] [--verify-module <pkg|engine> [--json] [--require-media]] [--check-updates [--strict]] [--verify] [--doctor] [--host-demo | --demo-cart]");
         Console.WriteLine("       reEngine.exe decomp --module <file.decomp> [--stage D0..D5] [--media-path <path>] [--engine-dir <dir>] [--toolchain-dir <dir>] [--output-dir <dir>] [--data-dir <dir>] [--log-dir <dir>] [--config <path>] [--headless] [--dry-run] [--window] [--version] [--help]");
     }
 }

@@ -1,5 +1,5 @@
 // @module: reEngine.App.RecompLaunchOptionParser
-// @purpose: Strict CLI option extraction, --no-* boolean override parsing, and v0.6.0 range/enum validation helpers.
+// @purpose: Strict CLI option extraction, optional --require-backend [<id>], --no-* switches, and v0.6.x validation helpers.
 // @depends-on: System, System.Collections.Generic, System.Globalization, Foundation.Core, reEngine.Core.Resolution, reEngine.Host.Contracts
 // @exports: RecompLaunchOptionParser
 
@@ -21,8 +21,8 @@ internal static class RecompLaunchOptionParser
         ArgumentNullException.ThrowIfNull(valueOptions);
 
         string? Val(string name) => GetOptionValue(args, name, requiredIfPresent: true);
-        string? rawBackend = Val("--backend");
         string? normalizedBackend = null;
+        string? rawBackend = Val("--backend");
         if (!string.IsNullOrWhiteSpace(rawBackend))
         {
             if (!HostRenderBackendIds.TryNormalize(rawBackend, out string canonical))
@@ -30,10 +30,16 @@ internal static class RecompLaunchOptionParser
             normalizedBackend = canonical;
         }
 
+        bool requireBackend = ParseRequireBackend(args, ref normalizedBackend);
+        bool? fsSwitch = ParseSwitch(args, "--fullscreen", "--window");
+        HostDisplayMode? explicitDisplayMode = ParseStrictCodec<HostDisplayMode>(Val("--display-mode"), "--display-mode", HostDisplayModeCodec.TryParseStrict, "windowed, borderlessFullscreen, or exclusiveFullscreen");
+        HostDisplayMode? effectiveDisplayMode = explicitDisplayMode ?? (fsSwitch == false ? HostDisplayMode.Windowed : (HostDisplayMode?)null);
+
         return new RecompLaunchOptions
         {
             ShouldWaitForExit = CliArgumentHelper.HasFlag(args, "--wait"),
-            Fullscreen = CliArgumentHelper.HasFlag(args, "--fullscreen"),
+            Fullscreen = fsSwitch == true,
+            Window = fsSwitch == false,
             Headless = CliArgumentHelper.HasFlag(args, "--headless"),
             Json = CliArgumentHelper.HasFlag(args, "--json"),
             RequireMedia = CliArgumentHelper.HasFlag(args, "--require-media"),
@@ -42,17 +48,25 @@ internal static class RecompLaunchOptionParser
             Verify = CliArgumentHelper.HasFlag(args, "--verify"),
             VerifyModule = Val("--verify-module"),
             Doctor = CliArgumentHelper.HasFlag(args, "--doctor"),
-            RequireBackend = CliArgumentHelper.HasFlag(args, "--require-backend"),
+            RequireBackend = requireBackend,
             JitBringup = CliArgumentHelper.HasFlag(args, "--jit-bringup"),
             PreloadMediaFlag = CliArgumentHelper.HasFlag(args, "--preload-media"),
             HostDemo = CliArgumentHelper.HasFlag(args, "--host-demo"),
+            DemoCart = CliArgumentHelper.HasFlag(args, "--demo-cart"),
+            OpenSettings = CliArgumentHelper.HasFlag(args, "--open-settings"),
+            ShowFps = CliArgumentHelper.HasFlag(args, "--show-fps"),
+            ForceZeroRwx = CliArgumentHelper.HasFlag(args, "--force-zero-rwx"),
+            FastForward = ParseSwitch(args, "--fast-forward", "--no-fast-forward"),
             HdTexturePacks = CliArgumentHelper.HasFlag(args, "--hd-packs"),
             BackendId = normalizedBackend,
             ResolutionScale = ParseOptionalResolutionScale(Val("--scale")),
             AspectRatioMode = ParseStrictCodec<HostAspectRatioMode>(Val("--aspect-mode"), "--aspect-mode", HostAspectRatioModeCodec.TryParseStrict, "nativePar, fourByThree, squareInteger, nativeFit, horPlus16By9, or horPlus21By9"),
+            OverscanCrop = ParseOptionalOverscan(Val("--overscan")),
+            FrameRateMode = ParseStrictCodec<HostFrameRateMode>(Val("--fps-mode"), "--fps-mode", HostFrameRateModeCodec.TryParseStrict, "original or enhanced"),
+            UiTextScale = ParseDouble(Val("--ui-text-scale"), "--ui-text-scale", 0.75, 2.0),
             SaveDirOverride = Val("--save-dir"),
             AudioDriverOverride = Val("--audio-driver"),
-            MediaPathOverride = Val("--media-path"),
+            MediaPathOverride = Val("--media-path") ?? Val("--rom") ?? Val("--disc"),
             ShutdownTimeoutMs = ParseInt(Val("--shutdown-timeout-ms"), "--shutdown-timeout-ms", 100, 30000),
             SuiteTab = Val("--suite-tab"),
             Profile = Val("--profile"),
@@ -68,7 +82,7 @@ internal static class RecompLaunchOptionParser
             FastBoot = ParseSwitch(args, "--fast-boot", "--no-fast-boot"),
             SafeModeReset = CliArgumentHelper.HasFlag(args, "--safe-mode-reset"),
             ExecutionTierMode = ParseOptionalExecutionTier(Val("--execution-tier")),
-            DisplayMode = ParseStrictCodec<HostDisplayMode>(Val("--display-mode"), "--display-mode", HostDisplayModeCodec.TryParseStrict, "windowed, borderlessFullscreen, or exclusiveFullscreen"),
+            DisplayMode = effectiveDisplayMode,
             MonitorIndex = ParseInt(Val("--monitor"), "--monitor", 0, int.MaxValue),
             TargetFps = ParseInt(Val("--target-fps"), "--target-fps", 0, int.MaxValue),
             BackgroundFpsCap = ParseInt(Val("--bg-fps-cap"), "--bg-fps-cap", 0, int.MaxValue),
@@ -131,7 +145,17 @@ internal static class RecompLaunchOptionParser
             string a = args[i] ?? string.Empty;
             if (a.StartsWith("--", StringComparison.Ordinal))
             {
-                if (!a.Contains('=', StringComparison.Ordinal) && valueOptions.Contains(a) && i + 1 < args.Length) i++;
+                if (!a.Contains('=', StringComparison.Ordinal) && i + 1 < args.Length)
+                {
+                    if (valueOptions.Contains(a)) i++;
+                    else if (string.Equals(a, "--require-backend", StringComparison.OrdinalIgnoreCase) &&
+                             !string.IsNullOrWhiteSpace(args[i + 1]) &&
+                             !args[i + 1].Trim().StartsWith('-') &&
+                             HostRenderBackendIds.TryNormalize(args[i + 1], out _))
+                    {
+                        i++;
+                    }
+                }
                 continue;
             }
             if (a.StartsWith("-", StringComparison.Ordinal) || string.Equals(a, "/?", StringComparison.Ordinal) || string.Equals(a, "help", StringComparison.OrdinalIgnoreCase)) continue;
@@ -139,6 +163,52 @@ internal static class RecompLaunchOptionParser
             current++;
         }
         return null;
+    }
+
+    private static bool ParseRequireBackend(string[] args, ref string? normalizedBackend)
+    {
+        bool requireBackend = false;
+        for (int i = 0; i < args.Length; i++)
+        {
+            string raw = (args[i] ?? string.Empty).Trim();
+            if (raw.StartsWith("--require-backend=", StringComparison.OrdinalIgnoreCase))
+            {
+                string inline = raw["--require-backend=".Length..].Trim();
+                if (!HostRenderBackendIds.TryNormalize(inline, out string canonical))
+                    throw new ArgumentException($"Unsupported --require-backend '{inline}'; expected opengl, vulkan, directx, parallelCpu, or software.");
+                requireBackend = true;
+                normalizedBackend = canonical;
+                continue;
+            }
+
+            if (!string.Equals(raw, "--require-backend", StringComparison.OrdinalIgnoreCase)) continue;
+            requireBackend = true;
+            if (i + 1 >= args.Length) continue;
+            string next = (args[i + 1] ?? string.Empty).Trim();
+            if (next.Length > 0 && !next.StartsWith('-') && HostRenderBackendIds.TryNormalize(next, out string nextCanonical))
+            {
+                normalizedBackend = nextCanonical;
+                i++;
+            }
+        }
+        return requireBackend;
+    }
+
+    private static HostOverscanCrop? ParseOptionalOverscan(string? raw)
+    {
+        if (raw is null) return null;
+        string[] parts = raw.Split(',', StringSplitOptions.TrimEntries);
+        if (parts.Length == 1 && int.TryParse(parts[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out int uniform) && uniform >= 0)
+            return new HostOverscanCrop(uniform, uniform, uniform, uniform);
+        if (parts.Length == 4 &&
+            int.TryParse(parts[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out int t) && t >= 0 &&
+            int.TryParse(parts[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out int b) && b >= 0 &&
+            int.TryParse(parts[2], NumberStyles.Integer, CultureInfo.InvariantCulture, out int l) && l >= 0 &&
+            int.TryParse(parts[3], NumberStyles.Integer, CultureInfo.InvariantCulture, out int r) && r >= 0)
+        {
+            return new HostOverscanCrop(t, b, l, r);
+        }
+        throw new ArgumentException($"Invalid --overscan value '{raw}'; expected <px> or <top,bottom,left,right> non-negative integers.");
     }
 
     private static bool? ParseSwitch(string[] args, string positiveFlag, string negativeFlag)

@@ -17,26 +17,36 @@ internal static class LauncherArgsHelper
         "--data-dir", "--config", "--log-dir", "--save-dir", "--feed", "--port", "--ui",
         "--backend", "--scale", "--aspect-mode", "--suite-tab", "--profile", "--automation-port", "--automation-token",
         "--frames", "--fixture", "--dump-screenshot", "--dump-audio",
-        "--shutdown-timeout-ms", "--audio-driver", "--media-path",
+        "--shutdown-timeout-ms", "--audio-driver", "--media-path", "--rom", "--disc",
         "--execution-tier", "--display-mode", "--monitor", "--target-fps", "--bg-fps-cap",
         "--video-filter", "--hud-anchor", "--screenshot-mode", "--audio-device",
         "--master-volume", "--bgm-volume", "--sfx-volume", "--voice-volume",
         "--audio-lowpass-hz", "--audio-highpass-hz", "--stereo-width", "--audio-resampling",
-        "--ff-audio-mode", "--ff-multiplier"
+        "--ff-audio-mode", "--ff-multiplier", "--overscan", "--fps-mode", "--ui-text-scale"
     };
 
     private static readonly HashSet<string> PathOptions = new(StringComparer.OrdinalIgnoreCase)
     {
         "--open", "--module", "--verify-module", "--engines-dir", "--engine-dir", "--toolchain-dir", "--output-dir",
         "--data-dir", "--config", "--log-dir", "--save-dir", "--feed",
-        "--fixture", "--dump-screenshot", "--dump-audio", "--media-path"
+        "--fixture", "--dump-screenshot", "--dump-audio", "--media-path", "--rom", "--disc"
     };
 
     private static readonly HashSet<string> SyncFlags = new(StringComparer.OrdinalIgnoreCase)
     {
         "decomp", "--open", "--wait", "--verify-module", "--headless", "--json", "--check-updates", "--register-assoc",
         "--verify", "--doctor", "--automation-port", "--jit-bringup", "--require-backend",
-        "--preload-media", "--host-demo", "--dry-run", "--tray-only", "--help", "-h", "/?", "help", "--version", "-v"
+        "--preload-media", "--host-demo", "--dry-run", "--tray-only",
+        "--frames", "--dump-screenshot", "--dump-audio",
+        "--help", "-h", "/?", "help", "--version", "-v"
+    };
+
+    private static readonly HashSet<string> KnownBackendTokens = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "opengl", "gl", "opengl33", "vulkan", "vk",
+        "directx", "dx12", "d3d12", "directx12",
+        "parallelcpu", "parallel_cpu", "cpuparallel",
+        "software", "cpu", "metal"
     };
 
     /// <summary>
@@ -95,6 +105,14 @@ internal static class LauncherArgsHelper
             }
 
             normalized[i] = raw;
+            if (string.Equals(key, "--require-backend", StringComparison.OrdinalIgnoreCase) &&
+                i + 1 < args.Length &&
+                IsKnownBackendToken(args[i + 1]))
+            {
+                i++;
+                normalized[i] = args[i];
+                continue;
+            }
             if (ValueOptions.Contains(key))
             {
                 if (i + 1 < args.Length)
@@ -119,6 +137,11 @@ internal static class LauncherArgsHelper
 
         return normalized;
     }
+
+    private static bool IsKnownBackendToken(string? raw) =>
+        !string.IsNullOrWhiteSpace(raw) &&
+        !raw.Trim().StartsWith("-", StringComparison.Ordinal) &&
+        KnownBackendTokens.Contains(raw.Trim());
 
     private static (string Key, bool HasInlineValue) SplitOption(string trimmed)
     {

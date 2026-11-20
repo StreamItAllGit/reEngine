@@ -17,12 +17,12 @@ internal sealed record RecompLaunchOptions
         "--data-dir", "--config", "--log-dir", "--save-dir", "--feed", "--port", "--ui",
         "--backend", "--scale", "--aspect-mode", "--suite-tab", "--profile", "--automation-port", "--automation-token",
         "--frames", "--fixture", "--dump-screenshot", "--dump-audio",
-        "--shutdown-timeout-ms", "--audio-driver", "--media-path",
+        "--shutdown-timeout-ms", "--audio-driver", "--media-path", "--rom", "--disc",
         "--execution-tier", "--display-mode", "--monitor", "--target-fps", "--bg-fps-cap",
         "--video-filter", "--hud-anchor", "--screenshot-mode", "--audio-device",
         "--master-volume", "--bgm-volume", "--sfx-volume", "--voice-volume",
         "--audio-lowpass-hz", "--audio-highpass-hz", "--stereo-width", "--audio-resampling",
-        "--ff-audio-mode", "--ff-multiplier"
+        "--ff-audio-mode", "--ff-multiplier", "--overscan", "--fps-mode", "--ui-text-scale"
     };
 
     public static readonly IReadOnlyDictionary<string, string> SupportedBackends = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
@@ -102,6 +102,17 @@ internal sealed record RecompLaunchOptions
     public double? AudioStereoWidthPercent { get; init; }
     public HostAudioResamplingMode? AudioResamplingMode { get; init; }
     public HostFastForwardAudioMode? FastForwardAudioMode { get; init; }
+
+    // v0.6.1 Unified R08 §4.4 CLI Parity Flags
+    public bool Window { get; init; }
+    public bool DemoCart { get; init; }
+    public bool OpenSettings { get; init; }
+    public bool ShowFps { get; init; }
+    public bool ForceZeroRwx { get; init; }
+    public bool? FastForward { get; init; }
+    public HostOverscanCrop? OverscanCrop { get; init; }
+    public HostFrameRateMode? FrameRateMode { get; init; }
+    public double? UiTextScale { get; init; }
 
     public static RecompLaunchOptions FromArgs(string[] args, AppEnvironment appEnv) =>
         RecompLaunchOptionParser.Parse(args, appEnv, ValueOptions);

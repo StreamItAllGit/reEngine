@@ -66,7 +66,7 @@ internal sealed class LibraryShelfPanel : Panel
             ForeColor = ReEngineTheme.TextPrimary,
             FlatStyle = FlatStyle.Flat
         };
-        ScaleCombo.Items.AddRange(new object[] { "1x", "2x", "4x" });
+        ScaleCombo.Items.AddRange(new object[] { "1x", "2x", "4x", "8x" });
 
         FullscreenCheckBox = new CheckBox
         {
@@ -132,6 +132,7 @@ internal sealed class LibraryShelfPanel : Panel
     {
         "1x" => 1,
         "4x" => 4,
+        "8x" => 8,
         _ => 2
     };
 
@@ -154,7 +155,7 @@ internal sealed class LibraryShelfPanel : Panel
         {
             int idx = !string.IsNullOrWhiteSpace(backend) ? BackendCombo.FindStringExact(backend) : 0;
             BackendCombo.SelectedIndex = idx >= 0 ? idx : 0;
-            ScaleCombo.SelectedItem = scale switch { 1 => "1x", 4 => "4x", _ => "2x" };
+            ScaleCombo.SelectedItem = scale switch { 1 => "1x", 4 => "4x", 8 => "8x", _ => "2x" };
             FullscreenCheckBox.Checked = v.IsFullscreen;
             JitBringupCheckBox.Checked = jitBringup;
             DisplayAudioPanel.ApplyBundle(bundle);

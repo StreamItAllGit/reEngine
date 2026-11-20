@@ -122,6 +122,9 @@ internal static partial class RecompLaunchPlanBuilder
     internal static bool Supports060Routing(InstalledEngineCandidate engine) =>
         RecompLaunchFlagRouter.Supports060Routing(engine);
 
+    internal static bool Supports061Routing(InstalledEngineCandidate engine) =>
+        RecompLaunchFlagRouter.Supports061Routing(engine);
+
     private static string? ResolvePreloadMediaPath(
         RecompPackageLoadResult loaded, AppEnvironment appEnv, RecompLaunchOptions opts,
         InstalledEngineCandidate? selectedEngine, string? boundary)

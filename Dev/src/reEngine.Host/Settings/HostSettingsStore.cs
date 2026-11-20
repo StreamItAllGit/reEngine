@@ -99,7 +99,11 @@ public sealed class HostSettingsStore : IReEngineSettingsStore
             IsTrueColor24BitEnabled = video.IsTrueColor24BitEnabled,
             IsDitheringEnabled = video.IsDitheringEnabled,
             ScreenshotCaptureMode = HostScreenshotCaptureModeCodec.Parse(video.ScreenshotCaptureMode),
-            IsFmvActive = false
+            IsFmvActive = false,
+            FrameRateMode = HostFrameRateModeCodec.Parse(video.FrameRateMode),
+            UiTextScale = NormalizeUiTextScale(video.UiTextScale),
+            IsFpsOverlayEnabled = video.IsFpsOverlayEnabled,
+            IsCleanCaptureModeEnabled = video.IsCleanCaptureModeEnabled
         };
     }
 
@@ -147,12 +151,13 @@ public sealed class HostSettingsStore : IReEngineSettingsStore
         bool? shouldPreloadMediaToRam = null,
         bool? isFastBootEnabled = null,
         bool? isSafeModeActive = null,
-        bool persist = true)
+        bool persist = true,
+        bool? shouldEnableRuntimeLogs = null)
     {
         ArgumentNullException.ThrowIfNull(bundle);
         ApplyVideoUpdates(bundle.Video, bundle.Core, videoState, isFullscreen, backendId, resolutionScale, aspectRatioMode, overscanCrop, isFastForwardEnabled, isHdTexturePackEnabled);
         ApplyAudioUpdates(bundle.Audio, audioState, audioDriver);
-        ApplyCoreUpdates(bundle.Core, isJitEnabled, executionTierMode, shouldPreloadMediaToRam, isFastBootEnabled, isSafeModeActive);
+        ApplyCoreUpdates(bundle.Core, isJitEnabled, executionTierMode, shouldPreloadMediaToRam, isFastBootEnabled, isSafeModeActive, shouldEnableRuntimeLogs);
         if (persist) _domainStore.SaveAll(bundle);
         return bundle;
     }
@@ -218,6 +223,10 @@ public sealed class HostSettingsStore : IReEngineSettingsStore
             video.IsTrueColor24BitEnabled = state.IsTrueColor24BitEnabled;
             video.IsDitheringEnabled = state.IsDitheringEnabled;
             video.ScreenshotCaptureMode = HostScreenshotCaptureModeCodec.ToCanonicalId(state.ScreenshotCaptureMode);
+            video.FrameRateMode = HostFrameRateModeCodec.ToCanonicalId(state.FrameRateMode);
+            video.UiTextScale = NormalizeUiTextScale(state.UiTextScale);
+            video.IsFpsOverlayEnabled = state.IsFpsOverlayEnabled;
+            video.IsCleanCaptureModeEnabled = state.IsCleanCaptureModeEnabled;
             if (double.IsFinite(state.FastForwardMultiplier) && state.FastForwardMultiplier > 0)
                 core.FastForwardMultiplier = Math.Clamp(state.FastForwardMultiplier, 2.0, 4.0);
         }
@@ -259,7 +268,7 @@ public sealed class HostSettingsStore : IReEngineSettingsStore
 
     private static void ApplyCoreUpdates(
         ReEngineSettings core, bool? isJitEnabled, string? executionTierMode,
-        bool? shouldPreloadMediaToRam, bool? isFastBootEnabled, bool? isSafeModeActive)
+        bool? shouldPreloadMediaToRam, bool? isFastBootEnabled, bool? isSafeModeActive, bool? shouldEnableRuntimeLogs)
     {
         if (isJitEnabled.HasValue) core.IsJitEnabled = isJitEnabled.Value;
         if (!string.IsNullOrWhiteSpace(executionTierMode)) core.ExecutionTierMode = executionTierMode;
@@ -267,7 +276,11 @@ public sealed class HostSettingsStore : IReEngineSettingsStore
         if (shouldPreloadMediaToRam.HasValue) core.ShouldPreloadMediaToRam = shouldPreloadMediaToRam.Value;
         if (isFastBootEnabled.HasValue) core.IsFastBootEnabled = isFastBootEnabled.Value;
         if (isSafeModeActive.HasValue) core.IsSafeModeActive = isSafeModeActive.Value;
+        if (shouldEnableRuntimeLogs.HasValue) core.ShouldEnableRuntimeLogs = shouldEnableRuntimeLogs.Value;
     }
+
+    private static double NormalizeUiTextScale(double scale) =>
+        double.IsFinite(scale) && scale > 0.0 ? Math.Clamp(Math.Round(scale, 2), 0.75, 2.0) : 1.0;
 
     private static double Clamp01(double value, double fallback) => double.IsFinite(value) ? Math.Clamp(value, 0.0, 1.0) : fallback;
 }

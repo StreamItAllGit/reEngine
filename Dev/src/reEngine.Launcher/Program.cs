@@ -92,6 +92,9 @@ internal static class Program
             return 0;
         }
 
+        using var jobGuard = new LauncherJobObjectGuard();
+        _ = jobGuard.TryAttachProcess(proc);
+
         int cancelled = 0;
         ConsoleCancelEventHandler cancelHandler = (_, e) =>
         {
