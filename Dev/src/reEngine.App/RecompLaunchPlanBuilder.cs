@@ -1,6 +1,6 @@
 // @module: reEngine.App.RecompLaunchPlanBuilder
-// @purpose: Builds isolated child process launch plans with 0.3.x backend/JIT/automation passthrough and 0.2.x fallback compatibility.
-// @depends-on: System, System.Collections.Generic, System.Globalization, System.IO, System.Linq, System.Text.Json, System.Text.RegularExpressions, Foundation.Core, reEngine.Core
+// @purpose: Builds isolated child process launch plans with 0.3.x+ protocol/track backend/aspect/JIT/automation passthrough and 0.2.x fallback compatibility.
+// @depends-on: System, System.Collections.Generic, System.Globalization, System.IO, System.Linq, System.Text.Json, System.Text.RegularExpressions, Foundation.Core, reEngine.Core, reEngine.Host.Contracts
 // @exports: ChildLaunchPlan, RecompLaunchPlanBuilder
 
 using System.Globalization;
@@ -10,6 +10,8 @@ using Foundation.Core;
 using reEngine.Core.Decomp;
 using reEngine.Core.Manifests;
 using reEngine.Core.Resolution;
+using reEngine.Core.Updates;
+using reEngine.Host.Contracts;
 
 namespace reEngine.App;
 
@@ -21,8 +23,6 @@ internal sealed record ChildLaunchPlan(
 
 internal static partial class RecompLaunchPlanBuilder
 {
-    private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNameCaseInsensitive = true };
-
     [GeneratedRegex("^[a-z0-9][a-z0-9-]*$", RegexOptions.CultureInvariant)]
     private static partial Regex ModuleSlugRegex();
 
@@ -32,7 +32,8 @@ internal static partial class RecompLaunchPlanBuilder
         string? containmentRoot,
         RecompLaunchOptions? launchOptions = null,
         InstalledEngineCandidate? selectedEngine = null,
-        Action<string, string>? log = null)
+        Action<string, string>? log = null,
+        ReEngineSettings? settings = null)
     {
         ArgumentNullException.ThrowIfNull(loaded);
         ArgumentNullException.ThrowIfNull(appEnv);
@@ -85,7 +86,8 @@ internal static partial class RecompLaunchPlanBuilder
         args.Add("--config"); args.Add(moduleConfigPath);
         args.Add("--log-dir"); args.Add(moduleLogDir);
 
-        if (opts.ResolutionScale is int scale && scale is 1 or 2 or 4 or 8)
+        int? effectiveScale = opts.ResolutionScale ?? settings?.ResolutionScale;
+        if (effectiveScale is int scale && scale is 1 or 2 or 4 or 8)
         {
             args.Add("--scale");
             args.Add(scale.ToString(CultureInfo.InvariantCulture));
@@ -98,7 +100,7 @@ internal static partial class RecompLaunchPlanBuilder
         if (screenshotPath is not null) { args.Add("--dump-screenshot"); args.Add(screenshotPath); }
         if (audioPath is not null) { args.Add("--dump-audio"); args.Add(audioPath); }
 
-        AppendV030Flags(args, opts, loaded.Manifest, selectedEngine, log);
+        AppendV030Flags(args, opts, loaded.Manifest, selectedEngine, settings, log);
         return new ChildLaunchPlan(moduleDataDir, moduleConfigPath, moduleLogDir, args);
     }
 
@@ -140,11 +142,15 @@ internal static partial class RecompLaunchPlanBuilder
         RecompLaunchOptions opts,
         RecompPackageManifest manifest,
         InstalledEngineCandidate? selectedEngine,
+        ReEngineSettings? settings,
         Action<string, string>? log)
     {
         bool supports030 = selectedEngine is null || Supports030Routing(selectedEngine);
         bool supports027 = selectedEngine is null || selectedEngine.Version.CompareTo(Track027Threshold) >= 0;
-        string? rawBackend = opts.BackendId ?? manifest.BackendId;
+        string? settingsBackend = settings?.BackendId;
+        string? rawBackend = opts.BackendId
+            ?? manifest.BackendId
+            ?? (string.IsNullOrWhiteSpace(settingsBackend) ? null : settingsBackend);
         string? effectiveBackend = HostRenderBackendIds.TryNormalize(rawBackend, out string canonical) ? canonical : rawBackend;
         bool wantsJitBringup = opts.JitBringup || string.Equals(manifest.ExecutionTierMode, "jitBringup", StringComparison.OrdinalIgnoreCase);
 
@@ -186,6 +192,11 @@ internal static partial class RecompLaunchPlanBuilder
                     log?.Invoke("WARN", $"Omitting 0.3.0+ flag --jit-bringup for pre-0.3.0 child '{selectedEngine!.EngineId}' v{selectedEngine.Version}.");
                 }
             }
+
+            if (opts.AspectRatioMode is not null)
+            {
+                log?.Invoke("WARN", $"Omitting 0.3.0+ flag --aspect-mode for pre-0.3.0 child '{selectedEngine!.EngineId}' v{selectedEngine.Version}.");
+            }
             return;
         }
 
@@ -195,12 +206,26 @@ internal static partial class RecompLaunchPlanBuilder
             args.Add(effectiveBackend);
         }
         if (opts.RequireBackend) args.Add("--require-backend");
-        if (opts.Fullscreen) args.Add("--fullscreen");
-        if (!string.IsNullOrWhiteSpace(opts.AudioDriverOverride))
+        if (opts.Fullscreen || settings?.IsFullscreen == true) args.Add("--fullscreen");
+
+        string? audioDriver = !string.IsNullOrWhiteSpace(opts.AudioDriverOverride) ? opts.AudioDriverOverride : settings?.AudioDriver;
+        if (!string.IsNullOrWhiteSpace(audioDriver))
         {
             args.Add("--audio-driver");
-            args.Add(opts.AudioDriverOverride.Trim().ToLowerInvariant());
+            args.Add(audioDriver.Trim().ToLowerInvariant());
         }
+
+        string? settingsAspect = settings?.AspectRatioMode;
+        HostAspectRatioMode? effectiveAspectMode = opts.AspectRatioMode
+            ?? (!string.IsNullOrWhiteSpace(settingsAspect)
+                ? HostAspectRatioModeCodec.Parse(settingsAspect)
+                : null);
+        if (effectiveAspectMode is HostAspectRatioMode aspectMode)
+        {
+            args.Add("--aspect-mode");
+            args.Add(HostAspectRatioModeCodec.ToCanonicalId(aspectMode));
+        }
+
         if (wantsJitBringup)
         {
             args.Add("--jit-bringup");
@@ -219,20 +244,34 @@ internal static partial class RecompLaunchPlanBuilder
 
     internal static bool Supports030Routing(InstalledEngineCandidate engine)
     {
+        if (engine is null) return false;
         if (engine.Version.CompareTo(SemVer.Track030Threshold) >= 0) return true;
-        string manifestPath = Path.Combine(engine.EngineDirectory, "engine.manifest.json");
-        if (!File.Exists(manifestPath)) return false;
 
-        try
-        {
-            EngineManifestModel? model = JsonSerializer.Deserialize<EngineManifestModel>(File.ReadAllText(manifestPath), JsonOptions);
-            if (model?.SupportedEngineTracks?.Any(t => t.StartsWith("0.3", StringComparison.OrdinalIgnoreCase)) == true) return true;
-            return SemVer.TryParse(model?.EffectiveVersion, out SemVer declared) && declared.CompareTo(SemVer.Track030Threshold) >= 0;
-        }
-        catch (Exception)
-        {
+        EngineManifestModel? model = EngineVersionResolver.TryReadEngineManifest(engine.EngineDirectory);
+        if (model is null) return false;
+
+        if (SemVer.TryParse(model.HostProtocolVersion, out SemVer proto) && proto.CompareTo(SemVer.Track030Threshold) >= 0)
+            return true;
+        if (SemVer.TryParse(model.MinSuiteVersion, out SemVer minSuite) && minSuite.CompareTo(SemVer.Track030Threshold) >= 0)
+            return true;
+        if (model.SupportedEngineTracks?.Any(IsTrack030OrHigher) == true || IsTrack030OrHigher(model.CompatibleEngineTrack))
+            return true;
+        return SemVer.TryParse(model.EffectiveVersion, out SemVer declared) && declared.CompareTo(SemVer.Track030Threshold) >= 0;
+    }
+
+    private static bool IsTrack030OrHigher(string? track)
+    {
+        if (string.IsNullOrWhiteSpace(track)) return false;
+        string norm = track.Trim();
+        if (norm.StartsWith('v') || norm.StartsWith('V')) norm = norm[1..];
+        int suffixIdx = norm.IndexOfAny(['-', '+']);
+        if (suffixIdx >= 0) norm = norm[..suffixIdx];
+
+        string[] parts = norm.Split('.');
+        if (parts.Length < 2 || !int.TryParse(parts[0], NumberStyles.None, CultureInfo.InvariantCulture, out int major))
             return false;
-        }
+        if (major >= 1) return true;
+        return int.TryParse(parts[1], NumberStyles.None, CultureInfo.InvariantCulture, out int minor) && minor >= 3;
     }
 
     private static string? ResolveOptionalContainedPath(string? rawPath, string? boundary)

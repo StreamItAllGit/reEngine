@@ -179,10 +179,10 @@ try {
         if ($recvArgs -notmatch [regex]::Escape($tok)) { throw "Missing expected token '$tok' in child args: $recvArgs" }
     }
 
-    Write-Host "[6/7] Launching visible SDL3 Host E2E (OpenGL + 5-col F1 Keybinds + F3 HUD) & Exit 6 check..."
+    Write-Host "[6/7] Launching visible SDL3 Host E2E (OpenGL + F1 Video Aspect + 5-col Keybinds + F3 HUD + Hotkeys) & Exit 6 check..."
     $p2 = Get-FreeLoopbackPort; $t2 = [Guid]::NewGuid().ToString("N"); $streamSdl = $null
     $sdlProc = Start-Process -FilePath $debugExe -WindowStyle Normal -PassThru -ArgumentList @(
-        "--host-demo", "--backend", "opengl", "--require-backend", "--window", "--preload-media",
+        "--host-demo", "--backend", "opengl", "--require-backend", "--aspect-mode", "fourByThree", "--window", "--preload-media",
         "--data-dir", $dataDir, "--config", $cfgPath, "--log-dir", $logDir, "--engines-dir", $enginesDir, "--automation-port", "$p2", "--automation-token", $t2
     )
     try {
@@ -193,6 +193,10 @@ try {
         $null = Invoke-LoopbackJson -Port $p2 -Token $t2 -Method "POST" -Route "/v1/pointer" -Body @{ action = "click"; targetId = "MediaGate_DemoBypassButton" }
         Start-Sleep -Milliseconds 400
         $null = Invoke-LoopbackJson -Port $p2 -Token $t2 -Method "POST" -Route "/v1/keyboard" -Body @{ action = "press"; key = "F1" }
+        $null = Wait-TreeControl -Port $p2 -Token $t2 -ControlId "Video_AspectRatio"
+        $null = Invoke-LoopbackJson -Port $p2 -Token $t2 -Method "POST" -Route "/v1/pointer" -Body @{ action = "click"; targetId = "Video_AspectRatio" }
+        $null = Invoke-LoopbackJson -Port $p2 -Token $t2 -Method "POST" -Route "/v1/keyboard" -Body @{ action = "press"; key = "F5" }
+        $null = Invoke-LoopbackJson -Port $p2 -Token $t2 -Method "POST" -Route "/v1/keyboard" -Body @{ action = "press"; key = "F9" }
         $null = Wait-TreeControl -Port $p2 -Token $t2 -ControlId "Tab_Keybinds"
         $null = Invoke-LoopbackJson -Port $p2 -Token $t2 -Method "POST" -Route "/v1/pointer" -Body @{ action = "click"; targetId = "Tab_Keybinds" }
         $null = Invoke-LoopbackJson -Port $p2 -Token $t2 -Method "POST" -Route "/v1/keyboard" -Body @{ action = "press"; key = "F3" }
@@ -212,12 +216,17 @@ try {
     )
     if ($metalRes.ExitCode -ne 6) { throw "Expected --backend metal --require-backend ExitCode 6, got $($metalRes.ExitCode)" }
 
-    Write-Host "[7/7] Verifying Release fail-closed automation gate (ExitCode = 2)..."
+    Write-Host "[7/7] Verifying Dual-Binary Release fail-closed automation gate (ExitCode = 2)..."
     $relRes = Invoke-CliBounded -ExePath $releaseExe -WorkDir $root -CliArgs @(
         "--automation-port", "5199", "--data-dir", $dataDir, "--config", $cfgPath, "--log-dir", $logDir
     )
-    if ($relRes.ExitCode -ne 2) { throw "Expected Release --automation-port ExitCode 2, got $($relRes.ExitCode)" }
-    Write-Host "PASS: Stage 2 Sandbox v$Version + WinForms 5-Backend & Interactive .decomp + --verify-module + --wait Flush + SDL3 Host + Release ExitCode=2 verified."
+    if ($relRes.ExitCode -ne 2) { throw "Expected Release reEngine.exe --automation-port ExitCode 2, got $($relRes.ExitCode)" }
+    $relSetupPkg = Join-Path $root "Releases\v$Version\reEngine-Setup-v$Version-win-x64.exe"
+    $relSetupBin = Join-Path $devDir "src\reEngine.Installer\bin\Release\net8.0-windows\reEngine.Installer.exe"
+    $setupTarget = if (Test-Path $relSetupPkg) { $relSetupPkg } else { $relSetupBin }
+    $instRelRes = Invoke-CliBounded -ExePath $setupTarget -WorkDir $root -CliArgs @("--automation-port", "5199")
+    if ($instRelRes.ExitCode -ne 2) { throw "Expected Release Setup ($setupTarget) --automation-port ExitCode 2, got $($instRelRes.ExitCode)" }
+    Write-Host "PASS: Stage 2 Sandbox v$Version + WinForms 5-Backend & Interactive .decomp + --verify-module + --wait Flush + SDL3 Host + Dual Release ExitCode=2 verified."
 } finally {
     if ($null -ne $spawnedChildPid) {
         try { $p = Get-Process -Id $spawnedChildPid -ErrorAction SilentlyContinue; if ($p -and -not $p.HasExited) { $p.Kill() } } catch { }

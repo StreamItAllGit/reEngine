@@ -1,5 +1,5 @@
 // @module: reEngine.Host.Ui.ControlsTabView
-// @purpose: Renders Schema A/B/C selector and dynamic module ControlOptions pills onto PixelOverlayCanvas with click/cycle support.
+// @purpose: Renders Schema A/B/C selector and dynamic module ControlOptions pills onto PixelOverlayCanvas with click/cycle and live callback support.
 // @depends-on: System, System.Collections.Generic, System.Drawing, Foundation.Core, reEngine.Host.Contracts, reEngine.Host.Input
 // @exports: ControlsTabView
 
@@ -15,18 +15,30 @@ namespace reEngine.Host.Ui;
 /// </summary>
 public sealed class ControlsTabView
 {
-    private sealed record ClickTarget(string ControlId, Rectangle Bounds, Action OnActivate);
+    private sealed record ClickTarget(string ControlId, Rectangle Bounds, Func<IHostSessionEventCallbacks?, bool> OnActivate);
 
     private readonly List<ClickTarget> _targets = new();
     private readonly List<HostWidgetBounds> _widgets = new();
     private readonly Dictionary<string, string> _selectedChoices = new(StringComparer.OrdinalIgnoreCase);
+    private HostInputSchemaKind? _pendingSchema;
 
+    /// <summary>Gets the current selected choice per <c>optionId</c>.</summary>
     public IReadOnlyDictionary<string, string> SelectedChoices => _selectedChoices;
+
+    /// <summary>Gets the bounds of the schema cycle button rendered inside the Controls tab.</summary>
     public Rectangle CycleSchemaButtonRect { get; private set; }
 
+    /// <summary>Gets the bottom Y coordinate occupied by rendered Controls tab content.</summary>
+    public int ContentBottomY { get; private set; }
+
+    /// <summary>Gets or sets live session event callbacks notified when a control option changes.</summary>
+    public IHostSessionEventCallbacks? EventCallbacks { get; set; }
+
+    /// <summary>Returns the currently selected choice for <paramref name="optionId"/>, or <see langword="null"/> if unset.</summary>
     public string? GetSelectedChoice(string optionId) =>
         _selectedChoices.TryGetValue(optionId, out string? choice) ? choice : null;
 
+    /// <summary>Sets the selected choice for <paramref name="optionId"/> programmatically.</summary>
     public void SetSelectedChoice(string optionId, string choice)
     {
         if (!string.IsNullOrWhiteSpace(optionId) && !string.IsNullOrWhiteSpace(choice))
@@ -35,6 +47,7 @@ public sealed class ControlsTabView
         }
     }
 
+    /// <summary>Renders the schema selector and dynamic per-game control option pills into <paramref name="bodyRect"/>.</summary>
     public void Render(
         PixelOverlayCanvas canvas,
         Rectangle bodyRect,
@@ -57,24 +70,65 @@ public sealed class ControlsTabView
             string code = HostInputSchemas.ToShortCode(schema);
             var rect = new Rectangle(bodyRect.X + (i * (pillW + gap)), bodyRect.Y + 36, pillW, 22);
             HostOverlayLayoutHelpers.DrawPillButton(canvas, rect, $"Schema {code}", selectedSchema == schema, HostOverlayPalette.AccentCyan);
-            RegisterTarget($"Controls_Schema_{code}", $"Schema {code}", rect, () => _pendingSchema = schema);
+            RegisterTarget($"Controls_Schema_{code}", $"Schema {code}", rect, _ => { _pendingSchema = schema; return true; });
         }
 
         CycleSchemaButtonRect = new Rectangle(bodyRect.X, bodyRect.Y + 64, Math.Min(220, bodyRect.Width), 24);
         HostOverlayLayoutHelpers.DrawPillButton(canvas, CycleSchemaButtonRect, "Cycle Schema (A/B/C)", true, HostOverlayPalette.AccentCyan);
 
-        RenderControlOptions(canvas, bodyRect, bodyRect.Y + 98, controlOptions);
+        ContentBottomY = RenderControlOptions(canvas, bodyRect, bodyRect.Y + 98, controlOptions);
     }
 
-    private HostInputSchemaKind? _pendingSchema;
+    /// <summary>Returns interactive widget bounds produced by the most recent render pass.</summary>
+    public IReadOnlyList<HostWidgetBounds> GetWidgets() => _widgets;
 
-    private void RenderControlOptions(
+    /// <summary>Processes a pointer click on the Controls tab using <see cref="EventCallbacks"/>.</summary>
+    public bool TryHandleClick(
+        int x,
+        int y,
+        string? targetId,
+        HostInputMapper inputMapper,
+        ref HostInputSchemaKind selectedSchema) =>
+        TryHandleClick(x, y, targetId, inputMapper, ref selectedSchema, EventCallbacks);
+
+    /// <summary>Processes a pointer click on the Controls tab and notifies <paramref name="eventCallbacks"/> on option changes.</summary>
+    public bool TryHandleClick(
+        int x,
+        int y,
+        string? targetId,
+        HostInputMapper inputMapper,
+        ref HostInputSchemaKind selectedSchema,
+        IHostSessionEventCallbacks? eventCallbacks)
+    {
+        ArgumentNullException.ThrowIfNull(inputMapper);
+        _pendingSchema = null;
+
+        foreach (ClickTarget target in _targets)
+        {
+            bool match = !string.IsNullOrEmpty(targetId)
+                ? string.Equals(targetId, target.ControlId, StringComparison.OrdinalIgnoreCase)
+                : target.Bounds.Contains(x, y);
+            if (!match) continue;
+
+            _ = target.OnActivate(eventCallbacks ?? EventCallbacks);
+            if (_pendingSchema is { } nextSchema)
+            {
+                selectedSchema = nextSchema;
+                inputMapper.ActiveSchema = nextSchema;
+            }
+            return true;
+        }
+
+        return false;
+    }
+
+    private int RenderControlOptions(
         PixelOverlayCanvas canvas,
         Rectangle bodyRect,
         int startY,
         IReadOnlyList<HostControlOptionDescriptor>? options)
     {
-        if (options is null || options.Count == 0) return;
+        if (options is null || options.Count == 0) return startY;
 
         int y = startY;
         canvas.DrawText(bodyRect.X, y, "GAME CONTROL OPTIONS", HostOverlayPalette.AccentCyan, 1);
@@ -84,8 +138,7 @@ public sealed class ControlsTabView
         {
             if (opt.Choices.Count == 0 || y + 40 > bodyRect.Bottom) continue;
             string current = ResolveChoice(opt);
-            string label = HostOverlayLayoutHelpers.FitText(opt.Label, bodyRect.Width, 1);
-            canvas.DrawText(bodyRect.X, y, label, HostOverlayPalette.TextPrimary, 1);
+            canvas.DrawText(bodyRect.X, y, HostOverlayLayoutHelpers.FitText(opt.Label, bodyRect.Width, 1), HostOverlayPalette.TextPrimary, 1);
             y += 13;
 
             if (opt.Choices.Count <= 3)
@@ -99,7 +152,12 @@ public sealed class ControlsTabView
                     bool active = string.Equals(current, choice, StringComparison.OrdinalIgnoreCase);
                     HostOverlayLayoutHelpers.DrawPillButton(canvas, rect, choice, active, HostOverlayPalette.AccentCyan);
                     string optId = opt.OptionId;
-                    RegisterTarget($"Controls_Opt_{optId}_{choice}", choice, rect, () => _selectedChoices[optId] = choice);
+                    RegisterTarget($"Controls_Opt_{optId}_{choice}", choice, rect, cb =>
+                    {
+                        _selectedChoices[optId] = choice;
+                        cb?.OnControlOptionChanged(optId, choice);
+                        return true;
+                    });
                 }
             }
             else
@@ -107,72 +165,41 @@ public sealed class ControlsTabView
                 var rect = new Rectangle(bodyRect.X, y, bodyRect.Width, 22);
                 HostOverlayLayoutHelpers.DrawPillButton(canvas, rect, $"{current} (Cycle)", true, HostOverlayPalette.AccentCyan);
                 HostControlOptionDescriptor captured = opt;
-                RegisterTarget($"Controls_Opt_{opt.OptionId}", current, rect, () => CycleOption(captured));
+                RegisterTarget($"Controls_Opt_{opt.OptionId}", current, rect, cb =>
+                {
+                    string next = CycleOption(captured);
+                    cb?.OnControlOptionChanged(captured.OptionId, next);
+                    return true;
+                });
             }
-
             y += 28;
         }
-    }
-
-    public IReadOnlyList<HostWidgetBounds> GetWidgets() => _widgets;
-
-    public bool TryHandleClick(
-        int x,
-        int y,
-        string? targetId,
-        HostInputMapper inputMapper,
-        ref HostInputSchemaKind selectedSchema)
-    {
-        ArgumentNullException.ThrowIfNull(inputMapper);
-        _pendingSchema = null;
-
-        foreach (ClickTarget target in _targets)
-        {
-            bool match = !string.IsNullOrEmpty(targetId)
-                ? string.Equals(targetId, target.ControlId, StringComparison.OrdinalIgnoreCase)
-                : target.Bounds.Contains(x, y);
-            if (!match) continue;
-
-            target.OnActivate();
-            if (_pendingSchema is { } nextSchema)
-            {
-                selectedSchema = nextSchema;
-                inputMapper.ActiveSchema = nextSchema;
-            }
-            return true;
-        }
-
-        return false;
+        return y;
     }
 
     private string ResolveChoice(HostControlOptionDescriptor opt)
     {
-        if (_selectedChoices.TryGetValue(opt.OptionId, out string? existing) && !string.IsNullOrWhiteSpace(existing))
-        {
-            return existing;
-        }
+        if (_selectedChoices.TryGetValue(opt.OptionId, out string? existing) && !string.IsNullOrWhiteSpace(existing)) return existing;
         string initial = !string.IsNullOrWhiteSpace(opt.SelectedChoice) ? opt.SelectedChoice : opt.Choices[0];
         _selectedChoices[opt.OptionId] = initial;
         return initial;
     }
 
-    private void CycleOption(HostControlOptionDescriptor opt)
+    private string CycleOption(HostControlOptionDescriptor opt)
     {
-        if (opt.Choices.Count == 0) return;
+        if (opt.Choices.Count == 0) return string.Empty;
         string current = ResolveChoice(opt);
         int idx = 0;
         for (int i = 0; i < opt.Choices.Count; i++)
         {
-            if (string.Equals(opt.Choices[i], current, StringComparison.OrdinalIgnoreCase))
-            {
-                idx = (i + 1) % opt.Choices.Count;
-                break;
-            }
+            if (string.Equals(opt.Choices[i], current, StringComparison.OrdinalIgnoreCase)) { idx = (i + 1) % opt.Choices.Count; break; }
         }
-        _selectedChoices[opt.OptionId] = opt.Choices[idx];
+        string next = opt.Choices[idx];
+        _selectedChoices[opt.OptionId] = next;
+        return next;
     }
 
-    private void RegisterTarget(string id, string label, Rectangle rect, Action onActivate)
+    private void RegisterTarget(string id, string label, Rectangle rect, Func<IHostSessionEventCallbacks?, bool> onActivate)
     {
         _targets.Add(new ClickTarget(id, rect, onActivate));
         _widgets.Add(new HostWidgetBounds(id, "Button", label, rect, true));

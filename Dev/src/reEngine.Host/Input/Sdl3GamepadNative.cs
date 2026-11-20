@@ -18,6 +18,7 @@ internal static unsafe class Sdl3GamepadNative
     private static bool _resolverInstalled;
 
     public const uint InitGamepad = 0x2000U;
+    public const int MaxGamepadPorts = 4;
 
     public const int ButtonSouth = 0;
     public const int ButtonEast = 1;
@@ -133,6 +134,29 @@ internal static unsafe class Sdl3GamepadNative
         if (gamepad == IntPtr.Zero) return null;
         byte* ptr = SDL_GetGamepadName(gamepad);
         return ptr == null ? null : Marshal.PtrToStringUTF8((IntPtr)ptr);
+    }
+
+    public static void ReadGamepadInputs(
+        IntPtr gamepad,
+        out uint rawButtonBits,
+        out short leftX,
+        out short leftY,
+        out short rightX,
+        out short rightY,
+        out short triggerLeft,
+        out short triggerRight)
+    {
+        rawButtonBits = 0u;
+        for (int b = 0; b <= ButtonTouchpad; b++)
+        {
+            if (SDL_GetGamepadButton(gamepad, b) != 0) rawButtonBits |= 1u << b;
+        }
+        leftX = SDL_GetGamepadAxis(gamepad, AxisLeftX);
+        leftY = SDL_GetGamepadAxis(gamepad, AxisLeftY);
+        rightX = SDL_GetGamepadAxis(gamepad, AxisRightX);
+        rightY = SDL_GetGamepadAxis(gamepad, AxisRightY);
+        triggerLeft = SDL_GetGamepadAxis(gamepad, AxisLeftTrigger);
+        triggerRight = SDL_GetGamepadAxis(gamepad, AxisRightTrigger);
     }
 
     private static bool TryPreloadSdl3() =>

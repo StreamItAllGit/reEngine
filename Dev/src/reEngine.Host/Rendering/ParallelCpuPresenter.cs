@@ -17,6 +17,7 @@ namespace reEngine.Host.Rendering;
 /// </summary>
 public sealed unsafe class ParallelCpuPresenter : IHostSurfacePresenter, IHostRenderBackend
 {
+    /// <summary>Fixed scanline height per parallel rasterization band.</summary>
     public const int BandHeight = 16;
 
     private readonly HostRgbaSurfaceBackend _surface;
@@ -28,16 +29,34 @@ public sealed unsafe class ParallelCpuPresenter : IHostSurfacePresenter, IHostRe
     private IHostGraphicsContext? _graphicsContext;
     private bool _disposed;
 
+    /// <inheritdoc />
     public HostRenderBackendKind BackendKind => HostRenderBackendKind.ParallelCpu;
+
+    /// <inheritdoc />
     public string BackendId => HostRenderBackendIds.ParallelCpu;
+
+    /// <inheritdoc />
     public IHostGraphicsContext? GraphicsContext => _graphicsContext;
+
+    /// <inheritdoc />
     public int SurfaceWidth => _surface.SurfaceWidth;
+
+    /// <inheritdoc />
     public int SurfaceHeight => _surface.SurfaceHeight;
+
+    /// <summary>Gets or sets the configured integer resolution multiplier (1..8).</summary>
     public int ScaleFactor { get => _surface.ScaleFactor; set => _surface.ScaleFactor = Math.Clamp(value, 1, 8); }
+
+    /// <summary>Gets the backing RGBA overlay canvas used in headless/CPU mode.</summary>
     public PixelOverlayCanvas Canvas => _surface.Canvas;
 
+    /// <summary>Initializes a default 1280x720 <see cref="ParallelCpuPresenter"/>.</summary>
     public ParallelCpuPresenter() : this(1280, 720, 2) { }
 
+    /// <summary>Initializes a <see cref="ParallelCpuPresenter"/> with explicit backing surface dimensions.</summary>
+    /// <param name="surfaceWidth">Host backing surface width in pixels.</param>
+    /// <param name="surfaceHeight">Host backing surface height in pixels.</param>
+    /// <param name="scaleFactor">Initial resolution multiplier (1..8).</param>
     public ParallelCpuPresenter(int surfaceWidth, int surfaceHeight, int scaleFactor = 2)
     {
         _surface = new HostRgbaSurfaceBackend(surfaceWidth, surfaceHeight, scaleFactor, HostRenderBackendIds.ParallelCpu)
@@ -46,6 +65,7 @@ public sealed unsafe class ParallelCpuPresenter : IHostSurfacePresenter, IHostRe
         };
     }
 
+    /// <inheritdoc />
     public bool TryInitialize(IntPtr sdlWindow, int width, int height, out string diagnostic)
     {
         if (sdlWindow == IntPtr.Zero)
@@ -68,24 +88,47 @@ public sealed unsafe class ParallelCpuPresenter : IHostSurfacePresenter, IHostRe
         return true;
     }
 
+    /// <summary>Clears the backing CPU surface at the start of a frame.</summary>
+    /// <param name="width">Expected source width.</param>
+    /// <param name="height">Expected source height.</param>
     public void BeginFrame(int width, int height) => _surface.BeginFrame(width, height);
 
+    /// <inheritdoc />
     public void PresentRgba(int width, int height, ReadOnlySpan<byte> rgba)
     {
         if (_disposed || width <= 0 || height <= 0 || rgba.Length < checked(width * height * 4)) return;
 
         if (_sdlRenderer != IntPtr.Zero)
         {
-            PresentViaSdlRenderer(width, height, rgba);
+            if (!HostViewportGeometry.TryGetWindowPixelSize(_sdlWindow, width, height, out int renderW, out int renderH)) return;
+            HostViewportRect destRect = HostViewportGeometry.ComputeDestinationRect(width, height, renderW, renderH, HostAspectRatioMode.NativeFit);
+            PresentViaSdlRenderer(width, height, rgba, renderW, renderH, destRect, new HostViewportRect(0, 0, width, height));
             return;
         }
 
         _surface.PresentRgba(width, height, rgba);
     }
 
+    /// <inheritdoc />
+    public void PresentRgba(int width, int height, ReadOnlySpan<byte> rgba, HostViewportRect destRect, HostViewportRect srcCropRect)
+    {
+        if (_disposed || width <= 0 || height <= 0 || rgba.Length < checked(width * height * 4)) return;
+
+        if (_sdlRenderer != IntPtr.Zero)
+        {
+            if (!HostViewportGeometry.TryGetWindowPixelSize(_sdlWindow, width, height, out int renderW, out int renderH)) return;
+            PresentViaSdlRenderer(width, height, rgba, renderW, renderH, destRect, srcCropRect);
+            return;
+        }
+
+        _surface.PresentRgba(width, height, rgba, destRect, srcCropRect);
+    }
+
+    /// <inheritdoc />
     public bool TryCopyRgbaFrame(out int width, out int height, out byte[] rgbaBytes) =>
         _surface.TryCopyRgbaFrame(out width, out height, out rgbaBytes);
 
+    /// <inheritdoc />
     public void SavePng(string outputPath) => _surface.SavePng(outputPath);
 
     internal static void BlitParallelBands(
@@ -95,7 +138,18 @@ public sealed unsafe class ParallelCpuPresenter : IHostSurfacePresenter, IHostRe
         byte[] dstBuf,
         int dstCanvasW,
         int dstCanvasH,
-        Rectangle dst)
+        Rectangle dst) =>
+        BlitParallelBands(srcW, srcH, src, dstBuf, dstCanvasW, dstCanvasH, dst, new HostViewportRect(0, 0, srcW, srcH));
+
+    internal static void BlitParallelBands(
+        int srcW,
+        int srcH,
+        ReadOnlySpan<byte> src,
+        byte[] dstBuf,
+        int dstCanvasW,
+        int dstCanvasH,
+        Rectangle dst,
+        HostViewportRect srcCrop)
     {
         if (dst.Width <= 0 || dst.Height <= 0 || src.IsEmpty) return;
 
@@ -106,7 +160,7 @@ public sealed unsafe class ParallelCpuPresenter : IHostSurfacePresenter, IHostRe
             int srcLen = src.Length;
             if (bandCount <= 1)
             {
-                HostRgbaSurfaceBackend.BlitNearestRowRange(srcW, srcH, srcPtr, srcLen, dstBuf, dstCanvasW, dstCanvasH, dst, 0, dst.Height);
+                HostRgbaSurfaceBackend.BlitNearestRowRange(srcW, srcH, srcPtr, srcLen, dstBuf, dstCanvasW, dstCanvasH, dst, srcCrop, 0, dst.Height);
                 return;
             }
 
@@ -114,12 +168,19 @@ public sealed unsafe class ParallelCpuPresenter : IHostSurfacePresenter, IHostRe
             {
                 int startDy = bandIndex * BandHeight;
                 int endDy = Math.Min(dst.Height, startDy + BandHeight);
-                HostRgbaSurfaceBackend.BlitNearestRowRange(srcW, srcH, (byte*)srcAddr, srcLen, dstBuf, dstCanvasW, dstCanvasH, dst, startDy, endDy);
+                HostRgbaSurfaceBackend.BlitNearestRowRange(srcW, srcH, (byte*)srcAddr, srcLen, dstBuf, dstCanvasW, dstCanvasH, dst, srcCrop, startDy, endDy);
             });
         }
     }
 
-    private void PresentViaSdlRenderer(int width, int height, ReadOnlySpan<byte> rgba)
+    private void PresentViaSdlRenderer(
+        int width,
+        int height,
+        ReadOnlySpan<byte> rgba,
+        int renderW,
+        int renderH,
+        HostViewportRect destRect,
+        HostViewportRect srcCropRect)
     {
         if (_sdlTexture == IntPtr.Zero || _textureW != width || _textureH != height)
         {
@@ -136,12 +197,10 @@ public sealed unsafe class ParallelCpuPresenter : IHostSurfacePresenter, IHostRe
             _ = Sdl3Native.SDL_UpdateTexture(_sdlTexture, IntPtr.Zero, px, width * 4);
         }
 
-        _ = Sdl3Native.SDL_SetRenderDrawColor(_sdlRenderer, 14, 14, 16, 255);
-        _ = Sdl3Native.SDL_RenderClear(_sdlRenderer);
-        _ = Sdl3Native.SDL_RenderTexture(_sdlRenderer, _sdlTexture, null, null);
-        _ = Sdl3Native.SDL_RenderPresent(_sdlRenderer);
+        Sdl3Native.PresentSdlTexture(_sdlRenderer, _sdlTexture, width, height, renderW, renderH, destRect, srcCropRect);
     }
 
+    /// <inheritdoc />
     public void Dispose()
     {
         if (_disposed) return;

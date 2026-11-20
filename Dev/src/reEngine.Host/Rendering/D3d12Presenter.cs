@@ -24,10 +24,16 @@ public sealed unsafe class D3d12Presenter : IHostSurfacePresenter
     private D3d12Context? _graphicsContext;
     private bool _disposed;
 
+    /// <inheritdoc />
     public HostRenderBackendKind BackendKind => HostRenderBackendKind.DirectX;
+
+    /// <inheritdoc />
     public string BackendId => HostRenderBackendIds.DirectX;
+
+    /// <inheritdoc />
     public IHostGraphicsContext? GraphicsContext => _graphicsContext;
 
+    /// <inheritdoc />
     public bool TryInitialize(IntPtr sdlWindow, int width, int height, out string diagnostic)
     {
         if (!OperatingSystem.IsWindows()) { diagnostic = "DirectX 12 is only supported on Windows."; return false; }
@@ -60,12 +66,23 @@ public sealed unsafe class D3d12Presenter : IHostSurfacePresenter
         }
     }
 
-    public void PresentRgba(int width, int height, ReadOnlySpan<byte> rgba)
+    /// <inheritdoc />
+    public void PresentRgba(int width, int height, ReadOnlySpan<byte> rgba) =>
+        PresentRgbaCore(width, height, rgba, customDestRect: null, customSrcCrop: null);
+
+    /// <inheritdoc />
+    public void PresentRgba(int width, int height, ReadOnlySpan<byte> rgba, HostViewportRect destRect, HostViewportRect srcCropRect) =>
+        PresentRgbaCore(width, height, rgba, destRect, srcCropRect);
+
+    private void PresentRgbaCore(
+        int width,
+        int height,
+        ReadOnlySpan<byte> rgba,
+        HostViewportRect? customDestRect,
+        HostViewportRect? customSrcCrop)
     {
         if (_disposed || _device == IntPtr.Zero || width <= 0 || height <= 0 || rgba.Length < checked(width * height * 4)) return;
-        int winW = width, winH = height;
-        if (Sdl3Native.SDL_GetWindowSizeInPixels(_sdlWindow, out int pw, out int ph) != 0) { winW = pw; winH = ph; }
-        if (winW <= 0 || winH <= 0) return;
+        if (!HostViewportGeometry.TryGetWindowPixelSize(_sdlWindow, width, height, out int winW, out int winH)) return;
 
         if ((uint)winW != _swapWidth || (uint)winH != _swapHeight)
         {
@@ -75,7 +92,9 @@ public sealed unsafe class D3d12Presenter : IHostSurfacePresenter
         uint pitch = D3d12Native.AlignPitch(_swapWidth * 4);
         ulong neededBytes = (ulong)pitch * _swapHeight;
         if (!EnsureUploadBuffer(neededBytes)) return;
-        D3d12Native.CopyRgbaToUpload(width, height, rgba, (byte*)_uploadMapped, (int)_swapWidth, (int)_swapHeight, (int)pitch);
+        HostViewportRect destRect = customDestRect ?? HostViewportGeometry.ComputeDestinationRect(width, height, (int)_swapWidth, (int)_swapHeight, HostAspectRatioMode.NativeFit);
+        HostViewportRect srcCrop = customSrcCrop ?? new HostViewportRect(0, 0, width, height);
+        D3d12Native.CopyRgbaToUpload(width, height, rgba, (byte*)_uploadMapped, (int)_swapWidth, (int)_swapHeight, (int)pitch, destRect, srcCrop);
 
         uint bbIdx = ((delegate* unmanaged[Stdcall]<IntPtr, uint>)D3d12Native.GetVtblSlot(_swapChain, 36))(_swapChain);
         IntPtr backBuffer = _backBuffers[bbIdx];
@@ -221,6 +240,7 @@ public sealed unsafe class D3d12Presenter : IHostSurfacePresenter
         D3d12Native.ReleaseCom(ref _uploadBuf);
     }
 
+    /// <inheritdoc />
     public void Dispose()
     {
         if (_disposed) return;

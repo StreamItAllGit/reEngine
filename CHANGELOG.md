@@ -7,19 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-11-20
+
+### Added
+- **`HostViewportGeometry` & 5-Backend Resize/Aspect Precision:** Centralized aspect-locked viewport calculation across all 5 `HostAspectRatioMode` presets (`nativePar`, `fourByThree`, `squareInteger`, `nativeFit`, `horPlus16By9`), bounded `HostOverscanCrop` source trimming (`overscanCropPx`), `Surface0` (`#0E0E10`) margin clearing, and inverse window-to-content pointer normalization (`TryMapWindowToContentNormalized` on `HostInputFrame`) across `Gl33Presenter`, `VulkanPresenter`, `D3d12Presenter`, `ParallelCpuPresenter`, and `Sdl3HostWindow` / `HostRgbaSurfaceBackend`, plus `--aspect-mode` CLI/settings passthrough and live `SDL_SetWindowFullscreen` transitions (`F11` / `Alt+Enter`).
+- **OpenGL FBO Guards & `IHostGraphicsContext` Surface Readback / Pre-QuickSave Sync:** Guarded `Gl33Presenter` against `0x0` minimized framebuffers and incomplete FBOs (`glCheckFramebufferStatus == 0x8CD5`), added optional `OwnerThreadId`, owner-thread-guarded `TryReadSurfaceRect` (`glReadPixels` without Y-flip inversion), and `FlushAndSyncForSnapshot()` on `IHostGraphicsContext`, and wired `HostSessionRunner.DispatchQuickSave` + `Sdl3HostWindow.CloseWindowResources` to flush GPU state strictly prior to `OnQuickSaveRequested()` (`F5`) and presenter teardown.
+- **4-Port SDL3 Gamepads, 3-Tier Input (`settings.controls.json`) & Menu Isolation:** Upgraded `Sdl3GamepadProvider` to poll 4 hot-pluggable SDL3 controllers (`PadPorts[0..3]`) with per-port rumble, added `HostControlTierStore` persisting all 3 control tiers (`globalController` / `Global 1:1`, `perGameController` / `Game 1:1`, `perGameModern` / `Modern PC`) in `settings.controls.json` with duplicate and hidden-slot collision validation, wired `_drawer.ControlTierStore` directly to `_inputMapper.ControlTiers`, and enforced Menu `D-Pad` + `Left Stick` navigation isolation independent of Free-Roam bindings.
+- **Interactive `F1` Drawer, Hotkeys & Responsive Startup Pump:** Made `F1SettingsDrawerView` (`F1DrawerTabRenderers`), `ControlsTabView`, `KeybindsTabView`, and `F3HudOverlayView` live-interactive via `IHostSessionEventCallbacks` (`OnAspectRatioChanged`, `OnOverscanCropChanged`, `OnFullscreenChanged`, `OnFastForwardChanged`, `OnCutsceneSkipRequested`, `OnQuickSaveRequested`, `OnQuickLoadRequested`, `OnExtraRowActivated`, `OnControlOptionChanged`), mapped `F5`/`F9`/`F11` in `SdlAutomationProxyControl`, and kept SDL event polling responsive during startup and AOT compile waits.
+- **3-Way `reCart`/`reCartOne`/`reNes` Alias, `hostProtocolVersion` Routing & `.fds` Parity:** Extended `EngineAliasCatalog` to 3-way `reCart` <-> `reCartOne` <-> `reNes` equivalence, updated `RecompLaunchPlanBuilder.Supports030Routing` and `EngineVersionResolver.IsReadyInstallation` to inspect `hostProtocolVersion >= 0.3.0` and `minSuiteVersion >= 0.3.0` (so `reCart v0.1.0` receives full CLI flags and `.ready` gating), and added `.fds` media discovery parity in both `SuiteMediaTreeWalker` and `RecompPackageReader`.
+- **Three New Modular xUnit Suites:** Added `HostViewportGeometryAndPresentersTests`, `HostMultiPortInputAndHotkeysTests`, and `EngineRoutingAndMediaDiscoveryTests` (`117/117` tests passing across `21` suites in Release & Debug+Automation builds with `0` warnings).
+
+### Changed
+- Migrated `installer.manifest.json` from `"suiteName": "reEngine"` to canonical `"suiteId": "reEngine"` paired with `Foundation v0.5.2`, split `reEngine.Installer` and `reEngine.Host` helpers into focused modules (`InstallerCliAndAutomation`, `F1DrawerTabRenderers`, `HostInputEvaluationHelper`, `HostMultiBindHelpers`, `HostSessionExtensionsContracts`), and preserved `v0.5.0` `settings.json` keys (`aspectRatioMode`, `overscanCropPx`, `isFastForwardEnabled`) alongside `v0.4.0` keys with `.bak` recovery.
+- Updated `Releases\` retention policy to `0.5` / `0.4` / `0.3` and trimmed `0.2.x` changelog history entries (`[0.2.1-hf.1]`, `[0.2.1]`, `[0.2.0]`) to keep the current minor plus 2 prior minor series.
+
+### Fixed
+- **Hotfix SemVer Precedence (`-hf.<n>`):** Fixed `SemVer.CompareTo` in `EngineVersionResolver` so `-hf.<n>` hotfixes (`0.3.0-hf.10 > 0.3.0-hf.3 > 0.3.0-hf.1 > 0.3.0 > 0.3.0-rc.1`) strictly outrank stable releases while preserving `.ready` gating for `0.3.0+` and `0.3.0-hf.<n>` leaves and fixing `UpdateCoordinator` hotfix discovery.
+- **Launcher `--aspect-mode` Value Normalization:** Registered `--aspect-mode` inside `LauncherArgsHelper.ValueOptions` so mode names like `fourByThree` pass through verbatim instead of being normalized relative to the caller working directory.
+- **Resize Stretch, Mid-Frame Snapshot Race & Protocol Gating:** Eliminated window-resize frame stretching across all 5 backends, fixed `HostRgbaSurfaceBackend` mid-frame `PublishSnapshot` racing ahead of `F1`/`F3` overlay draws inside `HostSessionRunner.PresentCompositeFrame`, and fixed pre-`0.3.0` engine version gating dropping CLI options for `hostProtocolVersion >= 0.3.0` child engines.
+
+### Security
+- **Dual-Binary Release Fail-Closed Automation Gate & Decoupled Bridge:** Enforced `ExitCode = 2` on `--automation-port` in both Release `reEngine.exe` and Release `reEngine-Setup-v0.5.0-win-x64.exe`, decoupled `IHostAutomationBridge` (`HostSessionOptions.AutomationBridgeFactory`) so `reEngine.Host.dll` carries zero references to `Foundation.Automation` or `System.Windows.Forms`, and added `.fds` to `DecompPipelineCoordinator.ForbiddenCleanRoomExtensions`.
+
 ## [0.4.0] - 2026-11-19
 
 ### Added
 - **Unified `reEngine.Host` Native GPU Presenters, `hdpacks\` & Native Audio (`SDL_AUDIO_DRIVER`):** Implemented native OpenGL 3.3+, Vulkan 1.3+, and DirectX 12 (`directx` / CLI `dx12`) contexts and swapchain presenters via direct OS bindings (without attaching `SDL_CreateRenderer` to GPU windows), deterministic 16px horizontal-band `ParallelCpuPresenter` matching `Software` bit-for-bit at `1x`, path-contained `<dataDir>\hdpacks\` `(clutSha256Hex, rectSha256Hex)` overrides, native OS audio pinning (`wasapi` on Windows set prior to `SDL_InitSubSystem`), `--require-backend` (`ExitCode = 6`), and fullscreen presentation.
 - **3-Slot Multi-Bind Input, Xbox/HID Gamepads, Dynamic `ControlOptions` & Touch Contracts:** Added `HostMultiBindRegistry` (3-slot `[1st, 2nd, 3rd]` simultaneous KBM + mouse/wheel `1001..1007`, repeat filtering, single-edge isolation), `Sdl3GamepadProvider` (Xbox & open-standard HID `2001..2032`, `0.15f` deadzone, `0.40f` trigger threshold, rumble), dynamic `ControlOptions` (`ControlsTabView`), interactive 5-column `KeybindsTabView`, and cross-platform `IHostInputProvider` / `HostTouchOverlayView`.
 - **Interactive `.decomp` Bring-Up Runner, `SuiteMediaTreeWalker` & Missing-Media Prompt:** Opening `.decomp` files from Windows Explorer now launches the **Bring-Up** shelf pre-loaded with the recipe, `D0..D5` stage picker, automatic suite-tree media discovery (`SuiteMediaTreeWalker`), `MissingMediaPromptDialog` (defaulting to use-in-place with opt-in `.cue`/`.bin` staging into `data\rom\`), and live logs.
-- **Standalone `--verify-module` & Frontend `--wait` / `--fullscreen` / `--save-dir` Bridge:** Added `PackageVerificationService` emitting Standard 18 camelCase JSON reports (`--json`, `--require-media`), normalized `--verify-module` selectively in `reEngine.Launcher` while preserving bare engine slugs, and added bounded `<= 3s` graceful `WM_CLOSE` tree teardown in `GracefulProcessTreeShutdown` so saves flush into `--save-dir` before process-tree termination.
+- **Standalone `--verify-module` & Frontend `--wait` / `--fullscreen` / `--save-dir` Bridge:** Added `PackageVerificationService` emitting canonical camelCase JSON reports (`--json`, `--require-media`), normalized `--verify-module` selectively in `reEngine.Launcher` while preserving bare engine slugs, and added bounded `<= 3s` graceful `WM_CLOSE` tree teardown in `GracefulProcessTreeShutdown` so saves flush into `--save-dir` before process-tree termination.
 - **Canonical `D4_CleanSource` & Expanded Verification:** Switched `DecompD4StrictnessValidator.CanonicalCorpusTiers` to `D4_CleanSource` (keeping `D4_FunctionalRewrite` as a non-double-counted transition alias) and added four modular xUnit suites (`97` total tests across Release & Debug+Automation builds).
 
 ### Changed
 - Upgraded the `Library` shelf **Backend** dropdown to expose all five Windows backends (`opengl`, `vulkan`, `directx`, `parallelCpu`, `software`), added the **Fullscreen** checkbox and **Verify Package...** action, and aligned all UI/CLI/documentation terminology to static recompilation without emulator framing.
 - Updated `reEngine.Installer` to preserve `v0.4.0` keys (`backendId: "directx"`, `isFullscreen`, `audioDriver`, `isHdTexturePackEnabled`) with `.bak` recovery and enforced the 3-MINOR retention policy on `Releases\` (pruning `v0.1.*.7z`, unpacked `v0.2.1`, and `v0.2.1-hf.1`).
-- Trimmed `0.1.x` changelog history entries per Dev Bible Standard 04 (`<= 3` prior `MINOR` series retained).
+- Trimmed `0.1.x` changelog history entries per release retention policy.
 
 ### Fixed
 - Fixed `LauncherArgsHelper` dropping synchronous execution on `--verify-module`, `--headless`, and `--json`, and fixed `SDL_AUDIO_DRIVER` hint ordering in `Sdl3HostWindow` / `NativeAudioDriverSelector`.
@@ -32,7 +54,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Resumable Engine Updates & Bidirectional Aliases:** Added `UpdatePackageApplier` with SSRF filtering, HTTP `Range` resumable `.part` downloads, SHA-256 verification, and atomic `.staging-<ver>` to `v<Ver>` promotion with `.ready` markers, alongside symmetric engine aliases (`reSlate` / `reStation`, `reCartOne` / `reNes`, `reCart64` / `re64`, `reBlast16` / `reGenesis`) and track pinning for rollback.
 - **Clean-Room Decompilation Strictness & Unified Settings Migration:** Added `DecompD4StrictnessValidator` to verify zero compiler errors/warnings and zero decompiler tells without bundled retail source bodies, plus `SettingsMigrationHelper` and `ProgramBootstrapHelper` to consolidate legacy `settings.json` files into `<InstallRoot>\data\config\settings.json`.
 - **Upgraded Manager Shelves & Inspector Drawer:** Added `Library`, `Engines`, and `Bring-Up` shelves, a collapsible `Inspector Drawer`, `--scale` CLI/UI passthrough (`1x`, `2x`, `4x`), persisted `shouldAllowJitBringup` / scale / backend preferences, `SECURITY.md`, embedded installer manifest, and VS Code workspace configuration.
-- **Portable Release Archive & Expanded Automated / Live Sandbox Verification:** Added `reEngine-v0.3.0-win-x64-Portable.zip` alongside the signed Setup EXE in the 7-file `Releases\` bundle (containing all portable binaries and sanitized docs with zero installer EXEs), expanded the test suite across 14 suites (`Release` and `Debug` with automation enabled), and upgraded `run_stage2_sandbox_e2e.ps1` to verify the 12-point installer sandbox, live WinForms UI navigation, a real detached child game window launch, live SDL3 host rendering, and fail-closed `Release` automation rejection (`ExitCode = 2`).
+- **Portable Release Archive & Expanded Automated / Live Sandbox Verification:** Added `reEngine-v0.3.0-win-x64-Portable.zip` alongside the signed Setup EXE in the 7-file `Releases\` bundle (containing all portable binaries and sanitized docs with zero installer EXEs), expanded the test suite across 14 suites (`Release` and `Debug` with automation enabled), and upgraded live sandbox verification to cover the 12-point installer sandbox, live WinForms UI navigation, a real detached child game window launch, live SDL3 host rendering, and fail-closed `Release` automation rejection (`ExitCode = 2`).
 
 ### Changed
 - Restricted the `Library` tab **Backend** dropdown to currently implemented backends (`opengl` and `software`) while retaining CLI `--backend` support for `vulkan` and `parallelCpu` on upcoming `0.3.x` engines.
@@ -49,31 +71,3 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 - Enforced fail-closed `ExitCode = 2` when `--automation-port` is passed to `Release` builds (with zero automation code compiled into shipping binaries), SSRF blocking on update URLs, Zip-Slip archive traversal protection, and clean-room exclusions for `data\`, `logs\`, and local configuration files.
-
-## [0.2.1-hf.1] - 2026-11-15
-
-### Changed
-- Aligned runtime environment and tray/background presentation helpers to `APP_ISOLATED_TEST=1`, retired legacy test-harness CLI wrappers in favor of `51/51` isolated unit tests (`0` warnings), and hardened release packaging leak checks.
-
-## [0.2.1] - 2026-11-15
-
-### Added
-- Added Setup Wizard directory auto-sorting so selecting a parent folder places `reEngine` into `<parent>\reEngine\` without double-nesting and keeps companion `engines\` synced cleanly.
-- Added 3 regression tests verifying wizard folder sorting and suite path synchronization (`53/53` passing).
-
-### Changed
-- Extracted packaging constants into `ReEnginePackagingConstants` and synchronized custom non-umbrella `engines\` creation in the Setup Wizard.
-
-## [0.2.0] - 2026-11-15
-
-### Added
-- Added platform-agnostic `.decomp` package manifests and pipeline coordination (`IDecompPlatformProvider`) with clear 3-part remediation diagnostics (`ExitCode = 3`) when an engine is missing or unbuilt.
-- Added offline CLI toolchain detection and staging (`stage_offline_toolchain.ps1`, stripped Apache-2.0 CLI Ghidra + `jlink` OpenJDK within `160 MB`, plus `THIRDPARTY_LICENSES.txt`) for `--profile Full`.
-- Added shared `<dataDir>\cache\` AOT assembly indexing (`AotCacheManager`) with cross-process file locking, SHA-256 tamper checks, and clean-room rejection of pre-built generated binaries inside `.recomp` files.
-- Added `.decomp` file associations, `decomp` CLI subcommand routing, `Dev\settings.example.json`, opt-in `--migrate-legacy` upgrade preservation for `data\rom\`, and 16 new tests (`50/50` passing).
-
-### Changed
-- Moved default user-scope installation path to `%LOCALAPPDATA%\Programs\StreamItAll\reEngine\reEngine` (suite root `%LOCALAPPDATA%\Programs\StreamItAll\reEngine`) while keeping auto-start disabled (`AllowAutoStart = false`).
-
-### Fixed
-- Preserved the `decomp` CLI subcommand token verbatim during launcher argument normalization instead of treating it as a relative file path.

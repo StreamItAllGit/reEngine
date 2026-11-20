@@ -36,6 +36,25 @@ public interface IHostGraphicsContext : IDisposable
     string BackendId { get; }
     bool IsHardwareAccelerated { get; }
     void PresentComposite(int width, int height, ReadOnlySpan<byte> rgba);
+
+    /// <summary>Gets the managed thread ID of the context owner thread, or <c>0</c> when unbound.</summary>
+    int OwnerThreadId => 0;
+
+    /// <summary>
+    /// Attempts to read back an RGBA8888 surface rectangle on the context owner thread without Y-flip inversion.
+    /// </summary>
+    /// <param name="x">Source X origin in pixels.</param>
+    /// <param name="y">Source Y origin in pixels.</param>
+    /// <param name="width">Rectangle width in pixels.</param>
+    /// <param name="height">Rectangle height in pixels.</param>
+    /// <param name="rgbaDestination">Destination span holding at least <c>width * height * 4</c> bytes.</param>
+    /// <returns><c>true</c> if readback succeeded on the owner thread; otherwise <c>false</c>.</returns>
+    bool TryReadSurfaceRect(int x, int y, int width, int height, Span<byte> rgbaDestination) => false;
+
+    /// <summary>
+    /// Flushes pending GPU work on the context owner thread before QuickSave capture or presenter switch teardown.
+    /// </summary>
+    void FlushAndSyncForSnapshot() { }
 }
 
 /// <summary>
@@ -48,4 +67,5 @@ public interface IHostSurfacePresenter : IDisposable
     IHostGraphicsContext? GraphicsContext { get; }
     bool TryInitialize(IntPtr sdlWindow, int width, int height, out string diagnostic);
     void PresentRgba(int width, int height, ReadOnlySpan<byte> rgba);
+    void PresentRgba(int width, int height, ReadOnlySpan<byte> rgba, HostViewportRect destRect, HostViewportRect srcCropRect) => PresentRgba(width, height, rgba);
 }

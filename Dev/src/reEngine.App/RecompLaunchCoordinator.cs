@@ -66,7 +66,7 @@ internal sealed class RecompLaunchCoordinator
             Fullscreen = (launchOptions?.Fullscreen == true) || settings.IsFullscreen,
             AudioDriverOverride = !string.IsNullOrWhiteSpace(launchOptions?.AudioDriverOverride) ? launchOptions!.AudioDriverOverride : settings.AudioDriver
         };
-        ChildLaunchPlan plan = RecompLaunchPlanBuilder.Build(loaded, appEnv, containmentRoot, effectiveOpts, resolution.SelectedEngine, _log);
+        ChildLaunchPlan plan = RecompLaunchPlanBuilder.Build(loaded, appEnv, containmentRoot, effectiveOpts, resolution.SelectedEngine, _log, settings);
         _log("INFO", resolution.DiagnosticMessage);
         Console.WriteLine(resolution.DiagnosticMessage);
         Console.WriteLine($"Preload media detected: {loaded.PreloadMedia.DiscoveredMediaFiles.Count} file(s) -> {loaded.PreloadMedia.PrimaryMediaPath ?? "none"}");

@@ -1,11 +1,12 @@
 // @module: reEngine.App.RecompLaunchOptions
-// @purpose: CLI option extraction and validated child passthrough flags (backends, JIT bring-up, automation) for RecompLaunchCoordinator.
-// @depends-on: System, System.Collections.Generic, System.Globalization, Foundation.Core
+// @purpose: CLI option extraction and validated child passthrough flags (backends, aspect ratio, JIT bring-up, automation) for RecompLaunchCoordinator.
+// @depends-on: System, System.Collections.Generic, System.Globalization, Foundation.Core, reEngine.Core.Resolution, reEngine.Host.Contracts
 // @exports: RecompLaunchOptions
 
 using System.Globalization;
 using Foundation.Core;
 using reEngine.Core.Resolution;
+using reEngine.Host.Contracts;
 
 namespace reEngine.App;
 
@@ -15,7 +16,7 @@ internal sealed record RecompLaunchOptions
     {
         "--open", "--module", "--verify-module", "--engines-dir", "--engine-dir", "--toolchain-dir", "--output-dir", "--stage",
         "--data-dir", "--config", "--log-dir", "--save-dir", "--feed", "--port", "--ui",
-        "--backend", "--scale", "--suite-tab", "--profile", "--automation-port", "--automation-token",
+        "--backend", "--scale", "--aspect-mode", "--suite-tab", "--profile", "--automation-port", "--automation-token",
         "--frames", "--fixture", "--dump-screenshot", "--dump-audio",
         "--shutdown-timeout-ms", "--audio-driver", "--media-path"
     };
@@ -52,6 +53,8 @@ internal sealed record RecompLaunchOptions
     public bool HdTexturePacks { get; init; }
     public string? BackendId { get; init; }
     public int? ResolutionScale { get; init; }
+    /// <summary>Optional strict-parsed aspect ratio mode requested via <c>--aspect-mode</c>.</summary>
+    public HostAspectRatioMode? AspectRatioMode { get; init; }
     public string? SaveDirOverride { get; init; }
     public string? AudioDriverOverride { get; init; }
     public string? MediaPathOverride { get; init; }
@@ -86,6 +89,7 @@ internal sealed record RecompLaunchOptions
             normalizedBackend = canonical;
         }
         int? resolutionScale = ParseOptionalResolutionScale(GetOptionValue(args, "--scale", requiredIfPresent: true));
+        HostAspectRatioMode? aspectRatioMode = ParseOptionalAspectRatioMode(GetOptionValue(args, "--aspect-mode", requiredIfPresent: true));
 
         return new RecompLaunchOptions
         {
@@ -106,6 +110,7 @@ internal sealed record RecompLaunchOptions
             HdTexturePacks = CliArgumentHelper.HasFlag(args, "--hd-packs"),
             BackendId = normalizedBackend,
             ResolutionScale = resolutionScale,
+            AspectRatioMode = aspectRatioMode,
             SaveDirOverride = GetOptionValue(args, "--save-dir", requiredIfPresent: true),
             AudioDriverOverride = GetOptionValue(args, "--audio-driver", requiredIfPresent: true),
             MediaPathOverride = GetOptionValue(args, "--media-path", requiredIfPresent: true),
@@ -186,6 +191,16 @@ internal sealed record RecompLaunchOptions
             throw new ArgumentException($"Invalid --scale value '{raw}'; expected 1, 2, 4, or 8.");
         }
         return val;
+    }
+
+    private static HostAspectRatioMode? ParseOptionalAspectRatioMode(string? raw)
+    {
+        if (raw is null) return null;
+        if (!HostAspectRatioModeCodec.TryParseStrict(raw, out HostAspectRatioMode mode))
+        {
+            throw new ArgumentException($"Unsupported --aspect-mode '{raw}'; expected nativePar, fourByThree, squareInteger, nativeFit, or horPlus16By9.");
+        }
+        return mode;
     }
 
     private static int? ParseOptionalPositiveInt(string? raw, string optionName)

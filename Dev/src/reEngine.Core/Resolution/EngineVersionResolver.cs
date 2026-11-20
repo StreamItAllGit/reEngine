@@ -52,7 +52,7 @@ public readonly record struct SemVer(int Major, int Minor, int Patch, string? Pr
         return true;
     }
 
-    /// <summary>Compares two semantic versions per SemVer 2.0.0 precedence (stable &gt; prerelease).</summary>
+    /// <summary>Compares two semantic versions using ecosystem precedence (<c>-hf.&lt;n&gt;</c> &gt; stable &gt; other prereleases).</summary>
     public int CompareTo(SemVer other)
     {
         int cmp = Major.CompareTo(other.Major);
@@ -62,11 +62,12 @@ public readonly record struct SemVer(int Major, int Minor, int Patch, string? Pr
         cmp = Patch.CompareTo(other.Patch);
         if (cmp != 0) return cmp;
 
-        bool thisStable = string.IsNullOrEmpty(Prerelease);
-        bool otherStable = string.IsNullOrEmpty(other.Prerelease);
-        if (thisStable && otherStable) return 0;
-        if (thisStable) return 1;
-        if (otherStable) return -1;
+        (int leftRank, int leftHf) = ClassifySuffix(Prerelease);
+        (int rightRank, int rightHf) = ClassifySuffix(other.Prerelease);
+        cmp = leftRank.CompareTo(rightRank);
+        if (cmp != 0) return cmp;
+        if (leftRank == 2) return leftHf.CompareTo(rightHf);
+        if (leftRank == 1) return 0;
 
         string[] leftIds = Prerelease!.Split('.');
         string[] rightIds = other.Prerelease!.Split('.');
@@ -88,6 +89,18 @@ public readonly record struct SemVer(int Major, int Minor, int Patch, string? Pr
             }
         }
         return leftIds.Length.CompareTo(rightIds.Length);
+    }
+
+    private static (int Rank, int HotfixNumber) ClassifySuffix(string? prerelease)
+    {
+        if (string.IsNullOrEmpty(prerelease)) return (1, 0);
+        if (prerelease.StartsWith("hf.", StringComparison.OrdinalIgnoreCase) &&
+            int.TryParse(prerelease.AsSpan(3), NumberStyles.None, CultureInfo.InvariantCulture, out int hfNumber) &&
+            hfNumber > 0)
+        {
+            return (2, hfNumber);
+        }
+        return (0, 0);
     }
 
     /// <summary>Formats the semantic version without a leading <c>v</c>.</summary>
@@ -157,6 +170,29 @@ public static class EngineTrackMatcher
 /// </summary>
 public sealed class EngineVersionResolver
 {
+    private static readonly JsonSerializerOptions ManifestJsonOptions = new()
+    {
+        PropertyNameCaseInsensitive = true,
+        ReadCommentHandling = JsonCommentHandling.Skip,
+        AllowTrailingCommas = true
+    };
+
+    /// <summary>Safely reads and deserializes <c>engine.manifest.json</c> from <paramref name="versionDir"/> if present and valid.</summary>
+    public static EngineManifestModel? TryReadEngineManifest(string versionDir)
+    {
+        if (string.IsNullOrWhiteSpace(versionDir)) return null;
+        string manifestPath = Path.Combine(versionDir, "engine.manifest.json");
+        if (!File.Exists(manifestPath)) return null;
+        try
+        {
+            return JsonSerializer.Deserialize<EngineManifestModel>(File.ReadAllText(manifestPath), ManifestJsonOptions);
+        }
+        catch (Exception)
+        {
+            return null;
+        }
+    }
+
     /// <summary>Enumerates ready side-by-side engines (plus alias equivalents when filtering) while skipping incomplete staging folders.</summary>
     public IReadOnlyList<InstalledEngineCandidate> DiscoverInstalledEngines(
         string enginesRootDir,
@@ -275,7 +311,15 @@ public sealed class EngineVersionResolver
     {
         if (File.Exists(Path.Combine(versionDir, ".ready"))) return true;
         if (Directory.EnumerateFiles(versionDir, "*.part", SearchOption.TopDirectoryOnly).Any()) return false;
-        return version.CompareTo(SemVer.Track030Threshold) < 0;
+        if (version.CompareTo(SemVer.Track030Threshold) >= 0) return false;
+
+        EngineManifestModel? manifest = TryReadEngineManifest(versionDir);
+        if (manifest is null) return true;
+
+        bool requiresReadyByProtocol =
+            (SemVer.TryParse(manifest.HostProtocolVersion, out SemVer proto) && proto.CompareTo(SemVer.Track030Threshold) >= 0) ||
+            (SemVer.TryParse(manifest.MinSuiteVersion, out SemVer minSuite) && minSuite.CompareTo(SemVer.Track030Threshold) >= 0);
+        return !requiresReadyByProtocol;
     }
 
     private static string? LocateExecutable(string versionDir, string engineId)
@@ -288,25 +332,19 @@ public sealed class EngineVersionResolver
             if (File.Exists(appExe)) return appExe;
         }
 
-        string manifestPath = Path.Combine(versionDir, "engine.manifest.json");
-        if (!File.Exists(manifestPath)) return null;
+        EngineManifestModel? manifest = TryReadEngineManifest(versionDir);
+        string? entryRel = manifest?.EntryExecutable;
+        if (string.IsNullOrWhiteSpace(entryRel)) return null;
         try
         {
-            using JsonDocument doc = JsonDocument.Parse(File.ReadAllText(manifestPath));
-            if (doc.RootElement.TryGetProperty("entryExecutable", out JsonElement prop) && prop.ValueKind == JsonValueKind.String)
-            {
-                string? rel = prop.GetString();
-                if (!string.IsNullOrWhiteSpace(rel))
-                {
-                    string contained = AppEnvironment.AssertPathContained(Path.GetFullPath(Path.Combine(versionDir, rel.Trim())), versionDir);
-                    if (File.Exists(contained)) return contained;
-                }
-            }
+            string contained = AppEnvironment.AssertPathContained(
+                Path.GetFullPath(Path.Combine(versionDir, entryRel.Trim())),
+                versionDir);
+            return File.Exists(contained) ? contained : null;
         }
         catch (Exception)
         {
             return null;
         }
-        return null;
     }
 }

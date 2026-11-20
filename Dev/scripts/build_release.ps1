@@ -119,7 +119,8 @@ Copy-Item (Join-Path $devDir "scripts\THIRDPARTY_LICENSES.txt") (Join-Path $stag
 Copy-Item (Join-Path $devDir "scripts\*.bat") $stageScripts -Force
 Copy-Item (Join-Path $devDir "scripts\interactive\*.bat") $stageInteractive -Force
 Get-ChildItem $stageDir -Include *.pdb, *.xml -Recurse -File | Remove-Item -Force
-Assert-BinaryPurity (Join-Path $stageApp "reEngine.Host.dll") @("Foundation.Automation", "System.Windows.Forms")
+Assert-BinaryPurity (Join-Path $stageApp "reEngine.Core.dll") @("Foundation.Automation", "System.Windows.Forms", "Foundation.UI")
+Assert-BinaryPurity (Join-Path $stageApp "reEngine.Host.dll") @("Foundation.Automation", "System.Windows.Forms", "Foundation.UI")
 Assert-BinaryPurity (Join-Path $stageApp "reEngine.dll") @("Foundation.Automation")
 
 Invoke-Sign (Join-Path $stageApp "reEngine.exe")
@@ -147,6 +148,9 @@ $instOut = Join-Path $workTemp "installer_out"
 if ($LASTEXITCODE -ne 0) { throw "publish reEngine.Installer failed ($LASTEXITCODE)" }
 $builtInstaller = Get-ChildItem $instOut -Filter *.exe | Select-Object -First 1
 if (-not $builtInstaller) { throw "No installer EXE generated under $instOut" }
+Assert-BinaryPurity $builtInstaller.FullName @("Foundation.Automation", "Foundation.UI")
+$installerBinDll = Join-Path $devDir "src\reEngine.Installer\bin\Release\net8.0-windows\win-x64\reEngine.Installer.dll"
+if (Test-Path $installerBinDll) { Assert-BinaryPurity $installerBinDll @("Foundation.Automation", "Foundation.UI") }
 
 Write-Host "[4/6] Assembling 7-file Releases\v$Version (+ Portable ZIP) and NTFS-hardlinked Releases\Latest..."
 $releasesDir = Join-Path $root "Releases"
@@ -168,10 +172,11 @@ $rawNotes = (@'
 Clean-room static recompilation suite router, unified 5-backend `reEngine.Host.dll` runtime, interactive `.decomp` Bring-Up runner, and multi-track side-by-side engine manager.
 
 ## Highlights
-- **Unified 5-Backend `reEngine.Host.dll` & Native Audio:** Adds native `OpenGL 3.3+`, `Vulkan 1.3+`, `DirectX 12` (`directx` / `dx12`), deterministic `ParallelCpu`, and `Software` presenters with `IHostGraphicsContext` interop, path-contained `<dataDir>\hdpacks\` texture overrides, `--require-backend` (`ExitCode = 6`) or graceful fallback, and native OS audio pinning (`wasapi`, `pipewire`/`alsa`, `coreaudio`).
-- **3-Slot Multi-Bind Input, Gamepads & Upgraded `F1` Drawer:** Supports 3-slot `[1st, 2nd, 3rd]` keyboard/mouse/wheel bindings, Xbox and open-standard HID SDL3 gamepads with rumble, dynamic per-game `Controls` options, a 5-column interactive `Keybinds` drawer, and cross-platform touch overlay contracts.
-- **Interactive `.decomp` Bring-Up & Root-Tree Media Walk:** Opening `.decomp` modules launches the `Bring-Up` shelf with `D0..D5` stage execution, automatic root-tree media search, and a Missing Media prompt defaulting to use-in-place with opt-in copy into `data\rom\` (including `.cue` companion `.bin` files).
-- **Frontend Bridge, `--verify-module` & `D4_CleanSource`:** Adds `--fullscreen`, `--save-dir`, bounded `<= 3s` graceful `--wait` child-tree teardown so saves flush cleanly, dual-mode `--verify-module` (`--json`), canonical `D4_CleanSource` checks (`D4_FunctionalRewrite` read-alias), and `.bak`-protected `settings.json` upgrades.
+- **`HostViewportGeometry` & 5-Backend Resize/Aspect Precision:** Centralizes aspect-locked viewport calculation (`nativePar`, `fourByThree`, `squareInteger`, `nativeFit`, `horPlus16By9`), bounded `overscanCropPx`, `Surface0` margin clearing, inverse normalized content pointer mapping, and `--aspect-mode` CLI passthrough across `OpenGL 3.3+`, `Vulkan 1.3+`, `DirectX 12`, `ParallelCpu`, and `Software` presenters plus live `F11` / `Alt+Enter` fullscreen transitions.
+- **OpenGL FBO Safety Guards & Owner-Thread Readback/QuickSave Sync (`IHostGraphicsContext`):** Guards `Gl33Presenter` against `0x0` minimized framebuffers and incomplete FBOs (`0x8CD5`), adds optional `OwnerThreadId`, owner-thread-guarded `TryReadSurfaceRect` (`glReadPixels` without Y-flip inversion), and `FlushAndSyncForSnapshot()` invoked prior to `F5` QuickSave and live presenter teardown.
+- **4-Port SDL3 Gamepads & 3-Tier Input Controls:** Polls up to 4 hot-pluggable SDL3 controllers (`PadPorts[0..3]`), implements 3-tier input profiles (`Global 1:1`, `Game 1:1`, `Modern PC`) persisted in `settings.controls.json` with zero hidden-slot conflicts, and isolates Menu navigation to `D-Pad` and `Left Stick`.
+- **Interactive `F1` Drawer, Hotkeys & Responsive Startup Pump:** Enables live interactive toggles inside the `F1` settings drawer, `Controls` and `Keybinds` tabs, `F3` telemetry HUD, `F5`/`F9`/`F11`/`Alt+Enter`, Fast-Forward and Cutscene-Skip callbacks, and responsive SDL event pumping during startup/AOT compile wait states.
+- **3-Way `reCart`/`reCartOne`/`reNes` Routing, `-hf.<n>` SemVer Precedence & `.fds` Parity:** Adds symmetric 3-way `reCart` <-> `reCartOne` <-> `reNes` resolution, fixes `SemVer.CompareTo` to rank `-hf.<n>` hotfix releases above stable releases while preserving `.ready` enforcement on `0.3.0+`, adds `hostProtocolVersion` >= `0.3.0` CLI forwarding, `.fds` Famicom Disk System discovery with clean-room rejection, `Foundation v0.5.2` `"suiteId": "reEngine"` packaging, and fail-closed `ExitCode = 2` automation rejection on both Release app and Release setup executables.
 '@).Replace('__VER__', $Version)
 
 $docMap = [ordered]@{
@@ -233,11 +238,6 @@ if ((-not $SkipSigning) -and (Test-Path $auditScript)) {
 $vm = [regex]::Match($Version, '^(\d+)\.(\d+)\.(\d+)')
 if ($vm.Success) {
     $curMaj = [int]$vm.Groups[1].Value; $curMin = [int]$vm.Groups[2].Value
-    Get-ChildItem -Path $releasesDir -Directory -ErrorAction SilentlyContinue | Where-Object { $_.Name -match '^v\d+\.\d+\.\d+-' } |
-        ForEach-Object { Remove-Item -LiteralPath $_.FullName -Recurse -Force }
-    Get-ChildItem -Path $releasesDir -Directory -ErrorAction SilentlyContinue | Where-Object { $_.Name -match '^v\d+\.\d+\.\d+$' } |
-        Sort-Object { [version]$_.Name.Substring(1) } -Descending | Select-Object -Skip 2 |
-        ForEach-Object { Remove-Item -LiteralPath $_.FullName -Recurse -Force }
     $arcRows = @(Get-ChildItem -Path $releasesDir -File -Filter "*.7z" -ErrorAction SilentlyContinue | ForEach-Object {
         $am = [regex]::Match($_.Name, '^(?:reEngine-)?v(\d+)\.(\d+)\.(\d+)')
         if ($am.Success) { [PSCustomObject]@{ File = $_; Maj = [int]$am.Groups[1].Value; Min = [int]$am.Groups[2].Value; Key = ([int]$am.Groups[1].Value * 10000 + [int]$am.Groups[2].Value) } }
@@ -245,7 +245,23 @@ if ($vm.Success) {
     $allKeys = [System.Collections.Generic.List[int]]::new(); $allKeys.Add($curMaj * 10000 + $curMin)
     foreach ($a in $arcRows) { $allKeys.Add($a.Key) }
     $keepKeys = @($allKeys | Sort-Object -Descending -Unique | Select-Object -First 3)
-    foreach ($a in $arcRows) { if (($a.Maj -eq $curMaj -and $a.Min -lt ($curMin - 2)) -or ($a.Maj -lt $curMaj -and $keepKeys -notcontains $a.Key)) { Remove-Item -LiteralPath $a.File.FullName -Force } }
+    foreach ($a in $arcRows) {
+        if (($keepKeys -notcontains $a.Key) -or ($a.Maj -eq $curMaj -and $a.Min -lt ($curMin - 2))) {
+            Remove-Item -LiteralPath $a.File.FullName -Force
+        }
+    }
+    Get-ChildItem -Path $releasesDir -Directory -ErrorAction SilentlyContinue | Where-Object { $_.Name -match '^v\d+\.\d+\.\d+-' } |
+        ForEach-Object { Remove-Item -LiteralPath $_.FullName -Recurse -Force }
+    $unpackedDirs = @(Get-ChildItem -Path $releasesDir -Directory -ErrorAction SilentlyContinue | Where-Object { $_.Name -match '^v(\d+)\.(\d+)\.(\d+)$' } | ForEach-Object {
+        $dm = [regex]::Match($_.Name, '^v(\d+)\.(\d+)\.(\d+)$')
+        [PSCustomObject]@{ Dir = $_; Ver = [version]$_.Name.Substring(1); Maj = [int]$dm.Groups[1].Value; Min = [int]$dm.Groups[2].Value; Key = ([int]$dm.Groups[1].Value * 10000 + [int]$dm.Groups[2].Value) }
+    } | Sort-Object Ver -Descending)
+    for ($idx = 0; $idx -lt $unpackedDirs.Count; $idx++) {
+        $d = $unpackedDirs[$idx]
+        if ($idx -ge 2 -or ($keepKeys -notcontains $d.Key) -or ($d.Maj -eq $curMaj -and $d.Min -lt ($curMin - 2))) {
+            Remove-Item -LiteralPath $d.Dir.FullName -Recurse -Force
+        }
+    }
 }
 
 Write-Host "[5/6] Publishing immutable SharedLibs\reEngine\v$Version (Release net8.0 purity verified)..."
@@ -254,16 +270,19 @@ $coreOut = Join-Path $devDir "src\reEngine.Core\bin\Release\net8.0"
 $hostNet8Out = Join-Path $devDir "src\reEngine.Host\bin\Release\net8.0"
 & dotnet build (Join-Path $devDir "src\reEngine.Host\reEngine.Host.csproj") -c Release -f net8.0 /warnaserror | Out-Null
 if ($LASTEXITCODE -ne 0) { throw "Release net8.0 build of reEngine.Host failed" }
-Assert-BinaryPurity (Join-Path $hostNet8Out "reEngine.Host.dll") @("Foundation.Automation", "System.Windows.Forms")
+Assert-BinaryPurity (Join-Path $coreOut "reEngine.Core.dll") @("Foundation.Automation", "System.Windows.Forms", "Foundation.UI")
+Assert-BinaryPurity (Join-Path $hostNet8Out "reEngine.Host.dll") @("Foundation.Automation", "System.Windows.Forms", "Foundation.UI")
 
 $sdl3Src = Join-Path $stageApp "SDL3.dll"
 if (-not (Test-Path $sdl3Src)) { $sdl3Src = Join-Path $stageApp "runtimes\win-x64\native\SDL3.dll" }
 
 foreach ($sdkDir in @((Join-Path $sharedRoot "v$Version"), (Join-Path $sharedRoot "Latest"))) {
+    if (Test-Path $sdkDir) { Remove-Item $sdkDir -Recurse -Force }
     New-Item -ItemType Directory -Force $sdkDir | Out-Null
     foreach ($fn in @("reEngine.Core.dll", "reEngine.Core.xml", "reEngine.Core.deps.json")) { Copy-Item (Join-Path $coreOut $fn) (Join-Path $sdkDir $fn) -Force }
     foreach ($fn in @("reEngine.Host.dll", "reEngine.Host.xml", "reEngine.Host.deps.json")) { Copy-Item (Join-Path $hostNet8Out $fn) (Join-Path $sdkDir $fn) -Force }
-    Assert-BinaryPurity (Join-Path $sdkDir "reEngine.Host.dll") @("Foundation.Automation", "System.Windows.Forms")
+    Assert-BinaryPurity (Join-Path $sdkDir "reEngine.Core.dll") @("Foundation.Automation", "System.Windows.Forms", "Foundation.UI")
+    Assert-BinaryPurity (Join-Path $sdkDir "reEngine.Host.dll") @("Foundation.Automation", "System.Windows.Forms", "Foundation.UI")
     if (Test-Path $sdl3Src) { Copy-Item $sdl3Src (Join-Path $sdkDir "SDL3.dll") -Force }
     Copy-Item $licensePath (Join-Path $sdkDir "LICENSE") -Force
     Copy-Item (Join-Path $devDir "scripts\THIRDPARTY_LICENSES.txt") (Join-Path $sdkDir "THIRDPARTY_LICENSES.txt") -Force

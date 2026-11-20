@@ -1,25 +1,25 @@
 // @module: reEngine.Core.Resolution.EngineAliasCatalog
-// @purpose: Bidirectional SeriesMap coded/legacy hardware engineId alias catalog (reSlate<->reStation, reCartOne<->reNes, reCart64<->re64, reBlast16<->reGenesis).
-// @depends-on: System, System.Collections.Generic
+// @purpose: N-way SeriesMap coded/legacy hardware engineId equivalence catalog (reSlate<->reStation, reCart<->reCartOne<->reNes, reCart64<->re64, reBlast16<->reGenesis).
+// @depends-on: System, System.Collections.Generic, System.Linq
 // @exports: EngineAliasCatalog
 
 namespace reEngine.Core.Resolution;
 
 /// <summary>
-/// Maps coded hardware engine identifiers cleanly to/from legacy <c>re*</c> identifiers per <c>SeriesMap.json</c>.
+/// Maps coded and legacy hardware engine identifiers cleanly across N-way <c>SeriesMap.json</c> equivalence groups.
 /// </summary>
 public static class EngineAliasCatalog
 {
-    private static readonly (string Coded, string Legacy)[] CanonicalPairs =
+    private static readonly string[][] EquivalenceGroups =
     [
-        ("reSlate", "reStation"),
-        ("reCartOne", "reNes"),
-        ("reCart64", "re64"),
-        ("reBlast16", "reGenesis")
+        ["reSlate", "reStation"],
+        ["reCart", "reCartOne", "reNes"],
+        ["reCart64", "re64"],
+        ["reBlast16", "reGenesis"]
     ];
 
     /// <summary>
-    /// Returns the requested <paramref name="engineId"/> first followed by any bidirectional alias equivalents.
+    /// Returns the requested <paramref name="engineId"/> first followed by all other identifiers in its equivalence group.
     /// </summary>
     public static IReadOnlyList<string> GetEquivalentIds(string? engineId)
     {
@@ -29,19 +29,21 @@ public static class EngineAliasCatalog
         }
 
         string trimmed = engineId.Trim();
-        var result = new List<string>(2) { trimmed };
+        var result = new List<string>(4) { trimmed };
 
-        foreach ((string coded, string legacy) in CanonicalPairs)
+        foreach (string[] group in EquivalenceGroups)
         {
-            if (string.Equals(trimmed, coded, StringComparison.OrdinalIgnoreCase) &&
-                !result.Contains(legacy, StringComparer.OrdinalIgnoreCase))
+            if (!group.Contains(trimmed, StringComparer.OrdinalIgnoreCase))
             {
-                result.Add(legacy);
+                continue;
             }
-            else if (string.Equals(trimmed, legacy, StringComparison.OrdinalIgnoreCase) &&
-                     !result.Contains(coded, StringComparer.OrdinalIgnoreCase))
+
+            foreach (string candidate in group)
             {
-                result.Add(coded);
+                if (!result.Contains(candidate, StringComparer.OrdinalIgnoreCase))
+                {
+                    result.Add(candidate);
+                }
             }
         }
 
@@ -49,7 +51,7 @@ public static class EngineAliasCatalog
     }
 
     /// <summary>
-    /// Attempts to resolve the single bidirectional alias for <paramref name="engineId"/>.
+    /// Attempts to resolve the primary alias for <paramref name="engineId"/> within its equivalence group.
     /// </summary>
     public static bool TryGetAlias(string? engineId, out string alias)
     {

@@ -15,7 +15,7 @@ internal static class LauncherArgsHelper
     {
         "--open", "--module", "--verify-module", "--engines-dir", "--engine-dir", "--toolchain-dir", "--output-dir", "--stage",
         "--data-dir", "--config", "--log-dir", "--save-dir", "--feed", "--port", "--ui",
-        "--backend", "--scale", "--suite-tab", "--profile", "--automation-port", "--automation-token",
+        "--backend", "--scale", "--aspect-mode", "--suite-tab", "--profile", "--automation-port", "--automation-token",
         "--frames", "--fixture", "--dump-screenshot", "--dump-audio",
         "--shutdown-timeout-ms", "--audio-driver", "--media-path"
     };
@@ -34,6 +34,9 @@ internal static class LauncherArgsHelper
         "--preload-media", "--host-demo", "--dry-run", "--tray-only", "--help", "-h", "/?", "help", "--version", "-v"
     };
 
+    /// <summary>
+    /// Returns <see langword="true"/> when the launcher should attach to the console and wait synchronously for the child process.
+    /// </summary>
     public static bool ShouldWaitForChild(string[]? args)
     {
         if (args is null || args.Length == 0) return false;
@@ -58,6 +61,9 @@ internal static class LauncherArgsHelper
         return false;
     }
 
+    /// <summary>
+    /// Resolves relative file and directory CLI arguments against <paramref name="callerWorkingDirectory"/> while preserving non-path option values.
+    /// </summary>
     public static string[] NormalizePathArguments(string[]? args, string callerWorkingDirectory)
     {
         if (args is null || args.Length == 0) return Array.Empty<string>();

@@ -1,0 +1,37 @@
+name: Bug Report
+description: Report a bug, regression, CLI/routing issue, or crash bundle in reEngine
+title: "[Bug]: "
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for reporting an issue! Please do **not** attach copyrighted game discs, ROM images, or console BIOS dumps.
+  - type: input
+    id: version
+    attributes:
+      label: reEngine Version
+      description: Output of `reEngine.exe --version`
+      placeholder: e.g. 0.5.0
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: Clear description of the unexpected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: Commands, flags (`--backend`, `--aspect-mode`, `--open`, `--verify-module`), or UI clicks
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant log output (no personal/secret paths)
+      description: Snippets from `<LogDir>\reengine.log` or `crash_reengine_*.json`
+      render: text

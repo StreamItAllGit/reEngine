@@ -1,5 +1,5 @@
 // @module: reEngine.Host.Automation.SdlAutomationProxyControl
-// @purpose: Test-only STA WinForms proxy Control + IRenderSurfaceSnapshotProvider queueing commands cleanly to SDL frame boundaries.
+// @purpose: Test-only STA WinForms proxy Control + IHostAutomationBridge + IRenderSurfaceSnapshotProvider queueing commands cleanly to SDL frame boundaries.
 // @depends-on: System, System.Collections.Concurrent, System.Collections.Generic, System.Drawing, System.Linq, System.Threading, System.Windows.Forms, Foundation.Automation, reEngine.Host.Contracts
 // @exports: SdlAutomationProxyControl
 
@@ -12,36 +12,59 @@ using reEngine.Host.Contracts;
 
 namespace reEngine.Host.Automation;
 
-internal sealed class SdlAutomationProxyControl : IDisposable, IRenderSurfaceSnapshotProvider
+internal sealed class SdlAutomationProxyControl : IHostAutomationBridge, IRenderSurfaceSnapshotProvider
 {
     private const int MaxQueueSize = 256;
 
-    private sealed record QueuedAction(bool IsKey, string? KeyOrTarget, int X, int Y);
+    private sealed record QueuedAction(bool IsKey, string? KeyOrTarget, int X, int Y, IReadOnlyList<string>? Modifiers);
 
-    private readonly IHostAutomationTarget _target;
-    private readonly AutomationServerOptions _serverOptions;
     private readonly ConcurrentQueue<QueuedAction> _queue = new();
     private readonly ManualResetEventSlim _ready = new(false);
     private readonly int _width;
     private readonly int _height;
+    private IHostAutomationTarget? _target;
+    private AutomationServerOptions? _serverOptions;
     private Thread? _staThread;
     private ProxyHostForm? _proxyForm;
     private AutomationLoopbackServer? _server;
     private string _lastWidgetSignature = string.Empty;
+    private bool _started;
     private volatile bool _disposing;
 
-    public int ListeningPort => _server?.AutomationPort ?? _serverOptions.AutomationPort;
+    public int ListeningPort => _server?.AutomationPort ?? _serverOptions?.AutomationPort ?? 0;
 
-    public SdlAutomationProxyControl(IHostAutomationTarget target, AutomationServerOptions options, int width, int height)
+    public SdlAutomationProxyControl(int width = 1280, int height = 720)
     {
-        _target = target ?? throw new ArgumentNullException(nameof(target));
-        _serverOptions = options ?? throw new ArgumentNullException(nameof(options));
         _width = Math.Max(320, width);
         _height = Math.Max(240, height);
     }
 
+    public SdlAutomationProxyControl(IHostAutomationTarget target, AutomationServerOptions options, int width, int height)
+        : this(width, height)
+    {
+        _target = target ?? throw new ArgumentNullException(nameof(target));
+        _serverOptions = options ?? throw new ArgumentNullException(nameof(options));
+    }
+
+    public void Start(IHostAutomationTarget target, int port, string? token, string? allowedSnapshotRoot)
+    {
+        _target = target ?? throw new ArgumentNullException(nameof(target));
+        string resolvedToken = !string.IsNullOrWhiteSpace(token)
+            ? token!
+            : (Environment.GetEnvironmentVariable("FOUNDATION_AUTOMATION_TOKEN") ?? "reengine-test-token");
+        _serverOptions = new AutomationServerOptions(port, resolvedToken, "reengine-host", allowedSnapshotRoot);
+        Start();
+    }
+
     public void Start()
     {
+        if (_disposing || _started) return;
+        if (_target is null || _serverOptions is null)
+        {
+            throw new InvalidOperationException("Automation target and options must be configured before starting.");
+        }
+
+        _started = true;
         _staThread = new Thread(RunStaLoop) { IsBackground = true, Name = "reEngine.Host.AutomationProxy" };
         _staThread.SetApartmentState(ApartmentState.STA);
         _staThread.Start();
@@ -50,12 +73,13 @@ internal sealed class SdlAutomationProxyControl : IDisposable, IRenderSurfaceSna
 
     public void DrainPendingCommands()
     {
+        if (_target is null) return;
         int budget = 32;
         while (budget-- > 0 && _queue.TryDequeue(out QueuedAction? cmd))
         {
             if (cmd.IsKey && !string.IsNullOrWhiteSpace(cmd.KeyOrTarget))
             {
-                _target.EnqueueKeyPress(cmd.KeyOrTarget);
+                _target.EnqueueKeyPress(cmd.KeyOrTarget, cmd.Modifiers);
             }
             else if (!cmd.IsKey)
             {
@@ -81,8 +105,17 @@ internal sealed class SdlAutomationProxyControl : IDisposable, IRenderSurfaceSna
         }
     }
 
-    public bool TryCaptureRgba(out int width, out int height, out byte[] rgbaBytes) =>
-        _target.TryCaptureFramebufferPng(out width, out height, out rgbaBytes);
+    public bool TryCaptureRgba(out int width, out int height, out byte[] rgbaBytes)
+    {
+        if (_target is null)
+        {
+            width = 0;
+            height = 0;
+            rgbaBytes = Array.Empty<byte>();
+            return false;
+        }
+        return _target.TryCaptureFramebufferPng(out width, out height, out rgbaBytes);
+    }
 
     private void RunStaLoop()
     {
@@ -99,7 +132,7 @@ internal sealed class SdlAutomationProxyControl : IDisposable, IRenderSurfaceSna
         _proxyForm = form;
         form.Load += (_, _) =>
         {
-            _server = new AutomationLoopbackServer(_serverOptions, form, this);
+            _server = new AutomationLoopbackServer(_serverOptions!, form, this);
             _server.Start();
             _ready.Set();
         };
@@ -133,6 +166,7 @@ internal sealed class SdlAutomationProxyControl : IDisposable, IRenderSurfaceSna
     private sealed class ProxyHostForm : Form
     {
         private const int WmKeyDown = 0x0100;
+        private const int WmSysKeyDown = 0x0104;
         private readonly SdlAutomationProxyControl _owner;
 
         public ProxyHostForm(SdlAutomationProxyControl owner, int width, int height)
@@ -168,7 +202,7 @@ internal sealed class SdlAutomationProxyControl : IDisposable, IRenderSurfaceSna
                 string id = w.ControlId;
                 int cx = w.Bounds.X + (w.Bounds.Width / 2);
                 int cy = w.Bounds.Y + (w.Bounds.Height / 2);
-                btn.Click += (_, _) => _owner.Enqueue(new QueuedAction(false, id, cx, cy));
+                btn.Click += (_, _) => _owner.Enqueue(new QueuedAction(false, id, cx, cy, null));
                 Controls.Add(btn);
             }
         }
@@ -178,13 +212,13 @@ internal sealed class SdlAutomationProxyControl : IDisposable, IRenderSurfaceSna
             string? keyName = MapVkToName(wParam);
             if (keyName is not null)
             {
-                _owner.Enqueue(new QueuedAction(true, keyName, 0, 0));
+                _owner.Enqueue(new QueuedAction(true, keyName, 0, 0, GetActiveModifiers()));
             }
         }
 
         protected override void WndProc(ref Message m)
         {
-            if (m.Msg == WmKeyDown) ForwardKeyMessage((int)m.WParam);
+            if (m.Msg is WmKeyDown or WmSysKeyDown) ForwardKeyMessage((int)m.WParam);
             base.WndProc(ref m);
         }
 
@@ -194,16 +228,33 @@ internal sealed class SdlAutomationProxyControl : IDisposable, IRenderSurfaceSna
             public KeyForwardButton(ProxyHostForm parent) => _parent = parent;
             protected override void WndProc(ref Message m)
             {
-                if (m.Msg == WmKeyDown) _parent.ForwardKeyMessage((int)m.WParam);
+                if (m.Msg is WmKeyDown or WmSysKeyDown) _parent.ForwardKeyMessage((int)m.WParam);
                 base.WndProc(ref m);
             }
+        }
+
+        private static IReadOnlyList<string>? GetActiveModifiers()
+        {
+            Keys mods = Control.ModifierKeys;
+            if ((mods & (Keys.Alt | Keys.Control | Keys.Shift)) == 0) return null;
+            var list = new List<string>(3);
+            if ((mods & Keys.Control) != 0) list.Add("CTRL");
+            if ((mods & Keys.Alt) != 0) list.Add("ALT");
+            if ((mods & Keys.Shift) != 0) list.Add("SHIFT");
+            return list;
         }
 
         private static string? MapVkToName(int vk) => vk switch
         {
             0x70 => "F1",
             0x72 => "F3",
+            0x74 => "F5",
+            0x75 => "F6",
+            0x76 => "F7",
+            0x78 => "F9",
+            0x7A => "F11",
             0x7B => "F12",
+            0xC0 => "Grave",
             0x1B => "ESC",
             0x09 => "TAB",
             0x0D => "ENTER",

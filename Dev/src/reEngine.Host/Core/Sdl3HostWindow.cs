@@ -25,6 +25,11 @@ internal sealed unsafe class Sdl3HostWindow : IDisposable
     public string DiagnosticStatus { get; private set; } = "uninitialized";
     public int ClientWidth { get; private set; }
     public int ClientHeight { get; private set; }
+    public bool IsFullscreen { get; private set; }
+    public float LastMouseX { get; private set; }
+    public float LastMouseY { get; private set; }
+    public bool HasMousePosition { get; private set; }
+    public HostViewportRect LastClientDestRect { get; private set; }
     public HostRenderBackendKind ActiveBackendKind { get; private set; } = HostRenderBackendKind.Software;
     public string ActiveBackendId { get; private set; } = HostRenderBackendIds.Software;
     public IHostGraphicsContext? GraphicsContext => _presenter?.GraphicsContext;
@@ -86,12 +91,36 @@ internal sealed unsafe class Sdl3HostWindow : IDisposable
             return false;
         }
 
+        IsFullscreen = fullscreen;
+        if (Sdl3Native.SDL_GetWindowSize(_window, out int actualW, out int actualH) != 0 && actualW > 0 && actualH > 0)
+        {
+            ClientWidth = actualW;
+            ClientHeight = actualH;
+        }
+        LastClientDestRect = new HostViewportRect(0, 0, ClientWidth, ClientHeight);
         ActiveBackendKind = backendKind;
         ActiveBackendId = HostBackendProbe.GetCanonicalBackendId(backendKind);
         if (visible) Sdl3Native.BringToForeground(_window);
 
         DiagnosticStatus = visible ? $"visible-{ActiveBackendId}" : $"hidden-{ActiveBackendId}";
         diagnostic = DiagnosticStatus;
+        return true;
+    }
+
+    public bool TrySetFullscreen(bool fullscreen)
+    {
+        if (_window == IntPtr.Zero) return false;
+        if (Sdl3Native.SDL_SetWindowFullscreen(_window, fullscreen ? (byte)1 : (byte)0) == 0)
+        {
+            return false;
+        }
+
+        IsFullscreen = fullscreen;
+        if (Sdl3Native.SDL_GetWindowSize(_window, out int winW, out int winH) != 0 && winW > 0 && winH > 0)
+        {
+            ClientWidth = winW;
+            ClientHeight = winH;
+        }
         return true;
     }
 
@@ -124,6 +153,10 @@ internal sealed unsafe class Sdl3HostWindow : IDisposable
 
                 case Sdl3Native.EventMouseMotion:
                 {
+                    (float mx, float my) = Sdl3Native.EventMousePosition(ev);
+                    LastMouseX = mx;
+                    LastMouseY = my;
+                    HasMousePosition = true;
                     (float dx, float dy) = Sdl3Native.EventMouseRelative(ev);
                     inputMapper.AccumulateMouse(dx, dy, Sdl3Native.EventMouseMotionButtons(ev));
                     break;
@@ -132,10 +165,13 @@ internal sealed unsafe class Sdl3HostWindow : IDisposable
                 case Sdl3Native.EventMouseButtonDown:
                 {
                     byte button = Sdl3Native.EventMouseButton(ev);
+                    (float mx, float my) = Sdl3Native.EventMousePosition(ev);
+                    LastMouseX = mx;
+                    LastMouseY = my;
+                    HasMousePosition = true;
                     inputMapper.SetMouseButton(button, true);
                     if (button is 1 or 3)
                     {
-                        (float mx, float my) = Sdl3Native.EventMousePosition(ev);
                         int px = (int)MathF.Round(mx), py = (int)MathF.Round(my);
                         if (button == 1) onLeftClick(px, py);
                         else onRightClick?.Invoke(px, py);
@@ -155,19 +191,44 @@ internal sealed unsafe class Sdl3HostWindow : IDisposable
         return true;
     }
 
-    public void PresentRgba(int width, int height, ReadOnlySpan<byte> rgba)
-    {
-        if (!HasNativeWindow || width <= 0 || height <= 0) return;
+    public void PresentRgba(int width, int height, ReadOnlySpan<byte> rgba) =>
+        PresentRgba(width, height, rgba, HostAspectRatioMode.NativeFit);
 
-        if (Sdl3Native.SDL_GetWindowSize(_window, out int winW, out int winH) != 0 && winW > 0 && winH > 0)
+    public void PresentRgba(
+        int width,
+        int height,
+        ReadOnlySpan<byte> rgba,
+        HostAspectRatioMode aspectMode,
+        HostOverscanCrop? overscanCrop = null,
+        double? contentPixelAspectRatio = null)
+    {
+        if (!HasNativeWindow || width <= 0 || height <= 0 || rgba.Length < checked(width * height * 4)) return;
+
+        if (Sdl3Native.SDL_GetWindowSize(_window, out int winW, out int winH) != 0)
         {
+            if (winW <= 0 || winH <= 0) return;
             ClientWidth = winW;
             ClientHeight = winH;
         }
 
+        HostViewportRect srcCrop = overscanCrop.HasValue
+            ? HostViewportGeometry.ComputeSourceCropRect(width, height, overscanCrop.Value)
+            : new HostViewportRect(0, 0, width, height);
+
+        LastClientDestRect = HostViewportGeometry.ComputeDestinationRect(
+            srcCrop.Width, srcCrop.Height, ClientWidth, ClientHeight, aspectMode, contentPixelAspectRatio);
+
+        if (!HostViewportGeometry.TryGetWindowPixelSize(_window, ClientWidth, ClientHeight, out int renderW, out int renderH))
+        {
+            return;
+        }
+
+        HostViewportRect destRect = HostViewportGeometry.ComputeDestinationRect(
+            srcCrop.Width, srcCrop.Height, renderW, renderH, aspectMode, contentPixelAspectRatio);
+
         if (_presenter is not null)
         {
-            _presenter.PresentRgba(width, height, rgba);
+            _presenter.PresentRgba(width, height, rgba, destRect, srcCrop);
             return;
         }
 
@@ -179,10 +240,7 @@ internal sealed unsafe class Sdl3HostWindow : IDisposable
             _ = Sdl3Native.SDL_UpdateTexture(_texture, IntPtr.Zero, px, width * 4);
         }
 
-        _ = Sdl3Native.SDL_SetRenderDrawColor(_renderer, 14, 14, 16, 255);
-        _ = Sdl3Native.SDL_RenderClear(_renderer);
-        _ = Sdl3Native.SDL_RenderTexture(_renderer, _texture, null, null);
-        _ = Sdl3Native.SDL_RenderPresent(_renderer);
+        Sdl3Native.PresentSdlTexture(_renderer, _texture, width, height, renderW, renderH, destRect, srcCrop);
     }
 
     private bool TryAttachPresenter(HostRenderBackendKind backendKind, out string diagnostic)
@@ -241,11 +299,17 @@ internal sealed unsafe class Sdl3HostWindow : IDisposable
 
     private void CloseWindowResources()
     {
+        _presenter?.GraphicsContext?.FlushAndSyncForSnapshot();
         _presenter?.Dispose();
         _presenter = null;
         if (_texture != IntPtr.Zero) { Sdl3Native.SDL_DestroyTexture(_texture); _texture = IntPtr.Zero; _textureWidth = 0; _textureHeight = 0; }
         if (_renderer != IntPtr.Zero) { Sdl3Native.SDL_DestroyRenderer(_renderer); _renderer = IntPtr.Zero; }
         if (_window != IntPtr.Zero) { Sdl3Native.SDL_DestroyWindow(_window); _window = IntPtr.Zero; }
+        IsFullscreen = false;
+        HasMousePosition = false;
+        LastMouseX = 0f;
+        LastMouseY = 0f;
+        LastClientDestRect = default;
     }
 
     public void Dispose()

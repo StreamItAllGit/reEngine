@@ -25,10 +25,16 @@ public sealed unsafe class VulkanPresenter : IHostSurfacePresenter
     private bool _vulkanLoaded, _disposed;
     private VulkanContext? _graphicsContext;
 
+    /// <inheritdoc />
     public HostRenderBackendKind BackendKind => HostRenderBackendKind.Vulkan;
+
+    /// <inheritdoc />
     public string BackendId => HostRenderBackendIds.Vulkan;
+
+    /// <inheritdoc />
     public IHostGraphicsContext? GraphicsContext => _graphicsContext;
 
+    /// <inheritdoc />
     public bool TryInitialize(IntPtr sdlWindow, int width, int height, out string diagnostic)
     {
         if (sdlWindow == IntPtr.Zero) { diagnostic = "SDL window handle is zero."; return false; }
@@ -57,12 +63,23 @@ public sealed unsafe class VulkanPresenter : IHostSurfacePresenter
         return true;
     }
 
-    public void PresentRgba(int width, int height, ReadOnlySpan<byte> rgba)
+    /// <inheritdoc />
+    public void PresentRgba(int width, int height, ReadOnlySpan<byte> rgba) =>
+        PresentRgbaCore(width, height, rgba, customDestRect: null, customSrcCrop: null);
+
+    /// <inheritdoc />
+    public void PresentRgba(int width, int height, ReadOnlySpan<byte> rgba, HostViewportRect destRect, HostViewportRect srcCropRect) =>
+        PresentRgbaCore(width, height, rgba, destRect, srcCropRect);
+
+    private void PresentRgbaCore(
+        int width,
+        int height,
+        ReadOnlySpan<byte> rgba,
+        HostViewportRect? customDestRect,
+        HostViewportRect? customSrcCrop)
     {
         if (_disposed || _device == IntPtr.Zero || width <= 0 || height <= 0 || rgba.Length < checked(width * height * 4)) return;
-        int winW = width, winH = height;
-        if (Sdl3Native.SDL_GetWindowSizeInPixels(_sdlWindow, out int pw, out int ph) != 0) { winW = pw; winH = ph; }
-        if (winW <= 0 || winH <= 0) return;
+        if (!HostViewportGeometry.TryGetWindowPixelSize(_sdlWindow, width, height, out int winW, out int winH)) return;
 
         if ((uint)winW != _swapWidth || (uint)winH != _swapHeight)
         {
@@ -78,7 +95,9 @@ public sealed unsafe class VulkanPresenter : IHostSurfacePresenter
 
         ulong neededBytes = (ulong)_swapWidth * _swapHeight * 4;
         if (!EnsureStagingBuffer(neededBytes)) return;
-        VulkanNative.CopyRgbaToStaging(width, height, rgba, (byte*)_stagingMapped, (int)_swapWidth, (int)_swapHeight, _swapFormat == VulkanNative.VkFormatB8G8R8A8Unorm);
+        HostViewportRect destRect = customDestRect ?? HostViewportGeometry.ComputeDestinationRect(width, height, (int)_swapWidth, (int)_swapHeight, HostAspectRatioMode.NativeFit);
+        HostViewportRect srcCrop = customSrcCrop ?? new HostViewportRect(0, 0, width, height);
+        VulkanNative.CopyRgbaToStaging(width, height, rgba, (byte*)_stagingMapped, (int)_swapWidth, (int)_swapHeight, _swapFormat == VulkanNative.VkFormatB8G8R8A8Unorm, destRect, srcCrop);
 
         _ = _vk.ResetFences(_device, 1, &fence);
         _ = _vk.ResetCommandBuffer(_cmdBuffer, 0);
@@ -241,6 +260,7 @@ public sealed unsafe class VulkanPresenter : IHostSurfacePresenter
         return true;
     }
 
+    /// <inheritdoc />
     public void Dispose()
     {
         if (_disposed) return;

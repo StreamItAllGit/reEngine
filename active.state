@@ -7,16 +7,16 @@
   "containerTier": "Tier A (4-Folder)",
   "ecosystemTier": "Tier1_Infrastructure",
   "appArchetype": "ENGINE",
-  "version": "0.4.0",
-  "activeMilestone": "0.4.0",
+  "version": "0.5.0",
+  "activeMilestone": "0.5.0",
   "goalMajorVersion": "1.0.0",
-  "stateChangedDate": "2026-11-19",
-  "lastVersionDate": "2026-11-19",
+  "stateChangedDate": "2026-11-20",
+  "lastVersionDate": "2026-11-20",
   "productionSubpath": null,
   "supersededBy": null,
   "tasklistDetailLevel": 3,
   "openTaskCount": 0,
-  "completedTaskCount": 39,
+  "completedTaskCount": 48,
   "openReportCount": 0,
   "isPublicRepo": true,
   "requireHumanReviewBeforePush": false,
@@ -37,6 +37,6 @@
     "isInspecterVerified": true,
     "isTessaSynced": true
   },
-  "notes": "v0.4.0 Released: Unified reEngine.Host GPU/Input/Audio, .decomp UI + Root-Tree Media Walk, D4_CleanSource, Frontend --wait/--fullscreen/--save-dir Bridge, --verify-module, Dual-Build 98/98 + Full Live Stage 2 E2E verified.",
-  "updatedAtUtc": "2026-11-19T23:58:30.000Z"
+  "notes": "Shipped v0.5.0 (Wave A complete): 5-backend HostViewportGeometry aspect/overscan/resize precision + GL 0x0/0x8CD5 FBO & TryReadSurfaceRect/FlushAndSyncForSnapshot sync, 4-port SDL3 gamepads + Standard 33 3-tier input (settings.controls.json) + Menu isolation + interactive F1 drawer & F5/F9/F11/Alt+Enter hotkeys, 3-way reCart/reCartOne/reNes alias + -hf.<n> SemVer precedence + hostProtocolVersion routing + .fds discovery, Foundation v0.5.2 suiteId, Dual-Binary Release ExitCode=2, 116/116 xUnit tests (0 warnings), full 12-point Stage 2 E2E, and SharedLibs v0.5.0.",
+  "updatedAtUtc": "2026-11-20T01:17:00.158Z"
 }

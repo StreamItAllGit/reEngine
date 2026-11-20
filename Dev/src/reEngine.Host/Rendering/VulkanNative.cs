@@ -5,6 +5,8 @@
 
 using System.Runtime.InteropServices;
 using System.Text;
+using reEngine.Host.Contracts;
+using reEngine.Host.Core;
 
 namespace reEngine.Host.Rendering;
 
@@ -54,27 +56,83 @@ internal static unsafe class VulkanNative
         return true;
     }
 
-    public static void CopyRgbaToStaging(int srcW, int srcH, ReadOnlySpan<byte> rgba, byte* dst, int dstW, int dstH, bool swapRb)
+    public static void CopyRgbaToStaging(int srcW, int srcH, ReadOnlySpan<byte> rgba, byte* dst, int dstW, int dstH, bool swapRb) =>
+        CopyRgbaToStaging(srcW, srcH, rgba, dst, dstW, dstH, swapRb, new HostViewportRect(0, 0, dstW, dstH), new HostViewportRect(0, 0, srcW, srcH));
+
+    internal static void CopyRgbaToStagingSpan(
+        int srcW, int srcH, ReadOnlySpan<byte> rgba, Span<byte> dst, int dstW, int dstH, bool swapRb, HostViewportRect destRect, HostViewportRect srcCropRect)
     {
-        if (srcW == dstW && srcH == dstH && !swapRb)
+        if (dst.Length < checked(dstW * dstH * 4)) return;
+        fixed (byte* pDst = dst) CopyRgbaToStaging(srcW, srcH, rgba, pDst, dstW, dstH, swapRb, destRect, srcCropRect);
+    }
+
+    public static void CopyRgbaToStaging(
+        int srcW,
+        int srcH,
+        ReadOnlySpan<byte> rgba,
+        byte* dst,
+        int dstW,
+        int dstH,
+        bool swapRb,
+        HostViewportRect destRect,
+        HostViewportRect srcCropRect)
+    {
+        if (dst == null || srcW <= 0 || srcH <= 0 || dstW <= 0 || dstH <= 0 || rgba.Length < checked(srcW * srcH * 4)) return;
+
+        HostViewportRect src = HostViewportGeometry.ClampSourceRect(srcW, srcH, srcCropRect);
+        if (!swapRb && destRect.X == 0 && destRect.Y == 0 && destRect.Width == dstW && destRect.Height == dstH &&
+            src.X == 0 && src.Y == 0 && src.Width == srcW && src.Height == srcH && srcW == dstW && srcH == dstH)
         {
             fixed (byte* srcPtr = rgba) Buffer.MemoryCopy(srcPtr, dst, (long)dstW * dstH * 4, (long)dstW * dstH * 4);
             return;
         }
-        bool sameSize = srcW == dstW && srcH == dstH;
-        for (int dy = 0; dy < dstH; dy++)
+
+        FillSurface0(dst, dstW * dstH, swapRb);
+        if (destRect.Width <= 0 || destRect.Height <= 0) return;
+
+        int dyStart = Math.Max(0, -destRect.Y);
+        int dyEnd = Math.Min(destRect.Height, dstH - destRect.Y);
+        int dxStart = Math.Max(0, -destRect.X);
+        int dxEnd = Math.Min(destRect.Width, dstW - destRect.X);
+        if (dyStart >= dyEnd || dxStart >= dxEnd) return;
+
+        for (int dy = dyStart; dy < dyEnd; dy++)
         {
-            int sy = sameSize ? dy : (int)((long)dy * srcH / dstH);
-            byte* dstRow = dst + (dy * dstW * 4);
-            for (int dx = 0; dx < dstW; dx++)
+            int sy = src.Y + (int)((long)dy * src.Height / destRect.Height);
+            byte* dstRow = dst + ((destRect.Y + dy) * dstW * 4);
+            int srcRowOffset = sy * srcW * 4;
+            for (int dx = dxStart; dx < dxEnd; dx++)
             {
-                int sx = sameSize ? dx : (int)((long)dx * srcW / dstW);
-                int sIdx = ((sy * srcW) + sx) * 4, dIdx = dx * 4;
+                int sx = src.X + (int)((long)dx * src.Width / destRect.Width);
+                int sIdx = srcRowOffset + (sx * 4);
+                int dIdx = (destRect.X + dx) * 4;
                 dstRow[dIdx] = swapRb ? rgba[sIdx + 2] : rgba[sIdx];
                 dstRow[dIdx + 1] = rgba[sIdx + 1];
                 dstRow[dIdx + 2] = swapRb ? rgba[sIdx] : rgba[sIdx + 2];
                 dstRow[dIdx + 3] = 255;
             }
+        }
+    }
+
+    private static void FillSurface0(byte* dst, int pixelCount, bool swapRb)
+    {
+        if (BitConverter.IsLittleEndian)
+        {
+            uint pixel = swapRb ? 0xFF0E0E10u : 0xFF100E0Eu;
+            new Span<uint>(dst, pixelCount).Fill(pixel);
+            return;
+        }
+
+        byte b0 = swapRb ? HostViewportGeometry.Surface0B : HostViewportGeometry.Surface0R;
+        byte b1 = HostViewportGeometry.Surface0G;
+        byte b2 = swapRb ? HostViewportGeometry.Surface0R : HostViewportGeometry.Surface0B;
+        for (int i = 0; i < pixelCount; i++)
+        {
+            int off = i * 4;
+            dst[off] = b0;
+            dst[off + 1] = b1;
+            dst[off + 2] = b2;
+            dst[off + 3] = HostViewportGeometry.Surface0A;
         }
     }
 

@@ -11,6 +11,10 @@
     <ApplicationIcon>..\..\assets\reEngine.ico</ApplicationIcon>
   </PropertyGroup>
 
+  <PropertyGroup Condition="'$(Configuration)' == 'Debug' Or '$(ReEngineTestAutomation)' == 'true'">
+    <DefineConstants>$(DefineConstants);REENGINE_ENABLE_AUTOMATION</DefineConstants>
+  </PropertyGroup>
+
   <ItemGroup>
     <InternalsVisibleTo Include="reEngine.Tests" />
   </ItemGroup>
@@ -34,6 +38,17 @@
     </Reference>
   </ItemGroup>
 
+  <ItemGroup Condition="'$(Configuration)' == 'Debug' Or '$(ReEngineTestAutomation)' == 'true'">
+    <Reference Include="Foundation.Automation">
+      <HintPath>..\..\lib\Foundation.Automation.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Foundation.UI">
+      <HintPath>..\..\lib\Foundation.UI.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+
   <Target Name="CompressEmbeddedAssemblies"
           DependsOnTargets="ResolveProjectReferences"
           BeforeTargets="AssignTargetPaths;PrepareResourceNames;PrepareResources">
@@ -48,6 +63,18 @@
       <EmbeddedResource Include="$(IntermediateOutputPath)Foundation.Installer.dll.gz" LogicalName="Foundation.Installer.dll.gz" />
       <EmbeddedResource Include="$(IntermediateOutputPath)Foundation.Retro.dll.gz" LogicalName="Foundation.Retro.dll.gz" />
       <EmbeddedResource Include="$(IntermediateOutputPath)reEngine.Core.dll.gz" LogicalName="reEngine.Core.dll.gz" />
+    </ItemGroup>
+  </Target>
+
+  <Target Name="CompressEmbeddedAutomationAssemblies"
+          Condition="'$(Configuration)' == 'Debug' Or '$(ReEngineTestAutomation)' == 'true'"
+          BeforeTargets="AssignTargetPaths;PrepareResourceNames;PrepareResources">
+    <MakeDir Directories="$(IntermediateOutputPath)" />
+    <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -Command &quot;$files = @('$(MSBuildProjectDirectory)\..\..\lib\Foundation.Automation.dll','$(MSBuildProjectDirectory)\..\..\lib\Foundation.UI.dll'); $outDir = [System.IO.Path]::Combine('$(MSBuildProjectDirectory)', '$(IntermediateOutputPath)'); foreach ($src in $files) { if (-not (Test-Path $src)) { throw ('Missing assembly: ' + $src) }; $name = [System.IO.Path]::GetFileName($src); $dst = Join-Path $outDir ($name + '.gz'); $bytes = [System.IO.File]::ReadAllBytes($src); $fs = [System.IO.File]::Create($dst); try { $gz = New-Object System.IO.Compression.GZipStream($fs, [System.IO.Compression.CompressionLevel]::Optimal); try { $gz.Write($bytes, 0, $bytes.Length) } finally { $gz.Dispose() } } finally { $fs.Dispose() } }&quot;" />
+    <ItemGroup>
+      <EmbeddedResource Remove="$(IntermediateOutputPath)Foundation.Automation.dll.gz;$(IntermediateOutputPath)Foundation.UI.dll.gz" />
+      <EmbeddedResource Include="$(IntermediateOutputPath)Foundation.Automation.dll.gz" LogicalName="Foundation.Automation.dll.gz" />
+      <EmbeddedResource Include="$(IntermediateOutputPath)Foundation.UI.dll.gz" LogicalName="Foundation.UI.dll.gz" />
     </ItemGroup>
   </Target>
 

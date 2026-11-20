@@ -11,12 +11,10 @@ using reEngine.Host.Input;
 namespace reEngine.Host.Ui;
 
 /// <summary>
-/// Immediate-mode 5-tab F1 settings drawer rendered directly onto <see cref="Foundation.Core.PixelOverlayCanvas"/>.
+/// Immediate-mode 5-tab F1 settings drawer rendered directly onto <see cref="PixelOverlayCanvas"/> with live callback dispatch.
 /// </summary>
 public sealed class F1SettingsDrawerView
 {
-    private sealed record DrawerControl(string ControlId, string ControlType, string Label, Rectangle Bounds, Action OnClick);
-
     private static readonly (HostDrawerTabId Tab, string ControlId, string Label)[] Tabs =
     [
         (HostDrawerTabId.Video, "Tab_Video", "Video"),
@@ -26,43 +24,74 @@ public sealed class F1SettingsDrawerView
         (HostDrawerTabId.DiscMedia, "Tab_DiscMedia", "Media")
     ];
 
-    private static readonly (HostRenderBackendKind Kind, string Label)[] VideoBackends =
-    [
-        (HostRenderBackendKind.OpenGl, "OpenGl"),
-        (HostRenderBackendKind.Vulkan, "Vulkan"),
-        (HostRenderBackendKind.DirectX, "DirectX"),
-        (HostRenderBackendKind.ParallelCpu, "ParallelCpu"),
-        (HostRenderBackendKind.Software, "Software")
-    ];
-
     private readonly ControlsTabView _controlsTab = new();
     private readonly KeybindsTabView _keybindsTab = new();
     private readonly Dictionary<HostDrawerTabId, Rectangle> _tabRects = new();
     private readonly List<DrawerControl> _activeTabControls = new();
     private Rectangle _drawerRect, _cyclePrimaryRect, _closeRect;
     private HostMultiBindRegistry? _boundRegistry;
+    private HostControlTierStore? _boundTierStore;
 
+    /// <summary>Gets or sets whether the F1 drawer is currently visible.</summary>
     public bool IsOpen { get; set; }
+
+    /// <summary>Gets or sets the active tab shown inside the drawer.</summary>
     public HostDrawerTabId ActiveTab { get; set; } = HostDrawerTabId.Video;
+
+    /// <summary>Gets or sets the currently selected render backend.</summary>
     public HostRenderBackendKind SelectedBackend { get; set; } = HostRenderBackendKind.Software;
+
+    /// <summary>Gets or sets the active integer resolution scale multiplier.</summary>
     public int ResolutionScale { get; set; } = 2;
+
+    /// <summary>Gets or sets the active Standard 33 schema preset.</summary>
     public HostInputSchemaKind SelectedSchema { get; set; } = HostInputSchemaKind.SchemaB;
+
+    /// <summary>Gets or sets the execution tier label displayed in the System tab.</summary>
     public string ExecutionTierLabel { get; set; } = "AOT Primary";
+
+    /// <summary>Gets or sets whether fullscreen mode is active.</summary>
     public bool IsFullscreen { get; set; }
+
+    /// <summary>Gets or sets whether HD texture packs are enabled.</summary>
     public bool IsHdTexturePackEnabled { get; set; }
+
+    /// <summary>Gets or sets an optional backend fallback diagnostic banner shown in the Video tab.</summary>
     public string? FallbackBanner { get; set; }
+
+    /// <summary>Gets or sets the active presentation aspect ratio mode.</summary>
+    public HostAspectRatioMode AspectRatioMode { get; set; } = HostAspectRatioMode.NativePar;
+
+    /// <summary>Gets or sets the active pixel edge overscan crop trim.</summary>
+    public HostOverscanCrop OverscanCropPx { get; set; }
+
+    /// <summary>Gets or sets whether runtime fast-forward is enabled.</summary>
+    public bool IsFastForwardEnabled { get; set; }
+
+    /// <summary>Gets or sets live session event callbacks invoked when interactive drawer controls change state.</summary>
+    public IHostSessionEventCallbacks? EventCallbacks { get; set; }
+
+    /// <summary>Gets or sets an optional 3-tier control store bound to the Keybinds tab.</summary>
+    public HostControlTierStore? ControlTierStore { get; set; }
+
+    /// <summary>Gets the Controls sub-view.</summary>
     public ControlsTabView ControlsTab => _controlsTab;
+
+    /// <summary>Gets the Keybinds sub-view.</summary>
     public KeybindsTabView KeybindsTab => _keybindsTab;
 
+    /// <summary>Renders the drawer using the bound registry or a default schema registry.</summary>
     public void Render(PixelOverlayCanvas canvas, HostDrawerDescriptor descriptor) =>
-        Render(canvas, descriptor, _boundRegistry ?? new HostMultiBindRegistry(SelectedSchema));
+        Render(canvas, descriptor, ControlTierStore?.ActiveRegistry ?? _boundRegistry ?? new HostMultiBindRegistry(SelectedSchema));
 
+    /// <summary>Renders the drawer against the provided <paramref name="registry"/>.</summary>
     public void Render(PixelOverlayCanvas canvas, HostDrawerDescriptor descriptor, HostMultiBindRegistry registry)
     {
         ArgumentNullException.ThrowIfNull(canvas);
         ArgumentNullException.ThrowIfNull(descriptor);
         ArgumentNullException.ThrowIfNull(registry);
         _boundRegistry = registry;
+        _controlsTab.EventCallbacks = EventCallbacks;
         if (!IsOpen) return;
 
         _activeTabControls.Clear();
@@ -78,28 +107,37 @@ public sealed class F1SettingsDrawerView
         RenderActiveTabBody(canvas, body, descriptor, registry);
     }
 
+    /// <summary>Returns widget geometry for the open drawer and active tab controls.</summary>
     public IReadOnlyList<HostWidgetBounds> GetWidgets()
     {
         if (!IsOpen) return Array.Empty<HostWidgetBounds>();
-        var list = new List<HostWidgetBounds> { new("F1Drawer", "Panel", $"F1 Drawer ({ActiveTab})", _drawerRect, true), new("Drawer_CloseButton", "Button", "Close", _closeRect, true) };
+        var list = new List<HostWidgetBounds>
+        {
+            new("F1Drawer", "Panel", $"F1 Drawer ({ActiveTab})", _drawerRect, true),
+            new("Drawer_CloseButton", "Button", "Close", _closeRect, true)
+        };
         foreach ((HostDrawerTabId tab, string id, string label) in Tabs)
         {
-            if (_tabRects.TryGetValue(tab, out Rectangle r)) list.Add(new HostWidgetBounds(id, "Button", label, r, true));
+            if (_tabRects.TryGetValue(tab, out Rectangle r)) list.Add(new(id, "Button", label, r, true));
         }
-        if (!_cyclePrimaryRect.IsEmpty) list.Add(new HostWidgetBounds("Drawer_ActionButton", "Button", "Cycle Active Option", _cyclePrimaryRect, true));
-        foreach (DrawerControl c in _activeTabControls) list.Add(new HostWidgetBounds(c.ControlId, c.ControlType, c.Label, c.Bounds, true));
+        if (!_cyclePrimaryRect.IsEmpty) list.Add(new("Drawer_ActionButton", "Button", "Cycle Active Option", _cyclePrimaryRect, true));
+        foreach (DrawerControl c in _activeTabControls) list.Add(new(c.ControlId, c.ControlType, c.Label, c.Bounds, true));
         if (ActiveTab == HostDrawerTabId.Controls) list.AddRange(_controlsTab.GetWidgets());
         else if (ActiveTab == HostDrawerTabId.Keybinds) list.AddRange(_keybindsTab.GetWidgets());
         return list;
     }
 
+    /// <summary>Processes a primary pointer click inside the drawer.</summary>
     public bool TryHandleClick(int x, int y, string? targetId, HostInputMapper inputMapper) =>
         TryHandleClick(x, y, targetId, inputMapper, isRightClick: false);
 
+    /// <summary>Processes a primary or secondary (right) pointer click inside the drawer.</summary>
     public bool TryHandleClick(int x, int y, string? targetId, HostInputMapper inputMapper, bool isRightClick)
     {
         ArgumentNullException.ThrowIfNull(inputMapper);
-        _boundRegistry = inputMapper.Bindings;
+        _boundTierStore = ControlTierStore ?? inputMapper.ControlTiers;
+        _boundRegistry = _boundTierStore.ActiveRegistry;
+        _controlsTab.EventCallbacks = EventCallbacks;
         if (!IsOpen) return false;
         if (MatchClick(x, y, targetId, "Drawer_CloseButton", _closeRect)) { IsOpen = false; _keybindsTab.ClearCapture(); return true; }
 
@@ -113,25 +151,32 @@ public sealed class F1SettingsDrawerView
             }
         }
         if (MatchClick(x, y, targetId, "Drawer_ActionButton", _cyclePrimaryRect)) { CyclePrimarySetting(inputMapper); return true; }
-        foreach (DrawerControl c in _activeTabControls) { if (MatchClick(x, y, targetId, c.ControlId, c.Bounds)) { c.OnClick(); return true; } }
+        foreach (DrawerControl c in _activeTabControls)
+        {
+            if (MatchClick(x, y, targetId, c.ControlId, c.Bounds)) { c.OnClick(isRightClick); return true; }
+        }
 
         if (ActiveTab == HostDrawerTabId.Controls)
         {
             HostInputSchemaKind schema = SelectedSchema;
-            bool handled = _controlsTab.TryHandleClick(x, y, targetId, inputMapper, ref schema);
+            bool handled = _controlsTab.TryHandleClick(x, y, targetId, inputMapper, ref schema, EventCallbacks);
             SelectedSchema = schema;
             return handled;
         }
-        return ActiveTab == HostDrawerTabId.Keybinds && _keybindsTab.TryHandleClick(x, y, targetId, inputMapper.Bindings, SelectedSchema, isRightClick);
+        if (ActiveTab != HostDrawerTabId.Keybinds) return false;
+        return _keybindsTab.TryHandleClick(x, y, targetId, _boundTierStore, SelectedSchema, isRightClick);
     }
 
+    /// <summary>Forwards an input binding code to the active Keybinds capture cell.</summary>
     public bool TryCaptureInputCode(int inputCode, HostInputMapper inputMapper)
     {
         ArgumentNullException.ThrowIfNull(inputMapper);
-        _boundRegistry = inputMapper.Bindings;
-        return IsOpen && ActiveTab == HostDrawerTabId.Keybinds && _keybindsTab.TryCaptureInputCode(inputCode, inputMapper.Bindings);
+        _boundTierStore = ControlTierStore ?? inputMapper.ControlTiers;
+        _boundRegistry = _boundTierStore.ActiveRegistry;
+        return IsOpen && ActiveTab == HostDrawerTabId.Keybinds && _keybindsTab.TryCaptureInputCode(inputCode, _boundTierStore);
     }
 
+    /// <summary>Returns the canonical automation control identifier for a drawer tab.</summary>
     public static string GetTabControlId(HostDrawerTabId tab) => tab switch
     {
         HostDrawerTabId.Video => "Tab_Video", HostDrawerTabId.Controls => "Tab_Controls",
@@ -156,93 +201,27 @@ public sealed class F1SettingsDrawerView
     {
         switch (ActiveTab)
         {
-            case HostDrawerTabId.Video: RenderVideoTab(canvas, body); break;
+            case HostDrawerTabId.Video:
+                F1DrawerTabRenderers.RenderVideoTab(canvas, body, this, descriptor, _activeTabControls, out _cyclePrimaryRect);
+                break;
             case HostDrawerTabId.Controls:
                 _controlsTab.Render(canvas, body, SelectedSchema, descriptor.ControlOptions);
                 _cyclePrimaryRect = _controlsTab.CycleSchemaButtonRect;
+                F1DrawerTabRenderers.RenderExtraRows(canvas, body, _controlsTab.ContentBottomY + 4, HostDrawerTabId.Controls, descriptor.ExtraRows, this, _activeTabControls);
                 break;
             case HostDrawerTabId.Keybinds:
                 _cyclePrimaryRect = Rectangle.Empty;
-                _keybindsTab.Render(canvas, body, SelectedSchema, registry);
+                HostControlTierStore? tierStore = ControlTierStore ?? _boundTierStore;
+                if (tierStore is not null) _keybindsTab.Render(canvas, body, SelectedSchema, tierStore);
+                else _keybindsTab.Render(canvas, body, SelectedSchema, registry);
                 break;
-            case HostDrawerTabId.System: RenderSystemTab(canvas, body, descriptor); break;
-            default: RenderDiscMediaTab(canvas, body, descriptor); break;
-        }
-    }
-
-    private void RenderVideoTab(PixelOverlayCanvas canvas, Rectangle body)
-    {
-        canvas.DrawText(body.X, body.Y, "VIDEO & SCALING", HostOverlayPalette.AccentCyan, 1);
-        canvas.DrawText(body.X, body.Y + 16, $"Backend: {SelectedBackend}", HostOverlayPalette.TextPrimary, 1);
-        const int gap = 4;
-        int colW3 = Math.Max(60, (body.Width - (gap * 2)) / 3), colW2 = Math.Max(80, (body.Width - gap) / 2);
-        for (int i = 0; i < VideoBackends.Length; i++)
-        {
-            (HostRenderBackendKind kind, string label) = VideoBackends[i];
-            int row = i < 3 ? 0 : 1, col = i < 3 ? i : i - 3, w = row == 0 ? colW3 : colW2;
-            var rect = new Rectangle(body.X + (col * (w + gap)), body.Y + 32 + (row * 26), w, 22);
-            HostOverlayLayoutHelpers.DrawPillButton(canvas, rect, label, SelectedBackend == kind, HostOverlayPalette.AccentCyan);
-            _activeTabControls.Add(new($"Video_Backend_{label}", "Button", label, rect, () => SelectedBackend = kind));
-        }
-
-        canvas.DrawText(body.X, body.Y + 88, $"Resolution Scale: {ResolutionScale}x", HostOverlayPalette.TextPrimary, 1);
-        int[] scales = [1, 2, 4];
-        for (int i = 0; i < scales.Length; i++)
-        {
-            int sc = scales[i];
-            var rect = new Rectangle(body.X + (i * (colW3 + gap)), body.Y + 104, colW3, 22);
-            HostOverlayLayoutHelpers.DrawPillButton(canvas, rect, $"{sc}x", ResolutionScale == sc, HostOverlayPalette.AccentCyan);
-            _activeTabControls.Add(new($"Video_Scale_{sc}x", "Button", $"{sc}x", rect, () => ResolutionScale = sc));
-        }
-
-        _cyclePrimaryRect = new Rectangle(body.X, body.Y + 132, Math.Min(220, body.Width), 24);
-        HostOverlayLayoutHelpers.DrawPillButton(canvas, _cyclePrimaryRect, "Cycle Scale (1x/2x/4x)", true, HostOverlayPalette.AccentCyan);
-        AddToggle(canvas, new(body.X, body.Y + 162, body.Width, 24), "Video_Toggle_Fullscreen", "Fullscreen", IsFullscreen, HostOverlayPalette.AccentCyan, () => IsFullscreen = !IsFullscreen);
-        AddToggle(canvas, new(body.X, body.Y + 190, body.Width, 24), "Video_Toggle_HdPacks", "HD Packs", IsHdTexturePackEnabled, HostOverlayPalette.AccentSuccess, () => IsHdTexturePackEnabled = !IsHdTexturePackEnabled);
-
-        if (!string.IsNullOrWhiteSpace(FallbackBanner))
-        {
-            var bannerRect = new Rectangle(body.X, body.Y + 220, body.Width, 26);
-            HostOverlayLayoutHelpers.DrawBanner(canvas, bannerRect, FallbackBanner!, HostOverlayPalette.WarnFill, HostOverlayPalette.AccentWarning, HostOverlayPalette.AccentWarning);
-            _activeTabControls.Add(new("Video_FallbackBanner", "Label", FallbackBanner!, bannerRect, static () => { }));
-        }
-    }
-
-    private void AddToggle(PixelOverlayCanvas c, Rectangle rect, string id, string label, bool val, RgbaColor accent, Action onClick)
-    {
-        HostOverlayLayoutHelpers.DrawToggleRow(c, rect, label, val, accent);
-        _activeTabControls.Add(new(id, "CheckBox", label, rect, onClick));
-    }
-
-    private void RenderSystemTab(PixelOverlayCanvas canvas, Rectangle body, HostDrawerDescriptor descriptor)
-    {
-        canvas.DrawText(body.X, body.Y, "SYSTEM & EXECUTION TIER", HostOverlayPalette.AccentCyan, 1);
-        canvas.DrawText(body.X, body.Y + 20, $"Tier Mode: {ExecutionTierLabel}", HostOverlayPalette.TextPrimary, 1);
-        canvas.DrawText(body.X, body.Y + 38, "Runtime: Static Recompilation Host", HostOverlayPalette.TextMuted, 1);
-        canvas.DrawText(body.X, body.Y + 56, HostOverlayLayoutHelpers.FitText($"Module: {descriptor.ModuleTitle}", body.Width, 1), HostOverlayPalette.TextMuted, 1);
-        _cyclePrimaryRect = new Rectangle(body.X, body.Y + 78, Math.Min(220, body.Width), 24);
-        HostOverlayLayoutHelpers.DrawPillButton(canvas, _cyclePrimaryRect, "Cycle Tier Mode", false, HostOverlayPalette.AccentCyan);
-        RenderExtraRows(canvas, body, body.Y + 114, HostDrawerTabId.System, descriptor.ExtraRows);
-    }
-
-    private void RenderDiscMediaTab(PixelOverlayCanvas canvas, Rectangle body, HostDrawerDescriptor descriptor)
-    {
-        _cyclePrimaryRect = Rectangle.Empty;
-        canvas.DrawText(body.X, body.Y, "DISC / MEDIA", HostOverlayPalette.AccentCyan, 1);
-        canvas.DrawText(body.X, body.Y + 22, HostOverlayLayoutHelpers.FitText($"Media: {descriptor.MediaLabel}", body.Width, 1), HostOverlayPalette.TextPrimary, 1);
-        canvas.DrawText(body.X, body.Y + 40, "Storage: gitignored data\\rom\\", HostOverlayPalette.TextMuted, 1);
-        RenderExtraRows(canvas, body, body.Y + 66, HostDrawerTabId.DiscMedia, descriptor.ExtraRows);
-    }
-
-    private static void RenderExtraRows(PixelOverlayCanvas canvas, Rectangle body, int startY, HostDrawerTabId tab, IReadOnlyList<HostDrawerRowDescriptor>? rows)
-    {
-        if (rows is null) return;
-        int y = startY;
-        foreach (HostDrawerRowDescriptor row in rows)
-        {
-            if (row.Tab != tab || y + 16 > body.Bottom) continue;
-            canvas.DrawText(body.X, y, HostOverlayLayoutHelpers.FitText($"{row.Label}: {row.Value}", body.Width, 1), HostOverlayPalette.TextMuted, 1);
-            y += 16;
+            case HostDrawerTabId.System:
+                F1DrawerTabRenderers.RenderSystemTab(canvas, body, this, descriptor, _activeTabControls, out _cyclePrimaryRect);
+                break;
+            default:
+                _cyclePrimaryRect = Rectangle.Empty;
+                F1DrawerTabRenderers.RenderDiscMediaTab(canvas, body, this, descriptor, _activeTabControls);
+                break;
         }
     }
 

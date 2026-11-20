@@ -4,6 +4,8 @@
 // @exports: D3d12Native
 
 using System.Runtime.InteropServices;
+using reEngine.Host.Contracts;
+using reEngine.Host.Core;
 
 namespace reEngine.Host.Rendering;
 
@@ -117,21 +119,88 @@ internal static unsafe class D3d12Native
         return true;
     }
 
-    public static void CopyRgbaToUpload(int srcW, int srcH, ReadOnlySpan<byte> rgba, byte* dst, int dstW, int dstH, int dstPitch)
+    public static void CopyRgbaToUpload(int srcW, int srcH, ReadOnlySpan<byte> rgba, byte* dst, int dstW, int dstH, int dstPitch) =>
+        CopyRgbaToUpload(srcW, srcH, rgba, dst, dstW, dstH, dstPitch, new HostViewportRect(0, 0, dstW, dstH), new HostViewportRect(0, 0, srcW, srcH));
+
+    internal static void CopyRgbaToUploadSpan(
+        int srcW, int srcH, ReadOnlySpan<byte> rgba, Span<byte> dst, int dstW, int dstH, int dstPitch, HostViewportRect destRect, HostViewportRect srcCropRect)
     {
+        if (dst.Length < checked(dstPitch * dstH)) return;
+        fixed (byte* pDst = dst) CopyRgbaToUpload(srcW, srcH, rgba, pDst, dstW, dstH, dstPitch, destRect, srcCropRect);
+    }
+
+    public static void CopyRgbaToUpload(
+        int srcW,
+        int srcH,
+        ReadOnlySpan<byte> rgba,
+        byte* dst,
+        int dstW,
+        int dstH,
+        int dstPitch,
+        HostViewportRect destRect,
+        HostViewportRect srcCropRect)
+    {
+        if (dst == null || srcW <= 0 || srcH <= 0 || dstW <= 0 || dstH <= 0 || dstPitch < dstW * 4 || rgba.Length < checked(srcW * srcH * 4)) return;
+
+        HostViewportRect src = HostViewportGeometry.ClampSourceRect(srcW, srcH, srcCropRect);
         fixed (byte* srcPtr = rgba)
         {
-            if (srcW == dstW && srcH == dstH)
+            if (destRect.X == 0 && destRect.Y == 0 && destRect.Width == dstW && destRect.Height == dstH &&
+                src.X == 0 && src.Y == 0 && src.Width == srcW && src.Height == srcH && srcW == dstW && srcH == dstH)
             {
                 for (int y = 0; y < dstH; y++) Buffer.MemoryCopy(srcPtr + (y * srcW * 4), dst + (y * dstPitch), dstPitch, (long)dstW * 4);
                 return;
             }
-            for (int dy = 0; dy < dstH; dy++)
+
+            ClearUploadSurface0(dst, dstW, dstH, dstPitch);
+            if (destRect.Width <= 0 || destRect.Height <= 0) return;
+
+            int dyStart = Math.Max(0, -destRect.Y);
+            int dyEnd = Math.Min(destRect.Height, dstH - destRect.Y);
+            int dxStart = Math.Max(0, -destRect.X);
+            int dxEnd = Math.Min(destRect.Width, dstW - destRect.X);
+            if (dyStart >= dyEnd || dxStart >= dxEnd) return;
+
+            for (int dy = dyStart; dy < dyEnd; dy++)
             {
-                int sy = (int)((long)dy * srcH / dstH);
-                uint* dRow = (uint*)(dst + (dy * dstPitch));
-                uint* sRow = (uint*)(srcPtr + (sy * srcW * 4));
-                for (int dx = 0; dx < dstW; dx++) dRow[dx] = sRow[(int)((long)dx * srcW / dstW)];
+                int sy = src.Y + (int)((long)dy * src.Height / destRect.Height);
+                byte* dRow = dst + ((destRect.Y + dy) * dstPitch);
+                byte* sRow = srcPtr + (sy * srcW * 4);
+                for (int dx = dxStart; dx < dxEnd; dx++)
+                {
+                    int sx = src.X + (int)((long)dx * src.Width / destRect.Width);
+                    int sIdx = sx * 4;
+                    int dIdx = (destRect.X + dx) * 4;
+                    dRow[dIdx] = sRow[sIdx];
+                    dRow[dIdx + 1] = sRow[sIdx + 1];
+                    dRow[dIdx + 2] = sRow[sIdx + 2];
+                    dRow[dIdx + 3] = 255;
+                }
+            }
+        }
+    }
+
+    private static void ClearUploadSurface0(byte* dst, int dstW, int dstH, int dstPitch)
+    {
+        if (BitConverter.IsLittleEndian)
+        {
+            for (int y = 0; y < dstH; y++)
+            {
+                new Span<uint>(dst + (y * dstPitch), dstW).Fill(0xFF100E0Eu);
+            }
+            return;
+        }
+
+        for (int y = 0; y < dstH; y++)
+        {
+            byte* row = dst + (y * dstPitch);
+            for (int x = 0; x < dstW; x++)
+            {
+                int off = x * 4;
+                row[off] = HostViewportGeometry.Surface0R;
+                row[off + 1] = HostViewportGeometry.Surface0G;
+                row[off + 2] = HostViewportGeometry.Surface0B;
+                row[off + 3] = HostViewportGeometry.Surface0A;
             }
         }
     }

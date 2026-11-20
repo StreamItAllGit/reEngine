@@ -116,6 +116,7 @@ public static class RecompPackageReader
         [".sfc"] = 3,
         [".smc"] = 3,
         [".nes"] = 3,
+        [".fds"] = 3,
         [".gb"] = 3,
         [".gbc"] = 3,
         [".gba"] = 3,

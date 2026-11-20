@@ -33,7 +33,7 @@ public sealed class DecompPipelineCoordinator
     private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNameCaseInsensitive = true, ReadCommentHandling = JsonCommentHandling.Skip, AllowTrailingCommas = true };
     private static readonly HashSet<string> ForbiddenCleanRoomExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
-        ".bin", ".iso", ".cue", ".chd", ".img", ".n64", ".z64", ".v64", ".nes", ".sfc", ".smc", ".gb", ".gbc", ".gba", ".gcm", ".rvz", ".sav", ".srm", ".state", ".rom"
+        ".bin", ".iso", ".cue", ".chd", ".img", ".n64", ".z64", ".v64", ".nes", ".fds", ".sfc", ".smc", ".gb", ".gbc", ".gba", ".gcm", ".rvz", ".sav", ".srm", ".state", ".rom"
     };
 
     private readonly EngineVersionResolver _resolver = new();

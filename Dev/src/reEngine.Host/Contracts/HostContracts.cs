@@ -80,7 +80,13 @@ public readonly struct HostInputFrame
         float wheelDelta = 0f,
         uint gamepadButtonsMask = 0u,
         bool controllerConnected = false,
-        int touchActiveCount = 0)
+        int touchActiveCount = 0,
+        IReadOnlyList<HostGamepadPortSnapshot>? padPorts = null,
+        float pointerContentX = -1f,
+        float pointerContentY = -1f,
+        bool isPointerInsideContent = false,
+        bool isFastForwardHeld = false,
+        bool isCutsceneSkipPressed = false)
     {
         FrameSequence = frameSequence;
         DigitalButtons = digitalButtons;
@@ -99,6 +105,12 @@ public readonly struct HostInputFrame
         GamepadButtonsMask = gamepadButtonsMask;
         ControllerConnected = controllerConnected;
         TouchActiveCount = touchActiveCount;
+        PadPorts = padPorts ?? Array.Empty<HostGamepadPortSnapshot>();
+        PointerContentX = pointerContentX;
+        PointerContentY = pointerContentY;
+        IsPointerInsideContent = isPointerInsideContent;
+        IsFastForwardHeld = isFastForwardHeld;
+        IsCutsceneSkipPressed = isCutsceneSkipPressed;
     }
 
     public long FrameSequence { get; }
@@ -118,6 +130,12 @@ public readonly struct HostInputFrame
     public uint GamepadButtonsMask { get; }
     public bool ControllerConnected { get; }
     public int TouchActiveCount { get; }
+    public IReadOnlyList<HostGamepadPortSnapshot> PadPorts { get; }
+    public float PointerContentX { get; }
+    public float PointerContentY { get; }
+    public bool IsPointerInsideContent { get; }
+    public bool IsFastForwardHeld { get; }
+    public bool IsCutsceneSkipPressed { get; }
 }
 
 /// <summary>
@@ -133,7 +151,8 @@ public sealed record HostDrawerRowDescriptor(
     HostDrawerTabId Tab,
     string Label,
     string Value,
-    string Description = "");
+    string Description = "",
+    bool IsInteractive = false);
 
 /// <summary>
 /// Console-agnostic descriptor parameterizing the <c>F1</c> 5-tab settings drawer and media gate.
@@ -189,10 +208,16 @@ public sealed record HostSessionOptions
     public string? AudioDriverOverride { get; init; }
     public string? HdPacksDirectory { get; init; }
     public bool IsHdTexturePackEnabled { get; init; }
+    public HostAspectRatioMode AspectRatioMode { get; init; } = HostAspectRatioMode.NativePar;
+    public HostOverscanCrop OverscanCropPx { get; init; }
+    public bool IsFastForwardEnabled { get; init; }
+    public double? ContentPixelAspectRatio { get; init; }
     public bool EnableTouchOverlay { get; init; }
     public IReadOnlyList<IHostInputProvider>? InputProviders { get; init; }
     public HostAudioFormat AudioFormat { get; init; } = new();
     public HostDrawerDescriptor DrawerDescriptor { get; init; } = HostDrawerDescriptor.CreateDefault();
+    public Func<IHostAutomationBridge>? AutomationBridgeFactory { get; init; }
+    public IHostSessionEventCallbacks? SessionEventCallbacks { get; init; }
 }
 
 /// <summary>

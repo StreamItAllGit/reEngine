@@ -6,6 +6,7 @@
 using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Text;
+using reEngine.Host.Contracts;
 
 namespace reEngine.Host.Core;
 
@@ -81,6 +82,7 @@ internal static unsafe class Sdl3Native
     [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)] public static extern void SDL_DestroyWindow(IntPtr window);
     [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)] public static extern byte SDL_ShowWindow(IntPtr window);
     [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)] public static extern byte SDL_RaiseWindow(IntPtr window);
+    [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)] public static extern byte SDL_SetWindowFullscreen(IntPtr window, byte fullscreen);
     [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)] public static extern byte SDL_GetWindowSize(IntPtr window, out int w, out int h);
     [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)] public static extern byte SDL_GetWindowSizeInPixels(IntPtr window, out int w, out int h);
     [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)] public static extern uint SDL_GetWindowProperties(IntPtr window);
@@ -201,6 +203,32 @@ internal static unsafe class Sdl3Native
         _ = SDL_RaiseWindow(window);
         IntPtr hwnd = GetWin32Hwnd(window);
         if (hwnd != IntPtr.Zero) _ = SetForegroundWindow(hwnd);
+    }
+
+    public static void PresentSdlTexture(
+        IntPtr renderer,
+        IntPtr texture,
+        int texW,
+        int texH,
+        int renderW,
+        int renderH,
+        HostViewportRect destRect,
+        HostViewportRect srcCropRect)
+    {
+        if (renderer == IntPtr.Zero || texture == IntPtr.Zero || renderW <= 0 || renderH <= 0) return;
+
+        HostViewportRect src = HostViewportGeometry.ClampSourceRect(texW, texH, srcCropRect);
+        HostViewportRect dst = HostViewportGeometry.ClampDestinationRect(renderW, renderH, destRect);
+
+        _ = SDL_SetRenderDrawColor(renderer, HostViewportGeometry.Surface0R, HostViewportGeometry.Surface0G, HostViewportGeometry.Surface0B, HostViewportGeometry.Surface0A);
+        _ = SDL_RenderClear(renderer);
+        if (dst.Width > 0 && dst.Height > 0 && src.Width > 0 && src.Height > 0)
+        {
+            var srcF = new SdlFRect { X = src.X, Y = src.Y, W = src.Width, H = src.Height };
+            var dstF = new SdlFRect { X = dst.X, Y = dst.Y, W = dst.Width, H = dst.Height };
+            _ = SDL_RenderTexture(renderer, texture, &srcF, &dstF);
+        }
+        _ = SDL_RenderPresent(renderer);
     }
 
     public static uint EventType(byte* ev) => *(uint*)ev;

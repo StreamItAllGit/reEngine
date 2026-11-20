@@ -1,0 +1,28 @@
+name: Feature Request
+description: Propose a clean-room enhancement for reEngine or reEngine.Host
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or use case
+      description: Describe the static recompilation routing, host presenter, input, or CLI gap
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed clean-room design
+      description: Outline expected CLI flags, manifest schema fields, or host contracts
+    validations:
+      required: true
+  - type: checkboxes
+    id: compliance
+    attributes:
+      label: Project Invariants
+      options:
+        - label: Zero background daemons or startup entries (`AllowAutoStart = false`)
+          required: true
+        - label: Zero copyrighted ROM/disc/BIOS data or proprietary SDK assets
+          required: true

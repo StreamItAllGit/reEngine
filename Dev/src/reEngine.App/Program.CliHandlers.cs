@@ -183,9 +183,23 @@ internal static partial class Program
         AppEnvironment appEnv,
         string? containmentRoot,
         Action<string, string> log,
-        CancellationToken ct)
+        CancellationToken ct,
+        ReEngineSettings? settings = null)
     {
+        ReEngineSettings effectiveSettings = settings
+            ?? new UpdateCoordinator(appEnv.DataDirectory, appEnv.ConfigFilePath).LoadSettings().Value;
         HostRenderBackendKind preferredKind = ParseHostBackendKind(opts.BackendId);
+        HostAspectRatioMode aspectRatioMode = opts.AspectRatioMode
+            ?? HostAspectRatioModeCodec.Parse(effectiveSettings.AspectRatioMode);
+        HostOverscanCrop overscanCropPx = effectiveSettings.OverscanCropPx is { } crop
+            ? new HostOverscanCrop(
+                Math.Max(0, crop.Top),
+                Math.Max(0, crop.Bottom),
+                Math.Max(0, crop.Left),
+                Math.Max(0, crop.Right))
+            : HostOverscanCrop.None;
+        bool isFastForwardEnabled = effectiveSettings.IsFastForwardEnabled ?? false;
+
         string verLabel = $"reEngine.Host v{ReEnginePackagingConstants.Version}";
         var descriptor = HostDrawerDescriptor.CreateDefault("reEngine Visible Host Demo", verLabel);
         var runner = new HostSessionRunner(1280, 720, descriptor);
@@ -211,10 +225,13 @@ internal static partial class Program
             AudioDriverOverride = opts.AudioDriverOverride,
             HdPacksDirectory = Path.Combine(appEnv.DataDirectory, "hdpacks"),
             IsHdTexturePackEnabled = opts.HdTexturePacks,
+            AspectRatioMode = aspectRatioMode,
+            OverscanCropPx = overscanCropPx,
+            IsFastForwardEnabled = isFastForwardEnabled,
             DrawerDescriptor = descriptor
         };
 
-        log("INFO", $"Starting HostSessionRunner (backend={preferredKind}, require={hostOpts.RequireBackend}, fullscreen={hostOpts.IsFullscreen}, automationPort={hostOpts.AutomationPort?.ToString() ?? "off"}).");
+        log("INFO", $"Starting HostSessionRunner (backend={preferredKind}, aspect={hostOpts.AspectRatioMode}, fastForward={hostOpts.IsFastForwardEnabled}, require={hostOpts.RequireBackend}, fullscreen={hostOpts.IsFullscreen}, automationPort={hostOpts.AutomationPort?.ToString() ?? "off"}).");
         HostSessionResult res = await runner.RunAsync(hostOpts, new DemoHostCallbacks(), msg => log("HEARTBEAT", msg), ct).ConfigureAwait(false);
         if (res.ExitCode != 0) Console.Error.WriteLine(res.Summary);
         else Console.WriteLine(res.Summary);

@@ -1,12 +1,14 @@
 // @module: reEngine.Installer.Program
 // @purpose: 4-pillar zero-PII single-EXE installer entry point with AssemblyResolve, profiles, secondary path picker, and AllowAutoStart = false.
-// @depends-on: System, System.Collections.Generic, System.IO, System.IO.Compression, System.Linq, System.Reflection, System.Runtime.CompilerServices, Foundation.Installer, reEngine.Core.Bootstrap
+// @depends-on: System, System.Collections.Concurrent, System.Collections.Generic, System.IO, System.IO.Compression, System.Linq, System.Reflection, System.Runtime.CompilerServices, System.Windows.Forms, Foundation.Core, Foundation.Installer, reEngine.Core.Bootstrap
 // @exports: Program
 
+using System.Collections.Concurrent;
 using System.IO.Compression;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Windows.Forms;
+using Foundation.Core;
 using Foundation.Installer;
 using reEngine.Core.Bootstrap;
 
@@ -14,23 +16,30 @@ namespace reEngine.Installer;
 
 internal static class Program
 {
+    private static readonly string[] EmbeddedAssemblies =
+#if REENGINE_ENABLE_AUTOMATION
+        ["Foundation.Core", "Foundation.Installer", "Foundation.Retro", "reEngine.Core", "Foundation.Automation", "Foundation.UI"];
+#else
+        ["Foundation.Core", "Foundation.Installer", "Foundation.Retro", "reEngine.Core"];
+#endif
+    private static readonly ConcurrentDictionary<string, Assembly> ResolvedAssemblies = new(StringComparer.OrdinalIgnoreCase);
+
     static Program()
     {
         AppDomain.CurrentDomain.AssemblyResolve += static (_, e) =>
         {
             string? name = new AssemblyName(e.Name).Name;
-            if (name is "Foundation.Core" or "Foundation.Installer" or "Foundation.Retro" or "reEngine.Core")
-            {
-                using Stream? gzStream = typeof(Program).Assembly.GetManifestResourceStream(name + ".dll.gz");
-                if (gzStream is not null)
-                {
-                    using var decompressor = new GZipStream(gzStream, CompressionMode.Decompress);
-                    using var ms = new MemoryStream();
-                    decompressor.CopyTo(ms);
-                    return Assembly.Load(ms.ToArray());
-                }
-            }
-            return null;
+            if (string.IsNullOrWhiteSpace(name) || !EmbeddedAssemblies.Contains(name, StringComparer.OrdinalIgnoreCase))
+                return null;
+            if (ResolvedAssemblies.TryGetValue(name, out Assembly? cached))
+                return cached;
+
+            using Stream? gzStream = typeof(Program).Assembly.GetManifestResourceStream(name + ".dll.gz");
+            if (gzStream is null) return null;
+            using var decompressor = new GZipStream(gzStream, CompressionMode.Decompress);
+            using var ms = new MemoryStream();
+            decompressor.CopyTo(ms);
+            return ResolvedAssemblies.GetOrAdd(name, Assembly.Load(ms.ToArray()));
         };
     }
 
@@ -38,42 +47,69 @@ internal static class Program
     private static int Main(string[] args) => RunMain(args ?? Array.Empty<string>());
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static int RunMain(string[] args)
+    internal static int RunMain(string[] args)
     {
+#if !REENGINE_ENABLE_AUTOMATION
+        if (InstallerCliAndAutomation.HasAutomationPortFlag(args))
+        {
+            InstallerCliAndAutomation.AttachParentConsoleIfInteractive(args);
+            Console.Error.WriteLine("Automation loopback is disabled in Release builds (ExitCode = 2).");
+            return 2;
+        }
+#endif
+
         InstallerThemeOptions theme = CreateThemeOptions();
         InstallerAppDescriptor descriptor = CreateDescriptor(theme);
-        string[] hostArgs = ExtractHostArgs(args, out string profileId, out string? suiteDir, out string? reEngineDir,
-            out bool migrateLegacy, out bool confirmLegacyCleanup, out bool silent,
-            out bool dryRun, out bool verifyOnly, out bool uninstall,
-            out string? installDir, out string? dataDir);
+        string[] cleanArgs = SanitizeArgs(args);
 
-        InstallerCliOptions? cli = null;
+        int? automationPort;
+        string? automationToken, suiteDir, reEngineDir, installDir, dataDir;
+        bool migrateLegacy, confirmLegacyCleanup, silent, dryRun, verifyOnly, uninstall;
+        string[] hostArgs;
         try
         {
-            cli = InstallerEngine.ParseCliArgs(hostArgs, descriptor);
+            string[] withoutAutomation = InstallerCliAndAutomation.ExtractAutomationArgs(cleanArgs, out automationPort, out automationToken);
+            hostArgs = ExtractHostArgs(withoutAutomation, out _, out suiteDir, out reEngineDir,
+                out migrateLegacy, out confirmLegacyCleanup, out silent, out dryRun, out verifyOnly,
+                out uninstall, out installDir, out dataDir);
         }
-        catch (ArgumentException)
+        catch (ArgumentException ex)
         {
-            return StandardInstallerHost.Run(descriptor, hostArgs, typeof(Program).Assembly);
+            Console.Error.WriteLine($"Setup argument error: {ex.Message}");
+            return 2;
         }
 
-        bool isIsolatedTest = IsIsolatedTestEnv();
-        bool isInteractiveGui = !cli.ShowVersion &&
-                                !cli.ShowHelp &&
-                                !cli.Silent &&
-                                !isIsolatedTest &&
-                                !cli.DryRun &&
-                                !cli.VerifyOnly &&
-                                string.IsNullOrWhiteSpace(cli.InstallDir) &&
+        InstallerCliOptions cli;
+        try { cli = InstallerEngine.ParseCliArgs(hostArgs, descriptor); }
+        catch (ArgumentException) { return StandardInstallerHost.Run(descriptor, hostArgs, typeof(Program).Assembly); }
+
+        bool isIsolatedTest = InstallerCliAndAutomation.IsIsolatedTestEnv();
+        bool forceAutomatedWizard =
+#if REENGINE_ENABLE_AUTOMATION
+            automationPort.HasValue;
+#else
+            false;
+#endif
+        bool isInteractiveGui = !cli.ShowVersion && !cli.ShowHelp && !cli.Silent && !cli.DryRun && !cli.VerifyOnly &&
+                                ((!isIsolatedTest && string.IsNullOrWhiteSpace(cli.InstallDir)) || forceAutomatedWizard) &&
                                 OperatingSystem.IsWindows();
 
         if (isInteractiveGui)
         {
-            return RunInteractiveWizard(descriptor, theme, cli, suiteDir, reEngineDir, migrateLegacy, confirmLegacyCleanup);
+            try
+            {
+                return RunInteractiveWizard(descriptor, theme, cli, suiteDir, reEngineDir,
+                    migrateLegacy, confirmLegacyCleanup, automationPort, automationToken);
+            }
+            catch (Exception ex) when (SandboxEnvironmentSeam.IsContainmentViolation(ex))
+            {
+                Console.Error.WriteLine(ex.Message);
+                return SandboxEnvironmentSeam.ContainmentExitCode;
+            }
         }
 
         int exitCode = StandardInstallerHost.Run(descriptor, hostArgs, typeof(Program).Assembly);
-        if (exitCode == 0 && !verifyOnly && !uninstall && !dryRun)
+        if (exitCode == 0 && !cli.ShowVersion && !cli.ShowHelp && !verifyOnly && !uninstall && !dryRun)
         {
             string resolvedInstallDir = ResolveEffectiveInstallDir(descriptor, cli, installDir, dataDir, isIsolatedTest);
             LegacyMigrationHelper.TryReadExistingInstallSettings(
@@ -89,38 +125,19 @@ internal static class Program
             string effectiveReEngineDir = !string.IsNullOrWhiteSpace(reEngineDir)
                 ? Path.GetFullPath(reEngineDir.Trim())
                 : (!string.IsNullOrWhiteSpace(existingReEngineDir) ? existingReEngineDir : resolvedInstallDir);
-            ApplyPostInstallActions(resolvedInstallDir, effectiveProfile, effectiveSuiteDir, effectiveReEngineDir,
+            InstallerCliAndAutomation.ApplyPostInstallActions(resolvedInstallDir, effectiveProfile, effectiveSuiteDir, effectiveReEngineDir,
                 migrateLegacy, confirmLegacyCleanup, isIsolatedTest, dataDir, silent);
         }
 
         return exitCode;
     }
 
-    private static bool IsIsolatedTestEnv()
-    {
-        string? value = Environment.GetEnvironmentVariable("APP_ISOLATED_TEST");
-        return string.Equals(value, "1", StringComparison.OrdinalIgnoreCase) ||
-               string.Equals(value, "true", StringComparison.OrdinalIgnoreCase) ||
-               string.Equals(value, "yes", StringComparison.OrdinalIgnoreCase) ||
-               string.Equals(value, "on", StringComparison.OrdinalIgnoreCase);
-    }
-
     private static int RunInteractiveWizard(
-        InstallerAppDescriptor descriptor,
-        InstallerThemeOptions theme,
-        InstallerCliOptions cli,
-        string? suiteDir,
-        string? reEngineDir,
-        bool migrateLegacy,
-        bool confirmLegacyCleanup)
+        InstallerAppDescriptor descriptor, InstallerThemeOptions theme, InstallerCliOptions cli,
+        string? suiteDir, string? reEngineDir, bool migrateLegacy, bool confirmLegacyCleanup,
+        int? automationPort, string? automationToken)
     {
-        var ctx = new InstallerRuntimeContext(
-            cliDataDir: cli.DataDir,
-            cliConfigPath: cli.ConfigPath,
-            cliLogDir: cli.LogDir,
-            dryRun: cli.DryRun,
-            envPrefix: descriptor.EnvPrefix);
-
+        var ctx = new InstallerRuntimeContext(cli.DataDir, cli.ConfigPath, cli.LogDir, cli.DryRun, descriptor.EnvPrefix);
         var guiEngine = new InstallerEngine(descriptor, ctx, typeof(Program).Assembly);
         Application.EnableVisualStyles();
         Application.SetCompatibleTextRenderingDefault(false);
@@ -151,26 +168,19 @@ internal static class Program
             : picker?.FlagName;
 
         using var wizard = new InstallerWizardForm(
-            engine: guiEngine,
-            ctx: ctx,
-            initialInstallDir: resolvedInitialInstallDir,
-            externalPayloadPath: cli.PayloadPath,
-            isUninstallMode: cli.Uninstall,
-            initialCreateShortcuts: !cli.NoShortcuts,
-            initialAutoStart: theme.AllowAutoStart && cli.AutoStart,
-            initialLaunchAfter: !cli.NoLaunch,
-            initialPurgeData: cli.PurgeData,
-            initialProfileId: initialProfile,
-            initialSecondaryDir: initialSecondary,
-            secondaryFlagName: secondaryFlag,
-            initialMigrateLegacy: theme.AllowLegacyMigration);
+            engine: guiEngine, ctx: ctx, initialInstallDir: resolvedInitialInstallDir,
+            externalPayloadPath: cli.PayloadPath, isUninstallMode: cli.Uninstall,
+            initialCreateShortcuts: !cli.NoShortcuts, initialAutoStart: theme.AllowAutoStart && cli.AutoStart,
+            initialLaunchAfter: !cli.NoLaunch, initialPurgeData: cli.PurgeData,
+            initialProfileId: initialProfile, initialSecondaryDir: initialSecondary,
+            secondaryFlagName: secondaryFlag, initialMigrateLegacy: theme.AllowLegacyMigration);
 
         if (theme.AllowLegacyMigration && !cli.Uninstall)
-        {
             wizard.MigrateLegacyCheckBox.Checked = migrateLegacy || (ctx.ConfigOverride?.MigrateLegacy ?? false);
-        }
 
         ReEngineWizardPathNormalizer.WireWizardAutoSortHandlers(wizard);
+        using IDisposable? automationHook = InstallerCliAndAutomation.TryAttachWizardAutomation(
+            wizard, automationPort, automationToken, ctx);
         Application.Run(wizard);
         if (wizard.ExitCode == 0 && !cli.Uninstall)
         {
@@ -189,7 +199,7 @@ internal static class Program
                     ? Path.GetFullPath(chosenSecondary)
                     : ResolveEffectiveSuiteDir(suiteDir, chosenInstallDir));
 
-            ApplyPostInstallActions(chosenInstallDir, chosenProfile, chosenSuiteDir, chosenReEngineDir,
+            InstallerCliAndAutomation.ApplyPostInstallActions(chosenInstallDir, chosenProfile, chosenSuiteDir, chosenReEngineDir,
                 wizard.MigrateLegacyChecked, confirmLegacyCleanup, isolatedTest: ctx.IsIsolatedTestProcess, dataDir: cli.DataDir,
                 silent: false);
         }
@@ -197,73 +207,26 @@ internal static class Program
         return wizard.ExitCode;
     }
 
-    private static void ApplyPostInstallActions(
-        string installDir,
-        string? profileId,
-        string? suiteDir,
-        string? reEngineDir,
-        bool migrateLegacy,
-        bool confirmLegacyCleanup,
-        bool isolatedTest,
-        string? dataDir,
-        bool silent)
-    {
-        if (!Directory.Exists(installDir))
-        {
-            return;
-        }
-
-        string enginesRoot = ReEngineWizardPathNormalizer.ResolvePreferredEnginesRootDir(
-            !string.IsNullOrWhiteSpace(reEngineDir) ? reEngineDir : installDir,
-            suiteDir);
-        Directory.CreateDirectory(enginesRoot);
-
-        if (migrateLegacy)
-        {
-            LegacyMigrationResult migration = LegacyMigrationHelper.TryMigrateLegacyInstall(
-                installDir, isolatedTest, dataDir, silent, dryRun: false, confirmLegacyCleanup);
-            Console.WriteLine(migration.Summary);
-        }
-
-        LegacyMigrationHelper.PersistInstallProfileSettings(installDir, profileId, suiteDir, reEngineDir);
-    }
-
     internal static InstallerAppDescriptor CreateDescriptor() => CreateDescriptor(CreateThemeOptions());
 
     private static InstallerAppDescriptor CreateDescriptor(InstallerThemeOptions theme) => new(
-        ProductName: ReEnginePackagingConstants.DisplayName,
-        DisplayName: theme.DisplayName,
-        Publisher: theme.StudioName,
-        Version: theme.Version,
-        MainExecutableRelativePath: "reEngine.exe",
-        Subtitle: theme.Subtitle,
-        EmbeddedPayloadResourceName: "reEngine.Installer.Embedded.payload.zip",
-        BrandAccentHex: theme.BrandAccentHex,
-        AllowAutoStart: theme.AllowAutoStart,
-        StudioName: theme.StudioName,
-        SuiteName: theme.SuiteName,
-        UmbrellaSubpath: theme.UmbrellaSubpath,
-        DefaultProfile: theme.DefaultProfileId);
+        ProductName: ReEnginePackagingConstants.DisplayName, DisplayName: theme.DisplayName,
+        Publisher: theme.StudioName, Version: theme.Version, MainExecutableRelativePath: "reEngine.exe",
+        Subtitle: theme.Subtitle, EmbeddedPayloadResourceName: "reEngine.Installer.Embedded.payload.zip",
+        BrandAccentHex: theme.BrandAccentHex, AllowAutoStart: theme.AllowAutoStart,
+        StudioName: theme.StudioName, SuiteName: theme.SuiteName,
+        UmbrellaSubpath: theme.UmbrellaSubpath, DefaultProfile: theme.DefaultProfileId);
 
     internal static IReadOnlyList<InstallerProfileOption> CreateAvailableProfiles() =>
     [
-        new InstallerProfileOption(
-            Id: "lightweight",
-            Kind: InstallerProfileKind.Lightweight,
-            Label: "Lightweight",
-            Description: "Core .decomp / .recomp router & engine manager (< 5 MB).",
-            IsDefault: true),
-        new InstallerProfileOption(
-            Id: "full",
-            Kind: InstallerProfileKind.Full,
-            Label: "Full (Offline Toolchain)",
-            Description: "Includes offline Apache-2.0 headless Ghidra + OpenJDK toolchain (<= 160 MB).",
-            IsDefault: false)
+        new InstallerProfileOption("lightweight", InstallerProfileKind.Lightweight, "Lightweight",
+            "Core .decomp / .recomp router & engine manager (< 5 MB).", IsDefault: true),
+        new InstallerProfileOption("full", InstallerProfileKind.Full, "Full (Offline Toolchain)",
+            "Includes offline Apache-2.0 headless Ghidra + OpenJDK toolchain (<= 160 MB).", IsDefault: false)
     ];
 
     internal static SecondaryPathPickerOptions CreateSecondaryPathPicker() => new(
-        FlagName: "--suite-dir",
-        Label: "Suite Root Directory:",
+        FlagName: "--suite-dir", Label: "Suite Root Directory:",
         DefaultPath: ReEngineBootstrapHelper.ResolveDefaultSuiteInstallDir(),
         Placeholder: "%LOCALAPPDATA%\\Programs\\StreamItAll\\reEngine",
         Tooltip: "Optional companion suite directory for shared engines and games (--suite-dir / --reengine-dir).");
@@ -287,110 +250,21 @@ internal static class Program
         AllowLegacyMigration = true
     };
 
-    internal static string[] SanitizeArgs(string[]? args) =>
-        args is null
-            ? Array.Empty<string>()
-            : args.Where(a => !string.Equals(a?.Trim(), "--autostart", StringComparison.OrdinalIgnoreCase)).ToArray();
+    internal static string[] SanitizeArgs(string[]? args) => InstallerCliAndAutomation.SanitizeArgs(args);
 
     internal static string[] ExtractHostArgs(
-        string[] args,
-        out string profileId,
-        out string? suiteDir,
-        out string? reEngineDir,
-        out bool migrateLegacy,
-        out bool confirmLegacyCleanup,
-        out bool silent,
-        out bool dryRun,
-        out bool verifyOnly,
-        out bool uninstall,
-        out string? installDir,
-        out string? dataDir)
-    {
-        string[] clean = SanitizeArgs(args);
-        profileId = ReEnginePackagingConstants.DefaultInstallProfile;
-        suiteDir = null;
-        reEngineDir = null;
-        migrateLegacy = false;
-        confirmLegacyCleanup = false;
-        silent = false;
-        dryRun = false;
-        verifyOnly = false;
-        uninstall = false;
-        installDir = null;
-        dataDir = null;
-
-        var forwarded = new List<string>(clean.Length);
-        for (int i = 0; i < clean.Length; i++)
-        {
-            string arg = clean[i].Trim();
-            if (string.Equals(arg, "--confirm-legacy-cleanup", StringComparison.OrdinalIgnoreCase))
-            {
-                confirmLegacyCleanup = true;
-                continue;
-            }
-
-            forwarded.Add(clean[i]);
-            switch (arg.ToLowerInvariant())
-            {
-                case "--profile" when i + 1 < clean.Length:
-                    profileId = LegacyMigrationHelper.NormalizeProfileId(clean[i + 1]);
-                    break;
-                case "--suite-dir" when i + 1 < clean.Length:
-                    suiteDir = clean[i + 1];
-                    break;
-                case "--reengine-dir" when i + 1 < clean.Length:
-                    reEngineDir = clean[i + 1];
-                    break;
-                case "--install-dir":
-                case "--target-dir":
-                    if (i + 1 < clean.Length) installDir = clean[i + 1];
-                    break;
-                case "--data-dir":
-                    if (i + 1 < clean.Length) dataDir = clean[i + 1];
-                    break;
-                case "--migrate-legacy": migrateLegacy = true; break;
-                case "--silent":
-                case "--quiet": silent = true; break;
-                case "--dry-run": dryRun = true; break;
-                case "--verify": verifyOnly = true; break;
-                case "--uninstall": uninstall = true; break;
-            }
-        }
-
-        if (string.IsNullOrWhiteSpace(installDir))
-        {
-            if (!string.IsNullOrWhiteSpace(reEngineDir))
-            {
-                installDir = Path.GetFullPath(reEngineDir.Trim());
-                forwarded.Add("--install-dir");
-                forwarded.Add(installDir);
-            }
-            else if (!string.IsNullOrWhiteSpace(suiteDir))
-            {
-                installDir = Path.Combine(Path.GetFullPath(suiteDir.Trim()), ReEnginePackagingConstants.DisplayName);
-                forwarded.Add("--install-dir");
-                forwarded.Add(installDir);
-            }
-        }
-
-        return forwarded.ToArray();
-    }
+        string[] args, out string profileId, out string? suiteDir, out string? reEngineDir,
+        out bool migrateLegacy, out bool confirmLegacyCleanup, out bool silent,
+        out bool dryRun, out bool verifyOnly, out bool uninstall, out string? installDir, out string? dataDir) =>
+        InstallerCliAndAutomation.ExtractHostArgs(args, out profileId, out suiteDir, out reEngineDir,
+            out migrateLegacy, out confirmLegacyCleanup, out silent, out dryRun, out verifyOnly,
+            out uninstall, out installDir, out dataDir);
 
     private static string ResolveEffectiveInstallDir(
-        InstallerAppDescriptor descriptor,
-        InstallerCliOptions cli,
-        string? installDir,
-        string? dataDir,
-        bool isolatedTest)
+        InstallerAppDescriptor descriptor, InstallerCliOptions cli, string? installDir, string? dataDir, bool isolatedTest)
     {
-        if (!string.IsNullOrWhiteSpace(installDir))
-        {
-            return Path.GetFullPath(installDir);
-        }
-        if (isolatedTest && !string.IsNullOrWhiteSpace(dataDir))
-        {
-            return Path.GetFullPath(Path.Combine(dataDir, "installed-app"));
-        }
+        if (!string.IsNullOrWhiteSpace(installDir)) return Path.GetFullPath(installDir);
+        if (isolatedTest && !string.IsNullOrWhiteSpace(dataDir)) return Path.GetFullPath(Path.Combine(dataDir, "installed-app"));
         var ctx = new InstallerRuntimeContext(cli.DataDir, cli.ConfigPath, cli.LogDir, cli.DryRun, descriptor.EnvPrefix);
         return new InstallerEngine(descriptor, ctx, typeof(Program).Assembly).ResolveDefaultInstallDirectory();
     }

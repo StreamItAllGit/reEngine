@@ -26,6 +26,9 @@ internal unsafe struct Gl33Dispatch
     public delegate* unmanaged[Stdcall]<uint, uint, uint, uint, int, void> FramebufferTexture2D;
     public delegate* unmanaged[Stdcall]<int, int, int, int, int, int, int, int, uint, uint, void> BlitFramebuffer;
     public delegate* unmanaged[Stdcall]<uint, int*, void> GetIntegerv;
+    public delegate* unmanaged[Stdcall]<uint, uint> CheckFramebufferStatus;
+    public delegate* unmanaged[Stdcall]<void> Finish;
+    public delegate* unmanaged[Stdcall]<int, int, int, int, uint, uint, void*, void> ReadPixels;
 
     public static bool TryLoad(out Gl33Dispatch dispatch, out string missingSymbol)
     {
@@ -46,6 +49,9 @@ internal unsafe struct Gl33Dispatch
         if (!Load("glFramebufferTexture2D", out nint p13)) { missingSymbol = "glFramebufferTexture2D"; return false; }
         if (!Load("glBlitFramebuffer", out nint p14)) { missingSymbol = "glBlitFramebuffer"; return false; }
         if (!Load("glGetIntegerv", out nint p15)) { missingSymbol = "glGetIntegerv"; return false; }
+        if (!Load("glCheckFramebufferStatus", out nint p16)) { missingSymbol = "glCheckFramebufferStatus"; return false; }
+        if (!Load("glFinish", out nint p17)) { missingSymbol = "glFinish"; return false; }
+        if (!Load("glReadPixels", out nint p18)) { missingSymbol = "glReadPixels"; return false; }
 
         dispatch.Viewport = (delegate* unmanaged[Stdcall]<int, int, int, int, void>)p0;
         dispatch.ClearColor = (delegate* unmanaged[Stdcall]<float, float, float, float, void>)p1;
@@ -63,6 +69,9 @@ internal unsafe struct Gl33Dispatch
         dispatch.FramebufferTexture2D = (delegate* unmanaged[Stdcall]<uint, uint, uint, uint, int, void>)p13;
         dispatch.BlitFramebuffer = (delegate* unmanaged[Stdcall]<int, int, int, int, int, int, int, int, uint, uint, void>)p14;
         dispatch.GetIntegerv = (delegate* unmanaged[Stdcall]<uint, int*, void>)p15;
+        dispatch.CheckFramebufferStatus = (delegate* unmanaged[Stdcall]<uint, uint>)p16;
+        dispatch.Finish = (delegate* unmanaged[Stdcall]<void>)p17;
+        dispatch.ReadPixels = (delegate* unmanaged[Stdcall]<int, int, int, int, uint, uint, void*, void>)p18;
         missingSymbol = string.Empty;
         return true;
     }
@@ -84,11 +93,14 @@ internal static class Gl33Native
     public const int Nearest = 0x2600;
     public const uint TextureMagFilter = 0x2800u;
     public const uint TextureMinFilter = 0x2801u;
+    public const uint PackRowLength = 0x0D02u;
+    public const uint PackAlignment = 0x0D05u;
     public const uint UnpackRowLength = 0x0CF2u;
     public const uint UnpackAlignment = 0x0CF5u;
     public const uint ReadFramebuffer = 0x8CA8u;
     public const uint DrawFramebuffer = 0x8CA9u;
     public const uint ColorAttachment0 = 0x8CE0u;
+    public const uint FramebufferComplete = 0x8CD5u;
     public const uint MajorVersion = 0x821Bu;
     public const uint MinorVersion = 0x821Cu;
 

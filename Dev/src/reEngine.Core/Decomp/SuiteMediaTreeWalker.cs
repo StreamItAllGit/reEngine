@@ -36,7 +36,7 @@ public static partial class SuiteMediaTreeWalker
     private static readonly Dictionary<string, int> ExtensionPriority = new(StringComparer.OrdinalIgnoreCase)
     {
         [".cue"] = 0, [".chd"] = 1, [".iso"] = 2, [".gcm"] = 3, [".rvz"] = 3, [".n64"] = 3, [".z64"] = 3, [".v64"] = 3,
-        [".sfc"] = 3, [".smc"] = 3, [".nes"] = 3, [".gb"] = 3, [".gbc"] = 3, [".gba"] = 3, [".gen"] = 3, [".smd"] = 3,
+        [".sfc"] = 3, [".smc"] = 3, [".nes"] = 3, [".fds"] = 3, [".gb"] = 3, [".gbc"] = 3, [".gba"] = 3, [".gen"] = 3, [".smd"] = 3,
         [".sms"] = 3, [".gg"] = 3, [".nds"] = 3, [".7z"] = 4, [".zip"] = 4, [".img"] = 4, [".bin"] = 5
     };
 

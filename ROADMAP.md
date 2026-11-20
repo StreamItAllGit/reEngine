@@ -1,20 +1,20 @@
 # reEngine — Roadmap & Milestones
 
-**Current Active Version:** `0.4.0`  
+**Current Active Version:** `0.5.0`  
 **Lifecycle State:** `active.state`  
-**Last Updated:** 2026-11-19
+**Last Updated:** 2026-11-20
 
 ---
 
 ## 1. North Star Goal
-Provide a lightweight, **zero-daemon `.recomp` / `.decomp` package router and engine version manager** (`0 MB` idle footprint, no background services or startup entries) shared across clean-room static recompilation engines (`reStation`, `re64`, `reCube`, `rePS2`, `reAdvance`, plus optional `reNes`/`reSnes`/`reBoy`) and game modules—delivering **`v1.0.0` desktop stability on Windows (`win-x64`)** and scaling in **`v2.0.0` to full cross-platform compatibility** across Desktop, Handheld, Mobile, WebAssembly, and Consoles.
+Provide a lightweight, **zero-daemon `.recomp` / `.decomp` package router and engine version manager** (`0 MB` idle footprint, no background services or startup entries) shared across clean-room static recompilation engines (`reStation`/`reSlate`, `re64`/`reCart64`, `reCube`, `rePS2`, `reAdvance`, `reCart`/`reCartOne`/`reNes`, plus `reGenesis`/`reBlast16`, `reSnes`, `reBoy`) and game modules—delivering **`v1.0.0` desktop stability on Windows (`win-x64`)** and scaling in **`v2.0.0` to full cross-platform compatibility** across Desktop, Handheld, Mobile, WebAssembly, and Consoles.
 
 - **Explicit Boundaries:** `reEngine` never runs background daemons or startup entries, never bundles retail disc/ROM images or console BIOS files, acts strictly as a clean-room static recompilation router and host bridge for frontend launchers without implementing cycle-accurate console interpreters, and focuses exclusively on `.recomp`/`.decomp` modules (standalone full native game ports ship directly as their own independent executables).
 
 ---
 
 ## 2. Active In-Dev Milestone
-- **Shipped Baseline (`0.4.0`):** `v0.4.0` (`2026-11-19`) — Ships unified 5-backend native GPU presenters in `reEngine.Host.dll` (`OpenGL 3.3+`, `Vulkan 1.3+`, `DirectX 12`, bit-exact 16px `ParallelCpu`, `Software`), path-contained `<dataDir>\hdpacks\`, native OS audio pinning (`wasapi`), `--require-backend` (`ExitCode = 6`), 3-slot multi-bind KBM + Xbox/HID SDL3 gamepads + rumble + dynamic `ControlOptions` + 5-column `F1 -> Keybinds` capture + touch overlay contracts, interactive Explorer `.decomp` **Bring-Up** launching with `SuiteMediaTreeWalker` + `MissingMediaPromptDialog` (use-in-place default), canonical `D4_CleanSource`, standalone `--verify-module [--json] [--require-media]`, and synchronous frontend `--open --wait --fullscreen --save-dir` routing with bounded `<= 3s` graceful `WM_CLOSE` save flushing.
+- **Shipped Baseline (`0.5.0`):** `v0.5.0` (`2026-11-20`) — Ships `HostViewportGeometry` 5-aspect modes (`nativePar`, `fourByThree`, `squareInteger`, `nativeFit`, `horPlus16By9`) and bounded overscan cropping across all 5 Windows presenters with inverse pointer normalization, OpenGL `0x0`/`0x8CD5` FBO guards + owner-thread `IHostGraphicsContext` readback/pre-QuickSave GPU sync (`TryReadSurfaceRect`, `FlushAndSyncForSnapshot`), 4-port SDL3 gamepads (`PadPorts[0..3]`), 3-tier input persistence (`settings.controls.json`, `Global 1:1` / `Game 1:1` / `Modern PC`) with Menu `D-Pad`/`Left Stick` isolation, interactive `F1` drawer controls + `F5`/`F9`/`F11`/`Alt+Enter`/Fast-Forward/Cutscene-Skip hotkeys, decoupled `IHostAutomationBridge`, 3-way `reCart`/`reCartOne`/`reNes` routing, `-hf.<n>` hotfix SemVer precedence, `hostProtocolVersion >= 0.3.0` CLI forwarding, `.fds` discovery parity, `--aspect-mode`, `"suiteId": "reEngine"`, and Dual-Binary Release `ExitCode = 2`.
 - **Next Planned Milestone (`v1.0.0`):** Lock `reEngine.Core` and `reEngine.Host` `v1.0.0` public SDK interfaces, certify Windows (`win-x64`) multi-engine static recompilation across all 5 Windows backends plus the full offline toolchain, and graduate `reEngine` to General Availability (`1.0.0`).
 
 ---
@@ -26,7 +26,8 @@ flowchart LR
     V01["v0.1.0-v0.1.3 (Shipped)\nRouter, SDK & Legal Clean-Room Packaging"] --> V02["v0.2.0-v0.2.1-hf.1 (Shipped)\n.decomp + Offline Ghidra + AOT Cache"]
     V02 --> V03["v0.3.0 (Shipped)\nreEngine.Host, Resumable Updates & UI"]
     V03 --> V04["v0.4.0 (Shipped)\n5-Backend Host, .decomp UI & --wait Bridge"]
-    V04 --> V10["v1.0.0 (Next — Desktop Release)\nwin-x64 Multi-Engine & Toolchain Gold"]
+    V04 --> V05["v0.5.0 (Shipped)\nViewport/Aspect, 4-Port 3-Tier Input, Readback Sync & -hf SemVer"]
+    V05 --> V10["v1.0.0 (Next — Desktop Release)\nwin-x64 Multi-Engine & Toolchain Gold"]
     V10 --> V11["v1.1.0\nCross-Platform SDL3 UI (Linux/macOS/SteamOS)"]
     V11 --> V12["v1.2.0\nAndroid/iOS Support"]
     V12 --> V13["v1.3.0\nbrowser-wasm Web Router"]
@@ -76,6 +77,11 @@ flowchart LR
 ---
 
 ## 4. Completed Milestones
+- `0.5.0` *(2026-11-20)*: Delivered `HostViewportGeometry` 5-aspect modes & overscan crop across all 5 presenters with inverse pointer normalization, OpenGL `0x0`/`0x8CD5` FBO safety + owner-thread `IHostGraphicsContext` readback and pre-QuickSave / teardown sync, 4-port SDL3 gamepads + 3-tier `settings.controls.json` persistence + Menu isolation, interactive `F1` drawer controls + `F5`/`F9`/`F11`/`Alt+Enter` hotkeys + decoupled `IHostAutomationBridge`, 3-way `reCart`/`reCartOne`/`reNes` routing, `-hf.<n>` hotfix SemVer precedence, `hostProtocolVersion >= 0.3.0` CLI forwarding, `.fds` discovery parity, `--aspect-mode`, `"suiteId": "reEngine"`, and Dual-Binary Release `ExitCode = 2` (`21` test suites, `117/117` passing tests, `0` warnings).
+  - [x] **Viewport Precision & GL Readback Sync:** Eliminated window-resize stretch across OpenGL 3.3+, Vulkan 1.3+, DirectX 12, `ParallelCpu`, and `Software` via `HostViewportGeometry`, added `HostOverscanCrop`, inverse pointer mapping, GL `0x0`/`0x8CD5` FBO guards, and owner-thread `TryReadSurfaceRect` + `FlushAndSyncForSnapshot()` pre-QuickSave sync.
+  - [x] **4-Port Gamepads, 3-Tier Input & Interactive `F1` Drawer:** Added `PadPorts[0..3]` SDL3 polling, `HostControlTierStore` (`Global 1:1`, `Game 1:1`, `Modern PC` in `settings.controls.json`) with collision/hidden-slot validation, Menu `D-Pad`/`Left Stick` isolation, interactive `F1`/`F3`/`ExtraRows` callbacks, `F5`/`F9`/`F11`/`Alt+Enter` hotkeys, responsive startup event pumping, and decoupled `IHostAutomationBridge`.
+  - [x] **3-Way `reCart` Alias, `-hf.<n>` SemVer & `.fds` Parity:** Added 3-way `reCart`/`reCartOne`/`reNes` resolution, fixed `-hf.<n>` SemVer precedence above stable while preserving `.ready` enforcement, enabled `hostProtocolVersion >= 0.3.0` CLI forwarding, and added `.fds` discovery + clean-room rejection plus `--aspect-mode`.
+  - [x] **Installer Modularization & Dual-Binary Release Gate:** Migrated to `"suiteId": "reEngine"`, split installer modules cleanly, enforced fail-closed Release `ExitCode = 2` on both router and Setup EXE, and trimmed `Releases\` retention to `0.5`/`0.4`/`0.3`.
 - `0.4.0` *(2026-11-19)*: Delivered unified 5-backend native GPU contexts (`OpenGL 3.3+`, `Vulkan 1.3+`, `DirectX 12`, bit-exact 16px `ParallelCpu`, `Software`), path-contained `<dataDir>\hdpacks\`, native OS audio pinning (`wasapi`), 3-slot multi-bind KBM + Xbox/HID SDL3 gamepads + rumble + dynamic `ControlOptions` + 5-column `Keybinds` + touch contracts, Explorer `.decomp` interactive Bring-Up UI + `SuiteMediaTreeWalker` + `MissingMediaPromptDialog`, canonical `D4_CleanSource`, standalone `--verify-module [--json] [--require-media]`, and frontend `--open --wait --fullscreen --save-dir` routing with bounded `<= 3s` `WM_CLOSE` save flushing (`18` test suites, `98/98` passing tests, `0` warnings).
   - [x] **5-Backend Host, `hdpacks\` & Native Audio:** Added direct OS OpenGL/Vulkan/DX12 swapchain presenters, deterministic 16px `ParallelCpuPresenter`, `<dataDir>\hdpacks\`, `wasapi` hint ordering before `InitAudio`, fullscreen support, and `--require-backend` (`ExitCode = 6`).
   - [x] **Multi-Bind Input, Gamepads & `F1` Drawer:** Added 3-slot `[1st, 2nd, 3rd]` KBM + mouse/wheel bindings, Xbox/HID SDL3 gamepads + rumble, dynamic `ControlOptions`, 5-column interactive `Keybinds`, and `IHostInputProvider` touch contracts.

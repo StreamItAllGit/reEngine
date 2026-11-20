@@ -3,6 +3,14 @@
   "appId": "reengine",
   "installProfile": "lightweight",
   "backendId": "opengl",
+  "aspectRatioMode": "nativePar",
+  "overscanCropPx": {
+    "top": 0,
+    "bottom": 0,
+    "left": 0,
+    "right": 0
+  },
+  "isFastForwardEnabled": false,
   "resolutionScale": 2,
   "isFullscreen": false,
   "audioDriver": null,

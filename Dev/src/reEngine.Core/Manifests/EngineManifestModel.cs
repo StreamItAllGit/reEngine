@@ -21,6 +21,18 @@ public sealed class EngineManifestModel
     [JsonPropertyName("engineId")]
     public string EngineId { get; set; } = string.Empty;
 
+    /// <summary>Backward-compatible alias identifiers resolved alongside <see cref="EngineId"/> (Standard 18: <c>legacyEngineIds</c>).</summary>
+    [JsonPropertyName("legacyEngineIds")]
+    public List<string>? LegacyEngineIds { get; set; }
+
+    /// <summary>Minimum <c>reEngine.Host</c> ABI/CLI protocol SemVer declared by this engine (Standard 18: <c>hostProtocolVersion</c>).</summary>
+    [JsonPropertyName("hostProtocolVersion")]
+    public string? HostProtocolVersion { get; set; }
+
+    /// <summary>Minimum companion suite SemVer required by this engine.</summary>
+    [JsonPropertyName("minSuiteVersion")]
+    public string? MinSuiteVersion { get; set; }
+
     /// <summary>Installed engine display name.</summary>
     [JsonPropertyName("displayName")]
     public string? DisplayName { get; set; }

@@ -9,6 +9,28 @@ using System.Text.Json.Serialization;
 namespace reEngine.Core.Updates;
 
 /// <summary>
+/// Per-edge integer pixel overscan crop bounds (Standard 18: <c>overscanCropPx</c>).
+/// </summary>
+public sealed class OverscanCropPxSettings
+{
+    /// <summary>Top edge overscan crop in source pixels.</summary>
+    [JsonPropertyName("top")]
+    public int Top { get; set; }
+
+    /// <summary>Bottom edge overscan crop in source pixels.</summary>
+    [JsonPropertyName("bottom")]
+    public int Bottom { get; set; }
+
+    /// <summary>Left edge overscan crop in source pixels.</summary>
+    [JsonPropertyName("left")]
+    public int Left { get; set; }
+
+    /// <summary>Right edge overscan crop in source pixels.</summary>
+    [JsonPropertyName("right")]
+    public int Right { get; set; }
+}
+
+/// <summary>
 /// Persisted <c>data\settings.json</c> schema following Standard 18 &amp; Standard 19.
 /// </summary>
 public sealed class ReEngineSettings
@@ -53,6 +75,18 @@ public sealed class ReEngineSettings
     /// <summary>Canonical Standard 18 preferred render backend identifier (<c>opengl</c>, <c>vulkan</c>, <c>directx</c>, <c>parallelCpu</c>, <c>software</c>).</summary>
     [JsonPropertyName("backendId")]
     public string BackendId { get; set; } = "opengl";
+
+    /// <summary>Canonical Standard 18 aspect ratio presentation mode (<c>nativePar</c>, <c>fourByThree</c>, <c>squareInteger</c>, <c>nativeFit</c>, <c>horPlus16By9</c>).</summary>
+    [JsonPropertyName("aspectRatioMode")]
+    public string? AspectRatioMode { get; set; } = "nativePar";
+
+    /// <summary>Canonical Standard 18 pixel edge overscan crop settings.</summary>
+    [JsonPropertyName("overscanCropPx")]
+    public OverscanCropPxSettings? OverscanCropPx { get; set; } = new();
+
+    /// <summary>Canonical Standard 18 runtime fast-forward flag.</summary>
+    [JsonPropertyName("isFastForwardEnabled")]
+    public bool? IsFastForwardEnabled { get; set; } = false;
 
     /// <summary>Whether fullscreen host presentation is enabled by default (Standard 18: <c>isFullscreen</c>).</summary>
     [JsonPropertyName("isFullscreen")]
