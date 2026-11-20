@@ -53,6 +53,8 @@ public sealed class HostControlTierStore
     private sealed class ControlsPayloadDto
     {
         public int? SchemaVersion { get; set; }
+        public string? AppId { get; set; }
+        public string? Domain { get; set; }
         public string? InputProfileMode { get; set; }
         public string? ActiveSchema { get; set; }
         public TierSectionDto? GlobalController { get; set; }
@@ -152,6 +154,8 @@ public sealed class HostControlTierStore
         var payload = new Dictionary<string, object?>
         {
             ["schemaVersion"] = 1,
+            ["appId"] = "reengine",
+            ["domain"] = "controls",
             ["inputProfileMode"] = ToCanonicalTierId(ActiveTier),
             ["activeSchema"] = HostInputSchemas.ToShortCode(ActiveSchema),
             ["updatedAtUtc"] = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ss.fffZ"),
