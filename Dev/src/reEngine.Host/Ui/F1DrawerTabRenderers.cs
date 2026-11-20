@@ -95,25 +95,6 @@ internal static class F1DrawerTabRenderers
         RenderExtraRows(canvas, body, nextY, HostDrawerTabId.Video, descriptor.ExtraRows, view, controls);
     }
 
-    public static void RenderSystemTab(
-        PixelOverlayCanvas canvas, Rectangle body, F1SettingsDrawerView view,
-        HostDrawerDescriptor descriptor, List<DrawerControl> controls, out Rectangle cyclePrimaryRect)
-    {
-        canvas.DrawText(body.X, body.Y, "SYSTEM & EXECUTION TIER", HostOverlayPalette.AccentCyan, 1);
-        canvas.DrawText(body.X, body.Y + 18, $"Tier Mode: {view.ExecutionTierLabel}", HostOverlayPalette.TextPrimary, 1);
-        canvas.DrawText(body.X, body.Y + 34, "Runtime: Static Recompilation Host", HostOverlayPalette.TextMuted, 1);
-        canvas.DrawText(body.X, body.Y + 50, HostOverlayLayoutHelpers.FitText($"Module: {descriptor.ModuleTitle}", body.Width, 1), HostOverlayPalette.TextMuted, 1);
-
-        cyclePrimaryRect = new Rectangle(body.X, body.Y + 70, Math.Min(220, body.Width), 22);
-        HostOverlayLayoutHelpers.DrawPillButton(canvas, cyclePrimaryRect, "Cycle Tier Mode", false, HostOverlayPalette.AccentCyan);
-
-        var skipRect = new Rectangle(body.X, body.Y + 98, Math.Min(220, body.Width), 22);
-        HostOverlayLayoutHelpers.DrawPillButton(canvas, skipRect, "Skip Cutscene", false, HostOverlayPalette.AccentWarning);
-        controls.Add(new("System_SkipCutscene", "Button", "Skip Cutscene", skipRect, _ => view.EventCallbacks?.OnCutsceneSkipRequested()));
-
-        RenderExtraRows(canvas, body, body.Y + 128, HostDrawerTabId.System, descriptor.ExtraRows, view, controls);
-    }
-
     public static void RenderDiscMediaTab(
         PixelOverlayCanvas canvas, Rectangle body, F1SettingsDrawerView view,
         HostDrawerDescriptor descriptor, List<DrawerControl> controls)
