@@ -46,6 +46,7 @@ internal static class ReEngineAppStatusHelper
     public static bool GetJitBringup(ReEngineSettings settings)
     {
         ArgumentNullException.ThrowIfNull(settings);
+        if (settings.IsJitEnabled) return true;
         if (settings.ExtensionData is not null)
         {
             if (TryReadBool(settings.ExtensionData, JitBringupKey, out bool v)) return v;
@@ -57,8 +58,21 @@ internal static class ReEngineAppStatusHelper
     public static void SetJitBringup(ReEngineSettings settings, bool enabled)
     {
         ArgumentNullException.ThrowIfNull(settings);
+        settings.IsJitEnabled = enabled;
+        if (!enabled)
+        {
+            settings.ExecutionTierMode = "staticAotOnly";
+        }
+        else if (string.IsNullOrWhiteSpace(settings.ExecutionTierMode) ||
+                 string.Equals(settings.ExecutionTierMode, "staticAotOnly", StringComparison.OrdinalIgnoreCase) ||
+                 string.Equals(settings.ExecutionTierMode, "interpreterOracle", StringComparison.OrdinalIgnoreCase))
+        {
+            settings.ExecutionTierMode = "jitBringup";
+        }
+
         settings.ExtensionData ??= new Dictionary<string, JsonElement>(StringComparer.OrdinalIgnoreCase);
         settings.ExtensionData[JitBringupKey] = JsonSerializer.SerializeToElement(enabled);
+        if (!enabled) settings.ExtensionData.Remove("jitBringup");
     }
 
     private static bool TryReadBool(IDictionary<string, JsonElement> data, string key, out bool value)

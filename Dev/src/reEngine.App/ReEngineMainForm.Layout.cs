@@ -84,6 +84,8 @@ internal sealed partial class ReEngineMainForm
 
         _libraryShelf = new LibraryShelfPanel(OnOpenPackageClicked, OnLibrarySelectionChanged, () => OnVerifyPackageClicked(null));
         _libraryShelf.FullscreenToggled += OnFullscreenToggled;
+        _libraryShelf.DisplayAudioChanged += OnDisplayAudioSettingsChanged;
+        _libraryShelf.ResetSafeModeRequested += OnResetSafeModeRequested;
         _enginesShelf = new EnginesShelfPanel(OnRegisterAssociationClicked, OnCheckUpdatesClicked, OnPinTrackClicked, OnEngineSelected, OnEngineOptionsChanged);
         _bringUpShelf = new BringUpShelfPanel();
         _bringUpShelf.BindActions(OnOpenDecompClicked, OnLocateMediaClicked, () => OnVerifyPackageClicked(_loadedDecompPath), OnRunDecompStageClicked);
@@ -95,7 +97,8 @@ internal sealed partial class ReEngineMainForm
         _btnClose.Click += (_, _) => { ExitCode = 0; BeginInvoke(Close); };
         _lblStatusText = new Label { Name = "Lbl_StatusText", ForeColor = ReEngineTheme.TextMuted, Font = new Font("Segoe UI", 8.75f), AutoEllipsis = true, UseMnemonic = false };
 
-        _tooltip.SetToolTip(_btnToggleDrawer, "Inspector Drawer\nShows execution mode, decompilation toolchain, AOT cache, media folder, and track pin controls.");
+        _tooltip.SetToolTip(_btnToggleDrawer, "Inspector Drawer\nShows execution mode, display/audio presets, decompilation toolchain, AOT cache, media folder, and track pin controls.");
+        _tooltip.SetToolTip(_libraryShelf.DisplayAudioPanel.ResetSafeModeButton, "Clear Safe Mode and re-enable configured HD texture packs and GPU overrides on next launch.");
 
         Controls.AddRange(new Control[]
         {

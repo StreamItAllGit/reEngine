@@ -1,6 +1,6 @@
 // @module: reEngine.App.RecompLaunchPlanBuilder
-// @purpose: Builds isolated child process launch plans with 0.3.x+ protocol/track backend/aspect/JIT/automation passthrough and 0.2.x fallback compatibility.
-// @depends-on: System, System.Collections.Generic, System.Globalization, System.IO, System.Linq, System.Text.Json, System.Text.RegularExpressions, Foundation.Core, reEngine.Core, reEngine.Host.Contracts
+// @purpose: Builds isolated child process launch plans delegating protocol-gated passthrough flags to RecompLaunchFlagRouter.
+// @depends-on: System, System.Collections.Generic, System.Globalization, System.IO, System.Text.Json, System.Text.RegularExpressions, Foundation.Core, reEngine.Core
 // @exports: ChildLaunchPlan, RecompLaunchPlanBuilder
 
 using System.Globalization;
@@ -11,7 +11,6 @@ using reEngine.Core.Decomp;
 using reEngine.Core.Manifests;
 using reEngine.Core.Resolution;
 using reEngine.Core.Updates;
-using reEngine.Host.Contracts;
 
 namespace reEngine.App;
 
@@ -34,6 +33,19 @@ internal static partial class RecompLaunchPlanBuilder
         InstalledEngineCandidate? selectedEngine = null,
         Action<string, string>? log = null,
         ReEngineSettings? settings = null)
+    {
+        ReEngineSettingsBundle? bundle = settings is null ? null : SettingsMigrationHelper.BuildBundleFromLegacyCore(settings);
+        return Build(loaded, appEnv, containmentRoot, launchOptions, selectedEngine, log, bundle);
+    }
+
+    public static ChildLaunchPlan Build(
+        RecompPackageLoadResult loaded,
+        AppEnvironment appEnv,
+        string? containmentRoot,
+        RecompLaunchOptions? launchOptions,
+        InstalledEngineCandidate? selectedEngine,
+        Action<string, string>? log,
+        ReEngineSettingsBundle? settingsBundle)
     {
         ArgumentNullException.ThrowIfNull(loaded);
         ArgumentNullException.ThrowIfNull(appEnv);
@@ -86,7 +98,7 @@ internal static partial class RecompLaunchPlanBuilder
         args.Add("--config"); args.Add(moduleConfigPath);
         args.Add("--log-dir"); args.Add(moduleLogDir);
 
-        int? effectiveScale = opts.ResolutionScale ?? settings?.ResolutionScale;
+        int? effectiveScale = opts.ResolutionScale ?? settingsBundle?.Video.ResolutionScale ?? settingsBundle?.Core.ResolutionScale;
         if (effectiveScale is int scale && scale is 1 or 2 or 4 or 8)
         {
             args.Add("--scale");
@@ -100,15 +112,15 @@ internal static partial class RecompLaunchPlanBuilder
         if (screenshotPath is not null) { args.Add("--dump-screenshot"); args.Add(screenshotPath); }
         if (audioPath is not null) { args.Add("--dump-audio"); args.Add(audioPath); }
 
-        AppendV030Flags(args, opts, loaded.Manifest, selectedEngine, settings, log);
+        RecompLaunchFlagRouter.AppendRoutedFlags(args, opts, loaded.Manifest, selectedEngine, settingsBundle, log);
         return new ChildLaunchPlan(moduleDataDir, moduleConfigPath, moduleLogDir, args);
     }
 
-    private static readonly SemVer Track027Threshold = new(0, 2, 7);
+    internal static bool Supports030Routing(InstalledEngineCandidate engine) =>
+        RecompLaunchFlagRouter.Supports030Routing(engine);
 
-    private static bool IsLegacyCompatibleBackend(string? backendId) =>
-        string.Equals(backendId, HostRenderBackendIds.OpenGl, StringComparison.OrdinalIgnoreCase) ||
-        string.Equals(backendId, HostRenderBackendIds.Software, StringComparison.OrdinalIgnoreCase);
+    internal static bool Supports060Routing(InstalledEngineCandidate engine) =>
+        RecompLaunchFlagRouter.Supports060Routing(engine);
 
     private static string? ResolvePreloadMediaPath(
         RecompPackageLoadResult loaded, AppEnvironment appEnv, RecompLaunchOptions opts,
@@ -135,143 +147,6 @@ internal static partial class RecompLaunchPlanBuilder
         SuiteMediaDiscoveryResult walk = SuiteMediaTreeWalker.Discover(
             moduleRoot, suiteRoot, loaded.Manifest.ModuleId, expectedSha, loaded.Manifest.PreloadRomDir, boundary);
         return walk.Found ? walk.PrimaryMediaPath : null;
-    }
-
-    private static void AppendV030Flags(
-        List<string> args,
-        RecompLaunchOptions opts,
-        RecompPackageManifest manifest,
-        InstalledEngineCandidate? selectedEngine,
-        ReEngineSettings? settings,
-        Action<string, string>? log)
-    {
-        bool supports030 = selectedEngine is null || Supports030Routing(selectedEngine);
-        bool supports027 = selectedEngine is null || selectedEngine.Version.CompareTo(Track027Threshold) >= 0;
-        string? settingsBackend = settings?.BackendId;
-        string? rawBackend = opts.BackendId
-            ?? manifest.BackendId
-            ?? (string.IsNullOrWhiteSpace(settingsBackend) ? null : settingsBackend);
-        string? effectiveBackend = HostRenderBackendIds.TryNormalize(rawBackend, out string canonical) ? canonical : rawBackend;
-        bool wantsJitBringup = opts.JitBringup || string.Equals(manifest.ExecutionTierMode, "jitBringup", StringComparison.OrdinalIgnoreCase);
-
-        if (OperatingSystem.IsWindows() &&
-            string.Equals(effectiveBackend, HostRenderBackendIds.Metal, StringComparison.OrdinalIgnoreCase) &&
-            opts.RequireBackend)
-        {
-            throw new BackendUnavailableException(HostRenderBackendIds.Metal, "Apple Metal backend is not supported on Windows.");
-        }
-
-        if (!supports030)
-        {
-            if (!string.IsNullOrWhiteSpace(effectiveBackend))
-            {
-                if (supports027 && IsLegacyCompatibleBackend(effectiveBackend) && !opts.RequireBackend)
-                {
-                    args.Add("--backend");
-                    args.Add(effectiveBackend.ToLowerInvariant());
-                }
-                else
-                {
-                    if (opts.RequireBackend)
-                    {
-                        throw new BackendUnavailableException(effectiveBackend!,
-                            $"Selected engine '{selectedEngine!.EngineId}' v{selectedEngine.Version} does not support required '--backend {effectiveBackend}' routing (requires >= 0.3.0).");
-                    }
-                    log?.Invoke("WARN", $"Omitting 0.3.0+ backend '{effectiveBackend}' for pre-0.3.0 child '{selectedEngine!.EngineId}' v{selectedEngine.Version}.");
-                }
-            }
-
-            if (wantsJitBringup)
-            {
-                if (supports027 && !opts.RequireBackend && (string.IsNullOrWhiteSpace(effectiveBackend) || IsLegacyCompatibleBackend(effectiveBackend)))
-                {
-                    args.Add("--jit-bringup");
-                }
-                else
-                {
-                    log?.Invoke("WARN", $"Omitting 0.3.0+ flag --jit-bringup for pre-0.3.0 child '{selectedEngine!.EngineId}' v{selectedEngine.Version}.");
-                }
-            }
-
-            if (opts.AspectRatioMode is not null)
-            {
-                log?.Invoke("WARN", $"Omitting 0.3.0+ flag --aspect-mode for pre-0.3.0 child '{selectedEngine!.EngineId}' v{selectedEngine.Version}.");
-            }
-            return;
-        }
-
-        if (!string.IsNullOrWhiteSpace(effectiveBackend))
-        {
-            args.Add("--backend");
-            args.Add(effectiveBackend);
-        }
-        if (opts.RequireBackend) args.Add("--require-backend");
-        if (opts.Fullscreen || settings?.IsFullscreen == true) args.Add("--fullscreen");
-
-        string? audioDriver = !string.IsNullOrWhiteSpace(opts.AudioDriverOverride) ? opts.AudioDriverOverride : settings?.AudioDriver;
-        if (!string.IsNullOrWhiteSpace(audioDriver))
-        {
-            args.Add("--audio-driver");
-            args.Add(audioDriver.Trim().ToLowerInvariant());
-        }
-
-        string? settingsAspect = settings?.AspectRatioMode;
-        HostAspectRatioMode? effectiveAspectMode = opts.AspectRatioMode
-            ?? (!string.IsNullOrWhiteSpace(settingsAspect)
-                ? HostAspectRatioModeCodec.Parse(settingsAspect)
-                : null);
-        if (effectiveAspectMode is HostAspectRatioMode aspectMode)
-        {
-            args.Add("--aspect-mode");
-            args.Add(HostAspectRatioModeCodec.ToCanonicalId(aspectMode));
-        }
-
-        if (wantsJitBringup)
-        {
-            args.Add("--jit-bringup");
-        }
-        if (opts.AutomationPort is int port)
-        {
-            args.Add("--automation-port");
-            args.Add(port.ToString(CultureInfo.InvariantCulture));
-            if (!string.IsNullOrWhiteSpace(opts.AutomationToken))
-            {
-                args.Add("--automation-token");
-                args.Add(opts.AutomationToken);
-            }
-        }
-    }
-
-    internal static bool Supports030Routing(InstalledEngineCandidate engine)
-    {
-        if (engine is null) return false;
-        if (engine.Version.CompareTo(SemVer.Track030Threshold) >= 0) return true;
-
-        EngineManifestModel? model = EngineVersionResolver.TryReadEngineManifest(engine.EngineDirectory);
-        if (model is null) return false;
-
-        if (SemVer.TryParse(model.HostProtocolVersion, out SemVer proto) && proto.CompareTo(SemVer.Track030Threshold) >= 0)
-            return true;
-        if (SemVer.TryParse(model.MinSuiteVersion, out SemVer minSuite) && minSuite.CompareTo(SemVer.Track030Threshold) >= 0)
-            return true;
-        if (model.SupportedEngineTracks?.Any(IsTrack030OrHigher) == true || IsTrack030OrHigher(model.CompatibleEngineTrack))
-            return true;
-        return SemVer.TryParse(model.EffectiveVersion, out SemVer declared) && declared.CompareTo(SemVer.Track030Threshold) >= 0;
-    }
-
-    private static bool IsTrack030OrHigher(string? track)
-    {
-        if (string.IsNullOrWhiteSpace(track)) return false;
-        string norm = track.Trim();
-        if (norm.StartsWith('v') || norm.StartsWith('V')) norm = norm[1..];
-        int suffixIdx = norm.IndexOfAny(['-', '+']);
-        if (suffixIdx >= 0) norm = norm[..suffixIdx];
-
-        string[] parts = norm.Split('.');
-        if (parts.Length < 2 || !int.TryParse(parts[0], NumberStyles.None, CultureInfo.InvariantCulture, out int major))
-            return false;
-        if (major >= 1) return true;
-        return int.TryParse(parts[1], NumberStyles.None, CultureInfo.InvariantCulture, out int minor) && minor >= 3;
     }
 
     private static string? ResolveOptionalContainedPath(string? rawPath, string? boundary)
