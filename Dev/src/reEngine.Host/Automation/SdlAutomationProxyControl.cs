@@ -295,6 +295,8 @@ internal sealed class SdlAutomationProxyControl : IHostAutomationBridge, IRender
             >= 0x70 and <= 0x7B => $"F{vk - 0x6F}",
             0xC0 => "Grave",
             0x1B => "ESC",
+            0x08 => "BACKSPACE",
+            0x2E => "DEL",
             0x09 => "TAB",
             0x0D => "ENTER",
             0x20 => "SPACE",

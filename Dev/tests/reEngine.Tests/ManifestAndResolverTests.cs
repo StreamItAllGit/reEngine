@@ -147,8 +147,19 @@ public sealed class ManifestAndResolverTests : IDisposable
 
         Assert.True(result.Found);
         Assert.NotNull(result.SelectedEngine);
-        Assert.Equal(new SemVer(0, 1, 1), result.SelectedEngine!.Version);
+        Assert.Equal(new SemVer(0, 2, 0), result.SelectedEngine!.Version);
         Assert.Equal(3, result.DiscoveredCandidates.Count);
+
+        var excludedNewer = new RecompPackageManifest
+        {
+            EngineId = "reStation",
+            EngineVersion = "0.1.0",
+            CompatibleEngineTrack = "0.1.x",
+            IncompatibleEngineVersions = ["0.2.x"]
+        };
+        EngineResolutionResult fallbackToMinor = new EngineVersionResolver().ResolveForManifest(enginesDir, excludedNewer);
+        Assert.True(fallbackToMinor.Found);
+        Assert.Equal(new SemVer(0, 1, 1), fallbackToMinor.SelectedEngine!.Version);
     }
 
     [Fact]

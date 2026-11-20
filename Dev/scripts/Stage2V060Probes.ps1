@@ -95,9 +95,10 @@ function Invoke-Stage2V060Probes {
         $shotAud = Join-Path $probeLogs "sdl_v060_audio_tab_live.png"
         $null = Invoke-LoopbackJson -Port $pAud -Token $tAud -Method "POST" -Route "/v1/snapshot" -Body @{ filePath = $shotAud }
         Assert-NonBlankPng -Path $shotAud -ArtifactDir $ArtifactDir
-        $null = Invoke-LoopbackJson -Port $pAud -Token $tAud -Method "POST" -Route "/v1/keyboard" -Body @{ action = "press"; key = "ESC" }
-        Start-Sleep -Milliseconds 150
-        try { $null = Invoke-LoopbackJson -Port $pAud -Token $tAud -Method "POST" -Route "/v1/keyboard" -Body @{ action = "press"; key = "ESC" } } catch [System.Net.WebException] { }
+        $null = Wait-TreeControl -Port $pAud -Token $tAud -ControlId "Tab_System"
+        $null = Invoke-LoopbackJson -Port $pAud -Token $tAud -Method "POST" -Route "/v1/pointer" -Body @{ action = "click"; targetId = "Tab_System" }
+        $null = Wait-TreeControl -Port $pAud -Token $tAud -ControlId "System_QuitGame"
+        $null = Invoke-LoopbackJson -Port $pAud -Token $tAud -Method "POST" -Route "/v1/pointer" -Body @{ action = "click"; targetId = "System_QuitGame" }
         if (-not $audProc.WaitForExit(10000) -or $audProc.ExitCode -ne 0) { throw "Probe C SDL3 Audio exited abnormally ($($audProc.ExitCode))" }
     } finally { Stop-ExeboxStream $sAud; if (-not $audProc.HasExited) { $audProc.Kill() } }
 
@@ -129,7 +130,11 @@ function Invoke-Stage2V060Probes {
         $shotSafe = Join-Path $probeLogs "sdl_v060_safemode_live.png"
         $null = Invoke-LoopbackJson -Port $pSafe -Token $tSafe -Method "POST" -Route "/v1/snapshot" -Body @{ filePath = $shotSafe }
         Assert-NonBlankPng -Path $shotSafe -ArtifactDir $ArtifactDir
-        $null = Invoke-LoopbackJson -Port $pSafe -Token $tSafe -Method "POST" -Route "/v1/keyboard" -Body @{ action = "press"; key = "ESC" }
+        $null = Invoke-LoopbackJson -Port $pSafe -Token $tSafe -Method "POST" -Route "/v1/keyboard" -Body @{ action = "press"; key = "F1" }
+        $null = Wait-TreeControl -Port $pSafe -Token $tSafe -ControlId "Tab_System"
+        $null = Invoke-LoopbackJson -Port $pSafe -Token $tSafe -Method "POST" -Route "/v1/pointer" -Body @{ action = "click"; targetId = "Tab_System" }
+        $null = Wait-TreeControl -Port $pSafe -Token $tSafe -ControlId "System_QuitGame"
+        $null = Invoke-LoopbackJson -Port $pSafe -Token $tSafe -Method "POST" -Route "/v1/pointer" -Body @{ action = "click"; targetId = "System_QuitGame" }
         if (-not $safeProc.WaitForExit(10000) -or $safeProc.ExitCode -ne 0) { throw "Probe D Safe Mode exited abnormally ($($safeProc.ExitCode))" }
     } finally { Stop-ExeboxStream $sSafe; if (-not $safeProc.HasExited) { $safeProc.Kill() } }
 

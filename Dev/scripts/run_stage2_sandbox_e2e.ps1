@@ -27,8 +27,12 @@ Write-DesktopPreflightInfo
 $spawnedChildPid = $null
 try {
     $buildsExe = Join-Path $root "Builds\v$Version\reEngine.exe"
-    $debugExe = Join-Path $devDir "src\reEngine.App\bin\Debug\net8.0-windows\reEngine.exe"
-    $releaseExe = Join-Path $devDir "src\reEngine.App\bin\Release\net8.0-windows\reEngine.exe"
+    $debugPubExe = Join-Path $devDir "src\reEngine.App\bin\Debug\net8.0-windows\publish\reEngine.exe"
+    $debugBinExe = Join-Path $devDir "src\reEngine.App\bin\Debug\net8.0-windows\reEngine.exe"
+    $debugExe = if (Test-Path $debugPubExe) { $debugPubExe } else { $debugBinExe }
+    $relPubExe = Join-Path $devDir "src\reEngine.App\bin\Release\net8.0-windows\publish\reEngine.exe"
+    $relBinExe = Join-Path $devDir "src\reEngine.App\bin\Release\net8.0-windows\reEngine.exe"
+    $releaseExe = if (Test-Path $relBinExe) { $relBinExe } else { $relPubExe }
     if (-not (Test-Path $debugExe)) { throw "Debug automation binary missing: $debugExe" }
     if (-not (Test-Path $releaseExe)) { throw "Release binary missing: $releaseExe" }
     $openExe = if (Test-Path $buildsExe) { $buildsExe } else { $releaseExe }
@@ -190,8 +194,8 @@ try {
         $null = Wait-AutomationHealth -Port $p2 -Token $t2
         Show-WindowOnTop -Proc $sdlProc
         $streamSdl = Start-ExeboxStreamForPort -Port $p2 -Token $t2 -SandboxDir $sandboxRoot -TargetPid $sdlProc.Id
-        $null = Wait-TreeControl -Port $p2 -Token $t2 -ControlId "MediaGate_DemoBypassButton"
-        $null = Invoke-LoopbackJson -Port $p2 -Token $t2 -Method "POST" -Route "/v1/pointer" -Body @{ action = "click"; targetId = "MediaGate_DemoBypassButton" }
+        $null = Wait-TreeControl -Port $p2 -Token $t2 -ControlId "MediaGate_LaunchDemoButton"
+        $null = Invoke-LoopbackJson -Port $p2 -Token $t2 -Method "POST" -Route "/v1/pointer" -Body @{ action = "click"; targetId = "MediaGate_LaunchDemoButton" }
         Start-Sleep -Milliseconds 400
         $null = Invoke-LoopbackJson -Port $p2 -Token $t2 -Method "POST" -Route "/v1/keyboard" -Body @{ action = "press"; key = "F1" }
         $null = Wait-TreeControl -Port $p2 -Token $t2 -ControlId "Video_AspectRatio"
@@ -208,7 +212,15 @@ try {
         Assert-NonBlankPng -Path $shot2 -ArtifactDir $ArtifactDir
         $null = Invoke-LoopbackJson -Port $p2 -Token $t2 -Method "POST" -Route "/v1/keyboard" -Body @{ action = "press"; key = "ESC" }
         Start-Sleep -Milliseconds 150
-        try { $null = Invoke-LoopbackJson -Port $p2 -Token $t2 -Method "POST" -Route "/v1/keyboard" -Body @{ action = "press"; key = "ESC" } } catch [System.Net.WebException] { }
+        $null = Invoke-LoopbackJson -Port $p2 -Token $t2 -Method "POST" -Route "/v1/keyboard" -Body @{ action = "press"; key = "ESC" }
+        Start-Sleep -Milliseconds 150
+        $alive = Invoke-LoopbackJson -Port $p2 -Token $t2 -Method "GET" -Route "/v1/health"
+        if ($sdlProc.HasExited -or -not $alive.isPassed) { throw "Esc with closed drawer unexpectedly terminated SDL3 host!" }
+        $null = Invoke-LoopbackJson -Port $p2 -Token $t2 -Method "POST" -Route "/v1/keyboard" -Body @{ action = "press"; key = "F1" }
+        $null = Wait-TreeControl -Port $p2 -Token $t2 -ControlId "Tab_System"
+        $null = Invoke-LoopbackJson -Port $p2 -Token $t2 -Method "POST" -Route "/v1/pointer" -Body @{ action = "click"; targetId = "Tab_System" }
+        $null = Wait-TreeControl -Port $p2 -Token $t2 -ControlId "System_QuitGame"
+        $null = Invoke-LoopbackJson -Port $p2 -Token $t2 -Method "POST" -Route "/v1/pointer" -Body @{ action = "click"; targetId = "System_QuitGame" }
         if (-not $sdlProc.WaitForExit(10000) -or $sdlProc.ExitCode -ne 0) { throw "SDL3 Host E2E exited abnormally" }
     } finally { Stop-ExeboxStream $streamSdl; if (-not $sdlProc.HasExited) { $sdlProc.Kill() } }
 
@@ -218,6 +230,8 @@ try {
     if ($metalRes.ExitCode -ne 6) { throw "Expected --backend metal --require-backend ExitCode 6, got $($metalRes.ExitCode)" }
 
     Invoke-Stage2V060Probes -DebugExe $debugExe -SandboxRoot $sandboxRoot -EnginesDir $enginesDir -ArtifactDir $ArtifactDir
+    . (Join-Path $PSScriptRoot "Stage2V061ParityProbes.ps1")
+    Invoke-Stage2V061ParityProbes -DebugExe $debugExe -SandboxRoot $sandboxRoot -EnginesDir $enginesDir -ArtifactDir $ArtifactDir
 
     Write-Host "[8/8] Verifying Dual-Binary Release fail-closed automation gate (ExitCode = 2)..."
     $relRes = Invoke-CliBounded -ExePath $releaseExe -WorkDir $root -CliArgs @(

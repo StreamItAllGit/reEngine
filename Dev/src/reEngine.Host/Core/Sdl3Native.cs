@@ -281,7 +281,7 @@ internal static unsafe class Sdl3Native
     public static string? EventDropPath(byte* ev)
     {
         if (ev == null) return null;
-        IntPtr dataPtr = *(IntPtr*)(ev + (IntPtr.Size == 8 ? 40 : 28));
+        IntPtr dataPtr = *(IntPtr*)(ev + (IntPtr.Size == 8 ? 40 : 32));
         return dataPtr == IntPtr.Zero ? null : Marshal.PtrToStringUTF8(dataPtr);
     }
 

@@ -40,6 +40,8 @@
 
   <ItemGroup>
     <Compile Include="..\..\src\reEngine.Launcher\LauncherArgsHelper.cs" Link="Linked\LauncherArgsHelper.cs" />
+    <Compile Include="..\..\src\reEngine.Launcher\LauncherJobObjectGuard.cs" Link="Linked\LauncherJobObjectGuard.cs" />
+    <Compile Include="..\..\src\reEngine.App\DemoCartSessionHelper.cs" Link="Linked\DemoCartSessionHelper.cs" />
     <Compile Include="..\..\src\reEngine.App\Program.Bootstrap.cs" Link="Linked\Program.Bootstrap.cs" />
     <Compile Include="..\..\src\reEngine.App\Program.Verify.cs" Link="Linked\Program.Verify.cs" />
     <Compile Include="..\..\src\reEngine.App\SettingsMigrationHelper.cs" Link="Linked\SettingsMigrationHelper.cs" />

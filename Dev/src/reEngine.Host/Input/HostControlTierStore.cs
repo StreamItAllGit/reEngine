@@ -180,7 +180,12 @@ public sealed class HostControlTierStore
         PerGameModern.ClearHiddenGamepadSlots();
 
     /// <summary>Serializes all three Standard 33 control tiers into Standard 18 <c>settings.controls.json</c> format.</summary>
-    public string SerializeJson(bool indented = true)
+    public string SerializeJson(bool indented = true) => SerializeJson(indented, includeTimestamp: true);
+
+    /// <summary>Serializes a deterministic dirty-check JSON snapshot omitting <c>updatedAtUtc</c>.</summary>
+    internal string SerializeDirtyCheckJson() => SerializeJson(indented: false, includeTimestamp: false);
+
+    private string SerializeJson(bool indented, bool includeTimestamp)
     {
         var hostActionMap = new Dictionary<string, int[]>(StringComparer.Ordinal);
         HostActions.ExportJsonMap(hostActionMap);
@@ -194,12 +199,13 @@ public sealed class HostControlTierStore
             ["controlMode"] = HostControlModeCodec.ToCanonicalId(ControlMode),
             ["mouseSensitivity"] = MouseSensitivity,
             ["menuControllerChord"] = HostMenuControllerChordCodec.ToCanonicalId(MenuControllerChord),
-            ["updatedAtUtc"] = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ss.fffZ"),
             ["hostActionBindings"] = hostActionMap,
             ["globalController"] = ExportSection(GlobalController),
             ["perGameController"] = ExportSection(PerGameController),
             ["perGameModern"] = ExportSection(PerGameModern)
         };
+        if (includeTimestamp)
+            payload["updatedAtUtc"] = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ss.fffZ");
         if (_extensionData is not null)
         {
             foreach ((string key, JsonElement value) in _extensionData)

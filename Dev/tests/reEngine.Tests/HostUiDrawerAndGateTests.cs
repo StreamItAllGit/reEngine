@@ -25,11 +25,12 @@ public sealed class HostUiDrawerAndGateTests
         IReadOnlyList<HostWidgetBounds> widgets = drawer.GetWidgets();
 
         Assert.Contains(widgets, w => w.ControlId == "F1Drawer");
-        Assert.Contains(widgets, w => w.ControlId == "Tab_Video");
-        Assert.Contains(widgets, w => w.ControlId == "Tab_Controls");
-        Assert.Contains(widgets, w => w.ControlId == "Tab_Keybinds");
-        Assert.Contains(widgets, w => w.ControlId == "Tab_System");
-        Assert.Contains(widgets, w => w.ControlId == "Tab_DiscMedia");
+        Assert.Contains(widgets, w => w.ControlId == "Tab_Video" && w.Label == "Video");
+        Assert.Contains(widgets, w => w.ControlId == "Tab_Audio" && w.Label == "Audio");
+        Assert.Contains(widgets, w => w.ControlId == "Tab_Controls" && w.Label == "Controls");
+        Assert.Contains(widgets, w => w.ControlId == "Tab_Keybinds" && w.Label == "Keybinds");
+        Assert.Contains(widgets, w => w.ControlId == "Tab_System" && w.Label == "System");
+        Assert.Contains(widgets, w => w.ControlId == "Tab_DiscMedia" && w.Label == "Media");
         Assert.Contains(widgets, w => w.ControlId == "Drawer_CloseButton");
 
         Assert.True(drawer.TryHandleClick(0, 0, "Tab_Controls", mapper));
@@ -74,14 +75,20 @@ public sealed class HostUiDrawerAndGateTests
         gate.Render(canvas, HostDrawerDescriptor.CreateDefault());
 
         IReadOnlyList<HostWidgetBounds> widgets = gate.GetWidgets();
-        Assert.Equal(2, widgets.Count);
+        Assert.Equal(4, widgets.Count);
+        Assert.Contains(widgets, w => w.ControlId == "MediaGate_DropZone");
+        Assert.Contains(widgets, w => w.ControlId == "MediaGate_BrowseButton");
+        Assert.Contains(widgets, w => w.ControlId == "MediaGate_SelectModuleButton");
+        Assert.Contains(widgets, w => w.ControlId == "MediaGate_LaunchDemoButton");
+        Assert.DoesNotContain(widgets, w => w.Label.Contains("Continue", StringComparison.OrdinalIgnoreCase));
         Assert.True(gate.TryHandleClick(0, 0, "MediaGate_BrowseButton"));
         Assert.False(gate.IsVisible);
         Assert.Contains("disc.cue", gate.VerifiedMediaPath, StringComparison.OrdinalIgnoreCase);
 
         gate.IsVisible = true;
         gate.Render(canvas, HostDrawerDescriptor.CreateDefault());
-        Assert.True(gate.TryHandleClick(0, 0, "MediaGate_DemoBypassButton"));
+        Assert.True(gate.TryHandleClick(0, 0, "MediaGate_LaunchDemoButton"));
+        Assert.True(gate.IsDemoCartSelected);
         Assert.False(gate.IsVisible);
     }
 }
