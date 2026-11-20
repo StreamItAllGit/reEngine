@@ -82,6 +82,23 @@ public sealed class HostInputMapper
     /// <summary>Gets the Standard 33 three-tier control binding store.</summary>
     public HostControlTierStore ControlTiers => _controlTiers;
 
+    /// <summary>Gets the rebindable host recomp action bindings (<c>hostActionBindings</c>).</summary>
+    public HostActionBindingSet HostActions => _controlTiers.HostActions;
+
+    /// <summary>Gets or sets the active PC control mode (<c>controlMode</c>).</summary>
+    public HostControlMode ControlMode { get => _controlTiers.ControlMode; set => _controlTiers.ControlMode = value; }
+
+    /// <summary>Gets or sets mouse sensitivity multiplier (<c>mouseSensitivity</c>).</summary>
+    public double MouseSensitivity { get => _controlTiers.MouseSensitivity; set => _controlTiers.MouseSensitivity = Math.Clamp(double.IsFinite(value) ? value : 1.0, 0.25, 3.0); }
+
+    /// <summary>Gets or sets the gamepad overlay toggle chord (<c>menuControllerChord</c>).</summary>
+    public HostMenuControllerChord MenuControllerChord { get => _controlTiers.MenuControllerChord; set => _controlTiers.MenuControllerChord = value; }
+
+    /// <summary>Returns whether <c>Esc</c> is explicitly bound inside the active <c>perGameModern</c> tier.</summary>
+    public bool IsEscapeBoundInPerGameModern() =>
+        _controlTiers.ActiveTier == HostControlTierMode.PerGameModern &&
+        _controlTiers.PerGameModern.IsCodeBound(HostScancodes.Escape);
+
     /// <summary>Gets or sets the active Standard 33 control tier (<c>globalController</c>, <c>perGameController</c>, or <c>perGameModern</c>).</summary>
     public HostControlTierMode ActiveControlTier { get => _controlTiers.ActiveTier; set => _controlTiers.ActiveTier = value; }
 

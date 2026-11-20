@@ -125,6 +125,18 @@ public sealed class HostMultiBindRegistry
         return SetSlotBinding(actionId, columnIndex, normalized);
     }
 
+    /// <summary>Returns whether <paramref name="code"/> is bound to any slot in this registry.</summary>
+    public bool IsCodeBound(int code)
+    {
+        if (code <= 0) return false;
+        foreach (ActionEntry e in _ordered)
+        {
+            for (int c = 0; c < 3; c++) if (e.Slots[c] == code) return true;
+            for (int g = 0; g < 3; g++) if (e.GamepadCodes[g] == code) return true;
+        }
+        return false;
+    }
+
     /// <summary>Clears the binding code at <paramref name="columnIndex"/> for <paramref name="actionId"/>.</summary>
     public bool ClearSlotBinding(string actionId, int columnIndex) => SetSlotBinding(actionId, columnIndex, 0);
 

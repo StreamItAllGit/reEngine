@@ -75,6 +75,10 @@ public sealed class ReEngineSettings
     [JsonPropertyName("shouldFastLoadData")]
     public bool ShouldFastLoadData { get; set; } = true;
 
+    /// <summary>Whether verbose runtime session diagnostic logging is enabled (Standard 18: <c>shouldEnableRuntimeLogs</c>).</summary>
+    [JsonPropertyName("shouldEnableRuntimeLogs")]
+    public bool ShouldEnableRuntimeLogs { get; set; }
+
     /// <summary>Fast-forward speed multiplier clamped to <c>2.0..4.0</c>.</summary>
     [JsonPropertyName("fastForwardMultiplier")]
     public double FastForwardMultiplier { get; set; } = 2.0;
@@ -136,7 +140,7 @@ public sealed class ReEngineSettings
     [JsonPropertyName("shutdownTimeoutMs")]
     public int? ShutdownTimeoutMs { get; set; } = 3000;
 
-    /// <summary>Explicit per-engine pinned version overrides keyed by engine ID.</summary>
+    /// <summary>Explicit per-module or per-engine pinned version overrides (<c>{ "&lt;moduleId|engineId&gt;": "&lt;SemVer|latest|bundled|target&gt;" }</c>).</summary>
     [JsonPropertyName("pinnedEngineVersions")]
     public Dictionary<string, string>? PinnedEngineVersions { get; set; }
 

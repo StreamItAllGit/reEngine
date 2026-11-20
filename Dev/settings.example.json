@@ -9,6 +9,7 @@
   "isFastBootEnabled": false,
   "isSafeModeActive": false,
   "shouldFastLoadData": true,
+  "shouldEnableRuntimeLogs": false,
   "fastForwardMultiplier": 2.0,
   "installProfile": "lightweight",
   "shutdownTimeoutMs": 3000,

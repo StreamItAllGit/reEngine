@@ -220,6 +220,45 @@ public sealed record HostMonitorInfo(
     float RefreshRateHz,
     bool IsPrimary);
 
+/// <summary>Frame-rate cadence policy (Standard 18: <c>frameRateMode</c>).</summary>
+public enum HostFrameRateMode
+{
+    Enhanced = 0,
+    Original = 1
+}
+
+/// <summary>Normalizes and formats <see cref="HostFrameRateMode"/>.</summary>
+public static class HostFrameRateModeCodec
+{
+    public static HostFrameRateMode Parse(string? raw) =>
+        TryParseStrict(raw, out HostFrameRateMode mode) ? mode : HostFrameRateMode.Enhanced;
+
+    public static bool TryParseStrict(string? raw, out HostFrameRateMode mode)
+    {
+        mode = HostFrameRateMode.Enhanced;
+        if (string.IsNullOrWhiteSpace(raw)) return false;
+        switch (raw.Trim().ToLowerInvariant())
+        {
+            case "enhanced": mode = HostFrameRateMode.Enhanced; return true;
+            case "original" or "orig": mode = HostFrameRateMode.Original; return true;
+            default: return false;
+        }
+    }
+
+    public static string ToCanonicalId(HostFrameRateMode mode) =>
+        mode == HostFrameRateMode.Original ? "original" : "enhanced";
+
+    public static string ToDisplayLabel(HostFrameRateMode mode) =>
+        mode == HostFrameRateMode.Original ? "Original" : "Enhanced";
+}
+
+/// <summary>Progress snapshot rendered on the responsive AOT compile overlay.</summary>
+public sealed record HostAotCompileState(
+    bool IsCompiling,
+    string StageLabel,
+    double ProgressRatio,
+    string? DetailMessage = null);
+
 /// <summary>Snapshot of active video presentation, VRR pacing, filter, color, and screenshot state.</summary>
 public sealed record HostVideoPresentationState
 {
@@ -235,4 +274,8 @@ public sealed record HostVideoPresentationState
     public bool IsDitheringEnabled { get; init; }
     public HostScreenshotCaptureMode ScreenshotCaptureMode { get; init; } = HostScreenshotCaptureMode.CleanNative;
     public bool IsFmvActive { get; init; }
+    public HostFrameRateMode FrameRateMode { get; init; } = HostFrameRateMode.Enhanced;
+    public double UiTextScale { get; init; } = 1.0;
+    public bool IsFpsOverlayEnabled { get; init; }
+    public bool IsCleanCaptureModeEnabled { get; init; }
 }

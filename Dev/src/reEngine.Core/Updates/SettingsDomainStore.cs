@@ -31,7 +31,8 @@ public sealed class SettingsDomainStore : IReEngineSettingsStore
         "backendId", "resolutionScale", "preferredResolutionScale", "aspectRatioMode", "overscanCropPx",
         "isFullscreen", "displayMode", "monitorIndex", "isVsyncEnabled", "targetFps", "backgroundFpsCap",
         "isFastForwardEnabled", "isHdTexturePackEnabled", "hudAnchorMode", "videoFilterMode",
-        "isTrueColor24BitEnabled", "isDitheringEnabled", "screenshotCaptureMode"
+        "isTrueColor24BitEnabled", "isDitheringEnabled", "screenshotCaptureMode",
+        "frameRateMode", "uiTextScale", "isFpsOverlayEnabled", "isCleanCaptureModeEnabled"
     };
 
     private static readonly HashSet<string> AudioDomainKeys = new(StringComparer.OrdinalIgnoreCase)
@@ -258,6 +259,8 @@ public sealed class SettingsDomainStore : IReEngineSettingsStore
         video.ResolutionScale = video.ResolutionScale is 1 or 2 or 4 or 8 ? video.ResolutionScale : (video.ResolutionScale <= 1 ? 1 : video.ResolutionScale <= 2 ? 2 : video.ResolutionScale <= 4 ? 4 : 8);
         video.MonitorIndex = Math.Max(0, video.MonitorIndex); video.TargetFps = Math.Max(0, video.TargetFps); video.BackgroundFpsCap = Math.Max(0, video.BackgroundFpsCap);
         video.DisplayMode = video.IsFullscreen ? (string.Equals(video.DisplayMode?.Trim(), "exclusiveFullscreen", StringComparison.OrdinalIgnoreCase) ? "exclusiveFullscreen" : "borderlessFullscreen") : "windowed";
+        video.FrameRateMode = string.Equals(video.FrameRateMode?.Trim(), "original", StringComparison.OrdinalIgnoreCase) ? "original" : "enhanced";
+        video.UiTextScale = double.IsFinite(video.UiTextScale) && video.UiTextScale > 0.0 ? Math.Clamp(Math.Round(video.UiTextScale, 2), 0.75, 2.0) : 1.0;
     }
 
     private static void ApplyAudioInvariants(ReEngineAudioSettings audio)

@@ -1,20 +1,20 @@
 {
   "schemaVersion": 1,
   "sdkId": "Foundation",
-  "version": "0.5.2",
+  "version": "0.5.3",
   "uiVersion": "0.5.2",
-  "publishedAtUtc": "2026-11-19T11:18:40Z",
-  "fileCount": 57,
+  "publishedAtUtc": "2026-11-20T09:44:22Z",
+  "fileCount": 59,
   "files": [
     {
       "relativePath": "Foundation.Automation.deps.json",
       "sizeBytes": 8651,
-      "sha256": "ed019b9f393939192cff507086e65f062f8fa63b45ac9528dc16e9e638474ae8"
+      "sha256": "3ec94002b6b825c162e57908e1d80b38a0b4e3222ed7b474197dc57a0244b871"
     },
     {
       "relativePath": "Foundation.Automation.dll",
-      "sizeBytes": 56832,
-      "sha256": "463af43b5702dea0b507dd4c0fdc4693d9df7d7cafafa9eeaf2b695255961985"
+      "sizeBytes": 57344,
+      "sha256": "3d8f754f442175acc71080ce11039fa3c507d172b374d729f51241d1183c4832"
     },
     {
       "relativePath": "Foundation.Automation.xml",
@@ -24,12 +24,12 @@
     {
       "relativePath": "Foundation.Core.deps.json",
       "sizeBytes": 8523,
-      "sha256": "9d9a34829d635c31ffa04ae4b9cd9e3dc9f4a0f95ef4f693add5a8e772f24dee"
+      "sha256": "c04e89b7da875dc172aff3584e2e36b064a75ef77e6375dee9ee4fe4eb027acc"
     },
     {
       "relativePath": "Foundation.Core.dll",
       "sizeBytes": 159744,
-      "sha256": "f59a274b99f8567ff0cff35fe52538c23efcdfa557977a38cba94b0669b8427b"
+      "sha256": "7e2a00df97013408c592a5edee3915d6d92e6ca39447aad05118f8ee6a10e73c"
     },
     {
       "relativePath": "Foundation.Core.xml",
@@ -39,12 +39,12 @@
     {
       "relativePath": "Foundation.Installer.deps.json",
       "sizeBytes": 8218,
-      "sha256": "36c4207191d5807272de9081b991011a3e999ec1f1a229fd2767ec7054910dfc"
+      "sha256": "50106bb8dfc613e5316c1ecd69fc8aa534219042e51264636fb4a440c5f49658"
     },
     {
       "relativePath": "Foundation.Installer.dll",
       "sizeBytes": 186368,
-      "sha256": "f2181b97e5af841a08a25fc14c39eb26e0c7b38be17ab35876c9ab4508cd8a85"
+      "sha256": "4f6be2b175bf206bea13f4269e585c828301d62e1cce139f0ba8e0260a4c2e3b"
     },
     {
       "relativePath": "Foundation.Installer.xml",
@@ -54,12 +54,12 @@
     {
       "relativePath": "Foundation.Launcher.deps.json",
       "sizeBytes": 449,
-      "sha256": "012b64c912fdddaf30476f09ae7dbd248db31e91672ff66a0828283da8d09f60"
+      "sha256": "3db370dc1e586d17973e00f55c0566f5a0c18f6365f45c7fd34243a792bb19d4"
     },
     {
       "relativePath": "Foundation.Launcher.dll",
       "sizeBytes": 13824,
-      "sha256": "62bfc23d80a0e83e4209c3bd618dc7c53c158fe6426e1d3cb4e6397f55d63e42"
+      "sha256": "6d41631bbd79892eabfc8a78b1a438f1dd7ec36df824f3cfa0827a5d21580da0"
     },
     {
       "relativePath": "Foundation.Launcher.xml",
@@ -69,12 +69,12 @@
     {
       "relativePath": "Foundation.Retro.deps.json",
       "sizeBytes": 8925,
-      "sha256": "59537039115754c32335309c14030fe89313b80a07b8825ff750bfed293bc068"
+      "sha256": "dd335c5e09175a692ad9c8d559417432111d309b2ea619857c95bd10a9b16f94"
     },
     {
       "relativePath": "Foundation.Retro.dll",
       "sizeBytes": 137216,
-      "sha256": "e844e8d7963b29fd1ec6f5be73f72fad78433e14155151851e4605166410383d"
+      "sha256": "eb5e8b42e4cabb39642f05b94367c3b11f132f1001ce1ede8ae106a7cfbeb9ea"
     },
     {
       "relativePath": "Foundation.Retro.xml",
@@ -84,12 +84,12 @@
     {
       "relativePath": "Foundation.Server.deps.json",
       "sizeBytes": 8928,
-      "sha256": "30a3ad079ee97cc628660e0968c7d1a5ab79e1a0373a92abfe58b0ecf6c528db"
+      "sha256": "b004adfbc0e5141318fb44de489018a834cdeaf2f4fda52e2adb0a515afea9e0"
     },
     {
       "relativePath": "Foundation.Server.dll",
       "sizeBytes": 21504,
-      "sha256": "93be319dc787c42eb5e32d56c5afebeee5efe7e2cc6df827c3b65d5c01f08a6d"
+      "sha256": "5e7daf64599fc8d94788bf1db4e724a40e2be046567a7ebe78fd75a07886be8e"
     },
     {
       "relativePath": "Foundation.Server.xml",
@@ -99,12 +99,12 @@
     {
       "relativePath": "Foundation.Sidecars.deps.json",
       "sizeBytes": 9376,
-      "sha256": "4dbdd7bf751853658a8330be332ac45fb2ad89f429ec13ea5f43563722e00d95"
+      "sha256": "b6964544023ce48edc5eae73be47b5fbee24d8a266210b9195febe2283697414"
     },
     {
       "relativePath": "Foundation.Sidecars.dll",
       "sizeBytes": 59392,
-      "sha256": "0476e5ef7ed72c25243deaab7ae7bec9f2cb32aa8bd08a5261e843f5b3428e15"
+      "sha256": "e76835fc79669fa092643c90e9ffb477a14f42303f1260d38aa0865956136771"
     },
     {
       "relativePath": "Foundation.Sidecars.xml",
@@ -114,12 +114,12 @@
     {
       "relativePath": "Foundation.UI.deps.json",
       "sizeBytes": 8197,
-      "sha256": "f447c77d0d843303b4d01aa0a2fd5df0596b6d23f72dc1ba5e20bdc501a86580"
+      "sha256": "f75aea7f3a064eb1e9f510654525351ae2140607351ddd9ae5f1e825e2097770"
     },
     {
       "relativePath": "Foundation.UI.dll",
       "sizeBytes": 17920,
-      "sha256": "f954ee1477bbd207718a0062d3ed2e98e966ffea4b154ed8fa0e5491fe04f9ab"
+      "sha256": "9e14cc1e422aaf05978e88607953647ea8a07aa2404acec6b0e4a046b7cc3ba1"
     },
     {
       "relativePath": "Foundation.UI.xml",
@@ -185,6 +185,16 @@
       "relativePath": "tools/build_release_universal.py",
       "sizeBytes": 7853,
       "sha256": "a00eda3715bec869509c177935adf9c721aa2b4780debe3434cfb798dfd55c11"
+    },
+    {
+      "relativePath": "tools/exebox_stream.py",
+      "sizeBytes": 4298,
+      "sha256": "8721959ce532b9133b21678a807533ab31be1481faa3504d92fb0ddfe41e1db2"
+    },
+    {
+      "relativePath": "tools/ExeboxStreamHelpers.ps1",
+      "sizeBytes": 5447,
+      "sha256": "cd2ce6f23c5ca7ebe87015d9d4376da31e175c716ddc5e567855e64546d1f0b8"
     },
     {
       "relativePath": "tools/notion_task_helper.py",

@@ -5,6 +5,7 @@
 
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using reEngine.Host.Contracts;
 
 namespace reEngine.Host.Input;
 
@@ -86,6 +87,18 @@ public sealed class HostControlTierStore
 
     /// <summary>Gets or sets the baseline schema used when resetting tier defaults.</summary>
     public HostInputSchemaKind ActiveSchema { get; set; }
+
+    /// <summary>Gets or sets the active PC/console control mode (<c>controlMode</c>).</summary>
+    public HostControlMode ControlMode { get; set; } = HostControlMode.ModernWasdMouse;
+
+    /// <summary>Gets or sets mouse look sensitivity multiplier (<c>mouseSensitivity</c>).</summary>
+    public double MouseSensitivity { get; set; } = 1.0;
+
+    /// <summary>Gets or sets the controller chord opening the overlay menu (<c>menuControllerChord</c>).</summary>
+    public HostMenuControllerChord MenuControllerChord { get; set; } = HostMenuControllerChord.L3PlusR3;
+
+    /// <summary>Gets the rebindable host action bindings (<c>hostActionBindings</c>).</summary>
+    public HostActionBindingSet HostActions { get; } = new();
 
     /// <summary>Gets Tier 1 (<c>globalController</c>) rebindable KB/M + Gamepad registry.</summary>
     public HostMultiBindRegistry GlobalController { get; }

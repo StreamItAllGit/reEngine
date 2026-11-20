@@ -235,6 +235,21 @@ public sealed record HostSessionOptions
     public HostAudioMixerSettings? AudioSettings { get; init; }
     public IHostSoundTestProvider? SoundTestProvider { get; init; }
     public Action<bool>? SafeModeCallback { get; init; }
+    public double UiTextScale { get; init; } = 1.0;
+    public HostFrameRateMode FrameRateMode { get; init; } = HostFrameRateMode.Enhanced;
+    public HostControlMode ControlMode { get; init; } = HostControlMode.ModernWasdMouse;
+    public double MouseSensitivity { get; init; } = 1.0;
+    public HostMenuControllerChord MenuControllerChord { get; init; } = HostMenuControllerChord.L3PlusR3;
+    public bool IsCleanCaptureModeEnabled { get; init; }
+    public bool ShouldEnableRuntimeLogs { get; init; }
+    public bool OpenSettingsInitially { get; init; }
+    public bool ShowFpsInitially { get; init; }
+    public bool IsDemoCartMode { get; init; }
+    public string? ControlsConfigPath { get; init; }
+    public Func<string?>? OnBrowseMediaRequested { get; init; }
+    public Func<string?>? OnBrowseModuleRequested { get; init; }
+    public Func<string, string?>? OnFileDropped { get; init; }
+    public Action? OnDemoCartRequested { get; init; }
 }
 
 /// <summary>

@@ -80,7 +80,16 @@ public static class HostInputSchemas
         ["LALT"] = HostScancodes.LAlt, ["ALT"] = HostScancodes.LAlt, ["RALT"] = HostScancodes.RAlt,
         ["F1"] = HostScancodes.F1, ["F2"] = HostScancodes.F2, ["F3"] = HostScancodes.F3, ["F4"] = HostScancodes.F4,
         ["F5"] = HostScancodes.F5, ["F6"] = HostScancodes.F6, ["F7"] = HostScancodes.F7, ["F8"] = HostScancodes.F8,
-        ["F9"] = HostScancodes.F9, ["F10"] = HostScancodes.F10, ["F11"] = HostScancodes.F11, ["F12"] = HostScancodes.F12
+        ["F9"] = HostScancodes.F9, ["F10"] = HostScancodes.F10, ["F11"] = HostScancodes.F11, ["F12"] = HostScancodes.F12,
+        ["GUIDE"] = HostBindingCodes.GamepadGuide
+    };
+
+    /// <summary>Formats an expressive control profile label without exposing raw Schema A/B/C identifiers.</summary>
+    public static string FormatPresetLabel(HostInputSchemaKind kind) => kind switch
+    {
+        HostInputSchemaKind.SchemaA => "3D Action / Adventure",
+        HostInputSchemaKind.SchemaC => "Platformer / Dual-Stick",
+        _ => "2D RPG / Simulation"
     };
 
     /// <summary>Parses a schema identifier string into <see cref="HostInputSchemaKind"/>.</summary>
@@ -181,11 +190,7 @@ public static class HostInputSchemas
             new("camUp", "Camera Up", schema == HostInputSchemaKind.SchemaC ? HostScancodes.Up : 0, 0, 0, 0),
             new("camDown", "Camera Down", schema == HostInputSchemaKind.SchemaC ? HostScancodes.Down : 0, 0, 0, 0),
             new("camLeft", "Camera Left", schema == HostInputSchemaKind.SchemaC ? HostScancodes.Left : 0, 0, 0, 0),
-            new("camRight", "Camera Right", schema == HostInputSchemaKind.SchemaC ? HostScancodes.Right : 0, 0, 0, 0),
-            new("quickSave", "Quick Save", HostScancodes.F5, 0, 0, 0),
-            new("quickLoad", "Quick Load", HostScancodes.F9, 0, 0, 0),
-            new("fastForward", "Fast Forward", HostScancodes.Grave, HostScancodes.F6, 0, 0),
-            new("cutsceneSkip", "Skip Cutscene", HostScancodes.F7, 0, 0, 0)
+            new("camRight", "Camera Right", schema == HostInputSchemaKind.SchemaC ? HostScancodes.Right : 0, 0, 0, 0)
         ];
     }
 }

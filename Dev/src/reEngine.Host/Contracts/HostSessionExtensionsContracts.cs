@@ -182,4 +182,20 @@ public interface IHostSessionEventCallbacks
     void OnFastBootChanged(bool enabled) { }
     void OnSafeModeResetRequested() { }
     void OnSoundTestActionRequested(string action, string? trackId = null) { }
+    void OnBackendChanged(HostRenderBackendKind backend) { }
+    void OnResolutionScaleChanged(int scale) { }
+    void OnFrameRateModeChanged(HostFrameRateMode mode) { }
+    void OnTargetFpsChanged(int targetFps) { }
+    void OnUiTextScaleChanged(double uiTextScale) { }
+    void OnControlModeChanged(HostControlMode mode) { }
+    void OnMouseSensitivityChanged(double sensitivity) { }
+    void OnMenuControllerChordChanged(HostMenuControllerChord chord) { }
+    void OnHostActionBindingsChanged() { }
+    void OnRuntimeLoggingChanged(bool enabled) { }
+    void OnCleanCaptureModeChanged(bool enabled) { }
+    void OnFastForwardMultiplierChanged(double multiplier) { }
+    void OnChangeMediaRequested(string? selectedPath) { }
+    void OnLoadModuleRequested(string? selectedPath) { }
+    void OnFileDropped(string droppedPath) { }
+    void OnQuitGameRequested() { }
 }

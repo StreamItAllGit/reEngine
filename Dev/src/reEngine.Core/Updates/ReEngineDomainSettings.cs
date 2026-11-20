@@ -97,6 +97,22 @@ public sealed class ReEngineVideoSettings
     [JsonPropertyName("screenshotCaptureMode")]
     public string ScreenshotCaptureMode { get; set; } = "cleanNative";
 
+    /// <summary>Presentation frame-rate cadence mode (<c>enhanced</c> or <c>original</c>; Standard 18: <c>frameRateMode</c>).</summary>
+    [JsonPropertyName("frameRateMode")]
+    public string FrameRateMode { get; set; } = "enhanced";
+
+    /// <summary>Overlay and manual text scale factor (<c>0.75</c>–<c>2.0</c>, default <c>1.0</c>; Standard 18: <c>uiTextScale</c>).</summary>
+    [JsonPropertyName("uiTextScale")]
+    public double UiTextScale { get; set; } = 1.0;
+
+    /// <summary>Whether the toggleable <c>F3</c> telemetry HUD overlay starts enabled (Standard 18: <c>isFpsOverlayEnabled</c>).</summary>
+    [JsonPropertyName("isFpsOverlayEnabled")]
+    public bool IsFpsOverlayEnabled { get; set; }
+
+    /// <summary>Whether Streamer Clean-Capture Mode suppresses overlays and HUD telemetry (Standard 18: <c>isCleanCaptureModeEnabled</c>).</summary>
+    [JsonPropertyName("isCleanCaptureModeEnabled")]
+    public bool IsCleanCaptureModeEnabled { get; set; }
+
     /// <summary>Preserves unknown forward-compatible video properties across round-trips.</summary>
     [JsonExtensionData]
     public IDictionary<string, JsonElement>? ExtensionData { get; set; }

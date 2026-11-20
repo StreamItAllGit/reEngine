@@ -27,6 +27,7 @@ public static class HostBindingCodes
     public const int GamepadWest = 2003;
     public const int GamepadNorth = 2004;
     public const int GamepadSelect = 2005;
+    public const int GamepadGuide = 2006;
     public const int GamepadStart = 2007;
     public const int GamepadL3 = 2008;
     public const int GamepadR3 = 2009;

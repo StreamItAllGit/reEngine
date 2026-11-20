@@ -48,6 +48,14 @@ public sealed class RecompPackageManifest
     [JsonPropertyName("supportedEngineTracks")]
     public List<string>? SupportedEngineTracks { get; set; }
 
+    /// <summary>SemVer versions or range rules documented as incompatible with this module (Standard 18: <c>incompatibleEngineVersions</c>).</summary>
+    [JsonPropertyName("incompatibleEngineVersions")]
+    public List<string>? IncompatibleEngineVersions { get; set; }
+
+    /// <summary>Default timing/frame-rate mode requested by this module (<c>enhanced</c> or <c>original</c>; Standard 18: <c>defaultFramerateMode</c>).</summary>
+    [JsonPropertyName("defaultFramerateMode")]
+    public string? DefaultFramerateMode { get; set; }
+
     /// <summary>Optional preferred render backend identifier (<c>opengl</c>, <c>vulkan</c>, <c>directx</c>, <c>parallelCpu</c>, <c>software</c>).</summary>
     [JsonPropertyName("backendId")]
     public string? BackendId { get; set; }
