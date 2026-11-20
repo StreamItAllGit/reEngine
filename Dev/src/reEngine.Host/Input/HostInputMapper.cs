@@ -41,7 +41,10 @@ public enum HostHotkeyFlags : uint
     FastForward = 1u << 7,
 
     /// <summary>Requests skipping the active cutscene (<c>F7</c>).</summary>
-    CutsceneSkip = 1u << 8
+    CutsceneSkip = 1u << 8,
+
+    /// <summary>Triggers clean/filtered <c>F12</c> PNG screenshot capture.</summary>
+    TakeScreenshot = 1u << 9
 }
 
 /// <summary>
@@ -136,7 +139,7 @@ public sealed class HostInputMapper
             HostScancodes.F7 => (uint)HostHotkeyFlags.CutsceneSkip,
             HostScancodes.F9 => (uint)HostHotkeyFlags.QuickLoad,
             HostScancodes.F11 => (uint)HostHotkeyFlags.ToggleFullscreen,
-            HostScancodes.F12 => (uint)HostHotkeyFlags.DumpFrame,
+            HostScancodes.F12 => (uint)(HostHotkeyFlags.DumpFrame | HostHotkeyFlags.TakeScreenshot),
             HostScancodes.Escape => (uint)HostHotkeyFlags.Escape,
             _ => 0u
         };

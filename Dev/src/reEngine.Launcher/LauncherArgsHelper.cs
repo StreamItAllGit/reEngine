@@ -17,7 +17,12 @@ internal static class LauncherArgsHelper
         "--data-dir", "--config", "--log-dir", "--save-dir", "--feed", "--port", "--ui",
         "--backend", "--scale", "--aspect-mode", "--suite-tab", "--profile", "--automation-port", "--automation-token",
         "--frames", "--fixture", "--dump-screenshot", "--dump-audio",
-        "--shutdown-timeout-ms", "--audio-driver", "--media-path"
+        "--shutdown-timeout-ms", "--audio-driver", "--media-path",
+        "--execution-tier", "--display-mode", "--monitor", "--target-fps", "--bg-fps-cap",
+        "--video-filter", "--hud-anchor", "--screenshot-mode", "--audio-device",
+        "--master-volume", "--bgm-volume", "--sfx-volume", "--voice-volume",
+        "--audio-lowpass-hz", "--audio-highpass-hz", "--stereo-width", "--audio-resampling",
+        "--ff-audio-mode", "--ff-multiplier"
     };
 
     private static readonly HashSet<string> PathOptions = new(StringComparer.OrdinalIgnoreCase)

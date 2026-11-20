@@ -55,6 +55,12 @@ public interface IHostGraphicsContext : IDisposable
     /// Flushes pending GPU work on the context owner thread before QuickSave capture or presenter switch teardown.
     /// </summary>
     void FlushAndSyncForSnapshot() { }
+
+    /// <summary>Updates swapchain vertical sync behavior when supported by the native backend.</summary>
+    void SetVSyncEnabled(bool enabled) { }
+
+    /// <summary>Gets the most recent viewport destination rectangle presented to the window surface.</summary>
+    HostViewportRect LastPresentedDestRect => default;
 }
 
 /// <summary>

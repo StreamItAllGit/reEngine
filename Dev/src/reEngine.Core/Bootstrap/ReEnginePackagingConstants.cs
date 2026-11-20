@@ -17,7 +17,7 @@ public static class ReEnginePackagingConstants
     public const string DisplayName = "reEngine";
 
     /// <summary>Current packaged SemVer version.</summary>
-    public const string Version = "0.5.0";
+    public const string Version = "0.6.0";
 
     /// <summary>Canonical studio umbrella folder under <c>%LOCALAPPDATA%\Programs\</c>.</summary>
     public const string StudioName = "StreamItAll";

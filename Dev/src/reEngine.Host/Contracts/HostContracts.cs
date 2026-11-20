@@ -55,7 +55,8 @@ public enum HostDrawerTabId
     Controls = 1,
     Keybinds = 2,
     System = 3,
-    DiscMedia = 4
+    DiscMedia = 4,
+    Audio = 5
 }
 
 /// <summary>
@@ -218,6 +219,22 @@ public sealed record HostSessionOptions
     public HostDrawerDescriptor DrawerDescriptor { get; init; } = HostDrawerDescriptor.CreateDefault();
     public Func<IHostAutomationBridge>? AutomationBridgeFactory { get; init; }
     public IHostSessionEventCallbacks? SessionEventCallbacks { get; init; }
+    public HostExecutionResilienceOptions? ExecutionResilience { get; init; }
+    public HostDisplayMode DisplayMode { get; init; } = HostDisplayMode.Windowed;
+    public int MonitorIndex { get; init; }
+    public int BackgroundFpsCap { get; init; }
+    public bool IsVsyncEnabled { get; init; }
+    public double FastForwardMultiplier { get; init; } = 2.0;
+    public HostHudAnchorMode HudAnchorMode { get; init; } = HostHudAnchorMode.SafeFourByThree;
+    public HostVideoFilterMode VideoFilterMode { get; init; } = HostVideoFilterMode.Nearest;
+    public bool IsTrueColor24BitEnabled { get; init; } = true;
+    public bool IsDitheringEnabled { get; init; }
+    public HostScreenshotCaptureMode ScreenshotCaptureMode { get; init; } = HostScreenshotCaptureMode.CleanNative;
+    public string? ScreenshotsDirectory { get; init; }
+    public string ModuleId { get; init; } = "host-demo";
+    public HostAudioMixerSettings? AudioSettings { get; init; }
+    public IHostSoundTestProvider? SoundTestProvider { get; init; }
+    public Action<bool>? SafeModeCallback { get; init; }
 }
 
 /// <summary>

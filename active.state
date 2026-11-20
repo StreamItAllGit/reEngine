@@ -7,7 +7,7 @@
   "containerTier": "Tier A (4-Folder)",
   "ecosystemTier": "Tier1_Infrastructure",
   "appArchetype": "ENGINE",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "activeMilestone": "0.6.0",
   "goalMajorVersion": "1.0.0",
   "stateChangedDate": "2026-11-20",
@@ -33,10 +33,10 @@
   "gates": {
     "isGate0ScopePassed": true,
     "isGate1PlanPassed": true,
-    "isGate2BuildPassed": true,
-    "isInspecterVerified": true,
-    "isTessaSynced": true
+    "isGate2BuildPassed": false,
+    "isInspecterVerified": false,
+    "isTessaSynced": false
   },
-  "notes": "Shipped v0.5.0 (Wave A complete: 5-backend HostViewportGeometry, GL FBO/readback sync, 4-port 3-tier input, 3-way reCart alias + hostProtocolVersion + .fds, 117/117 tests). v0.6.0 plan locked (0.6.0.2026-11-20.md, @dean Gate 1 PASS, awaiting /dev directive); scoped v0.6.0->v1.0.0 Desktop Gold path plus v2.0.0-v5.0.0 scaffold.",
-  "updatedAtUtc": "2026-11-20T08:16:33.968Z"
+  "notes": "Executing v0.6.0 (T0-T7 via Phase 2 Swarm: Host execution resilience, Standard 19 settings.video/audio split, late-latch VRR, 21:9 + HUD anchoring, 8 live filters incl. xBRZ/NTSC, multi-backend F12 capture, Audio DSP + 6th Audio tab). Plan: Dev\\docs\\plans\\0.6.0.2026-11-20.md.",
+  "updatedAtUtc": "2026-11-20T08:46:00.000Z"
 }

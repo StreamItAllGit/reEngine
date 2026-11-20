@@ -35,7 +35,7 @@ public sealed class OverscanCropPxSettings
 /// </summary>
 public sealed class ReEngineSettings
 {
-    /// <summary>Settings schema version (currently 1).</summary>
+    /// <summary>Settings schema version (1 on legacy files, 2 on split-domain configs).</summary>
     [JsonPropertyName("schemaVersion")]
     public int SchemaVersion { get; set; } = 1;
 
@@ -43,9 +43,41 @@ public sealed class ReEngineSettings
     [JsonPropertyName("appId")]
     public string AppId { get; set; } = "reengine";
 
+    /// <summary>Standard 19 settings domain identifier (<c>"core"</c>).</summary>
+    [JsonPropertyName("domain")]
+    public string Domain { get; set; } = "core";
+
     /// <summary>ISO-8601 UTC timestamp of the last save.</summary>
     [JsonPropertyName("updatedAtUtc")]
     public string UpdatedAtUtc { get; set; } = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ss.fffZ");
+
+    /// <summary>Whether Tier 3 runtime JIT fallback is permitted alongside static AOT.</summary>
+    [JsonPropertyName("isJitEnabled")]
+    public bool IsJitEnabled { get; set; }
+
+    /// <summary>Preferred execution tier mode (<c>staticAotOnly</c>, <c>aotWithJitFallback</c>, <c>aotWithThreadedIr</c>, <c>jitBringup</c>, quarantined <c>interpreterOracle</c>).</summary>
+    [JsonPropertyName("executionTierMode")]
+    public string ExecutionTierMode { get; set; } = "staticAotOnly";
+
+    /// <summary>Whether verified BYO ROM/disc media is preloaded into RAM when host headroom permits.</summary>
+    [JsonPropertyName("shouldPreloadMediaToRam")]
+    public bool ShouldPreloadMediaToRam { get; set; }
+
+    /// <summary>Whether fast-boot skipping of console splash animations is enabled.</summary>
+    [JsonPropertyName("isFastBootEnabled")]
+    public bool IsFastBootEnabled { get; set; }
+
+    /// <summary>Whether crash-recovery Safe Mode is currently active.</summary>
+    [JsonPropertyName("isSafeModeActive")]
+    public bool IsSafeModeActive { get; set; }
+
+    /// <summary>Whether Form1 2048-byte data sector fast-loading is enabled.</summary>
+    [JsonPropertyName("shouldFastLoadData")]
+    public bool ShouldFastLoadData { get; set; } = true;
+
+    /// <summary>Fast-forward speed multiplier clamped to <c>2.0..4.0</c>.</summary>
+    [JsonPropertyName("fastForwardMultiplier")]
+    public double FastForwardMultiplier { get; set; } = 2.0;
 
     /// <summary>Whether launch-time compatible update checks are enabled.</summary>
     [JsonPropertyName("shouldCheckUpdates")]

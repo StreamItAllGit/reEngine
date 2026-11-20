@@ -14,7 +14,8 @@ public enum HostAspectRatioMode
     FourByThree = 1,
     SquareInteger = 2,
     NativeFit = 3,
-    HorPlus16By9 = 4
+    HorPlus16By9 = 4,
+    HorPlus21By9 = 5
 }
 
 /// <summary>
@@ -31,6 +32,7 @@ public static class HostAspectRatioModeCodec
             "squareinteger" or "integer" or "1:1" => HostAspectRatioMode.SquareInteger,
             "nativefit" or "fit" => HostAspectRatioMode.NativeFit,
             "horplus16by9" or "16:9" or "widescreen" => HostAspectRatioMode.HorPlus16By9,
+            "horplus21by9" or "21:9" or "ultrawide" => HostAspectRatioMode.HorPlus21By9,
             _ => HostAspectRatioMode.NativePar
         };
     }
@@ -60,6 +62,11 @@ public static class HostAspectRatioModeCodec
             case "16:9":
                 mode = HostAspectRatioMode.HorPlus16By9;
                 return true;
+            case "horplus21by9":
+            case "21:9":
+            case "ultrawide":
+                mode = HostAspectRatioMode.HorPlus21By9;
+                return true;
             default:
                 return false;
         }
@@ -71,6 +78,7 @@ public static class HostAspectRatioModeCodec
         HostAspectRatioMode.SquareInteger => "squareInteger",
         HostAspectRatioMode.NativeFit => "nativeFit",
         HostAspectRatioMode.HorPlus16By9 => "horPlus16By9",
+        HostAspectRatioMode.HorPlus21By9 => "horPlus21By9",
         _ => "nativePar"
     };
 
@@ -80,6 +88,7 @@ public static class HostAspectRatioModeCodec
         HostAspectRatioMode.SquareInteger => "Square Int",
         HostAspectRatioMode.NativeFit => "Native Fit",
         HostAspectRatioMode.HorPlus16By9 => "16:9 Hor+",
+        HostAspectRatioMode.HorPlus21By9 => "21:9 Hor+",
         _ => "Native PAR"
     };
 
@@ -89,6 +98,7 @@ public static class HostAspectRatioModeCodec
         HostAspectRatioMode.FourByThree => HostAspectRatioMode.SquareInteger,
         HostAspectRatioMode.SquareInteger => HostAspectRatioMode.NativeFit,
         HostAspectRatioMode.NativeFit => HostAspectRatioMode.HorPlus16By9,
+        HostAspectRatioMode.HorPlus16By9 => HostAspectRatioMode.HorPlus21By9,
         _ => HostAspectRatioMode.NativePar
     };
 }
@@ -156,4 +166,20 @@ public interface IHostSessionEventCallbacks
     void OnQuickLoadRequested() { }
     void OnExtraRowActivated(string rowId, bool isSecondaryAction) { }
     void OnControlOptionChanged(string optionId, string selectedChoice) { }
+    void OnDisplayModeChanged(HostDisplayMode mode) { }
+    void OnMonitorIndexChanged(int monitorIndex) { }
+    void OnVsyncChanged(bool isEnabled) { }
+    void OnVideoFilterChanged(HostVideoFilterMode mode) { }
+    void OnTrueColorChanged(bool enabled) { }
+    void OnDitheringChanged(bool enabled) { }
+    void OnHudAnchorChanged(HostHudAnchorMode mode) { }
+    void OnScreenshotModeChanged(HostScreenshotCaptureMode mode) { }
+    void OnScreenshotCaptured(HostScreenshotResult result) { }
+    void OnAudioSettingsChanged(HostAudioMixerSettings settings) { }
+    void OnAudioDeviceChanged(string? deviceName) { }
+    void OnExecutionTierChanged(string executionTierMode, bool isJitEnabled) { }
+    void OnPreloadMediaToRamChanged(bool enabled) { }
+    void OnFastBootChanged(bool enabled) { }
+    void OnSafeModeResetRequested() { }
+    void OnSoundTestActionRequested(string action, string? trackId = null) { }
 }
