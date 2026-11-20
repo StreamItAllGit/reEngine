@@ -93,6 +93,7 @@ internal static unsafe class Sdl3Native
     public const uint EventMouseButtonDown = 0x401U;
     public const uint EventMouseButtonUp = 0x402U;
     public const uint EventMouseWheel = 0x403U;
+    public const uint EventDropFile = 0x1000U;
 
     [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)] public static extern byte SDL_Init(uint flags);
     [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)] public static extern byte SDL_InitSubSystem(uint flags);
@@ -112,6 +113,8 @@ internal static unsafe class Sdl3Native
     [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)] public static extern byte SDL_SetWindowFullscreenMode(IntPtr window, SdlDisplayMode* mode);
     [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)] public static extern byte SDL_SetWindowPosition(IntPtr window, int x, int y);
     [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)] public static extern byte SDL_SetWindowBordered(IntPtr window, byte bordered);
+    [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)] public static extern byte SDL_SetWindowRelativeMouseMode(IntPtr window, byte enabled);
+    [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)] public static extern byte SDL_GetWindowRelativeMouseMode(IntPtr window);
     [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)] public static extern uint* SDL_GetDisplays(out int count);
     [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)] public static extern uint SDL_GetPrimaryDisplay();
     [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)] public static extern byte SDL_GetDisplayBounds(uint displayId, SdlRect* rect);
@@ -275,6 +278,12 @@ internal static unsafe class Sdl3Native
     public static (float X, float Y) EventMousePosition(byte* ev) => (*(float*)(ev + 28), *(float*)(ev + 32));
     public static (float Dx, float Dy) EventMouseRelative(byte* ev) => (*(float*)(ev + 36), *(float*)(ev + 40));
     public static float EventMouseWheelDeltaY(byte* ev) => *(float*)(ev + 28);
+    public static string? EventDropPath(byte* ev)
+    {
+        if (ev == null) return null;
+        IntPtr dataPtr = *(IntPtr*)(ev + (IntPtr.Size == 8 ? 40 : 28));
+        return dataPtr == IntPtr.Zero ? null : Marshal.PtrToStringUTF8(dataPtr);
+    }
 
     private static IntPtr ResolveSdl3(string libraryName, Assembly assembly, DllImportSearchPath? searchPath)
     {

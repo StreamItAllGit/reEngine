@@ -3,6 +3,7 @@
 // @depends-on: System, System.Collections.Generic, System.IO, System.Text.Json, reEngine.Host.Contracts
 // @exports: HostControlTierMode, HostSlotConflict, HostControlTierStore
 
+using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using reEngine.Host.Contracts;
@@ -58,6 +59,11 @@ public sealed class HostControlTierStore
         public string? Domain { get; set; }
         public string? InputProfileMode { get; set; }
         public string? ActiveSchema { get; set; }
+        public string? ControlMode { get; set; }
+        public double? MouseSensitivity { get; set; }
+        public string? MenuControllerChord { get; set; }
+        public string? UpdatedAtUtc { get; set; }
+        public Dictionary<string, JsonElement>? HostActionBindings { get; set; }
         public TierSectionDto? GlobalController { get; set; }
         public TierSectionDto? PerGameController { get; set; }
         public TierSectionDto? PerGameModern { get; set; }
@@ -69,9 +75,13 @@ public sealed class HostControlTierStore
     /// <summary>Canonical configuration filename (<c>settings.controls.json</c>).</summary>
     public const string DefaultFileName = "settings.controls.json";
 
+    private static readonly HashSet<string> SupersededHostActions = new(HostActionBindingIds.All, StringComparer.OrdinalIgnoreCase);
     private static readonly JsonSerializerOptions JsonCaseInsensitive = new() { PropertyNameCaseInsensitive = true };
-    private static readonly JsonSerializerOptions JsonIndented = new() { WriteIndented = true };
-    private static readonly JsonSerializerOptions JsonCompact = new() { WriteIndented = false };
+    private static readonly JsonSerializerOptions JsonIndented = new() { WriteIndented = true, Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
+    private static readonly JsonSerializerOptions JsonCompact = new() { WriteIndented = false, Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
+    private double _mouseSensitivity = 1.0;
+    private int _loadedSchemaVersion = 1;
+    private Dictionary<string, JsonElement>? _extensionData;
 
     /// <summary>Initializes all three control tiers using defaults from <paramref name="initialSchema"/>.</summary>
     public HostControlTierStore(HostInputSchemaKind initialSchema = HostInputSchemaKind.SchemaB)
@@ -91,8 +101,12 @@ public sealed class HostControlTierStore
     /// <summary>Gets or sets the active PC/console control mode (<c>controlMode</c>).</summary>
     public HostControlMode ControlMode { get; set; } = HostControlMode.ModernWasdMouse;
 
-    /// <summary>Gets or sets mouse look sensitivity multiplier (<c>mouseSensitivity</c>).</summary>
-    public double MouseSensitivity { get; set; } = 1.0;
+    /// <summary>Gets or sets mouse look sensitivity multiplier (<c>mouseSensitivity</c>, clamped <c>0.25..3.0</c>).</summary>
+    public double MouseSensitivity
+    {
+        get => _mouseSensitivity;
+        set => _mouseSensitivity = Math.Clamp(double.IsFinite(value) ? value : 1.0, 0.25, 3.0);
+    }
 
     /// <summary>Gets or sets the controller chord opening the overlay menu (<c>menuControllerChord</c>).</summary>
     public HostMenuControllerChord MenuControllerChord { get; set; } = HostMenuControllerChord.L3PlusR3;
@@ -137,6 +151,10 @@ public sealed class HostControlTierStore
     public bool TryRebindAction(HostControlTierMode tier, string actionId, int columnIndex, int bindingCode, out HostSlotConflict? conflict) =>
         GetRegistry(tier).TrySetSlotBindingUnique(actionId, columnIndex, bindingCode, out conflict);
 
+    /// <summary>Rebinds a host recomp action slot only if no collision exists across host actions or <see cref="ActiveRegistry"/>.</summary>
+    public bool TryRebindHostAction(string actionId, int columnIndex, int bindingCode, out string? conflictReason) =>
+        HostActions.TrySetSlotBindingUnique(actionId, columnIndex, bindingCode, ActiveRegistry, out conflictReason);
+
     /// <summary>Validates that no non-zero binding code collides across multiple slots in <paramref name="tier"/>.</summary>
     public IReadOnlyList<HostSlotConflict> ValidateUniqueSlotsInTier(HostControlTierMode tier) =>
         GetRegistry(tier).ValidateUniqueSlots();
@@ -164,18 +182,31 @@ public sealed class HostControlTierStore
     /// <summary>Serializes all three Standard 33 control tiers into Standard 18 <c>settings.controls.json</c> format.</summary>
     public string SerializeJson(bool indented = true)
     {
-        var payload = new Dictionary<string, object?>
+        var hostActionMap = new Dictionary<string, int[]>(StringComparer.Ordinal);
+        HostActions.ExportJsonMap(hostActionMap);
+        var payload = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
         {
-            ["schemaVersion"] = 1,
+            ["schemaVersion"] = Math.Max(1, _loadedSchemaVersion),
             ["appId"] = "reengine",
             ["domain"] = "controls",
             ["inputProfileMode"] = ToCanonicalTierId(ActiveTier),
             ["activeSchema"] = HostInputSchemas.ToShortCode(ActiveSchema),
+            ["controlMode"] = HostControlModeCodec.ToCanonicalId(ControlMode),
+            ["mouseSensitivity"] = MouseSensitivity,
+            ["menuControllerChord"] = HostMenuControllerChordCodec.ToCanonicalId(MenuControllerChord),
             ["updatedAtUtc"] = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ss.fffZ"),
+            ["hostActionBindings"] = hostActionMap,
             ["globalController"] = ExportSection(GlobalController),
             ["perGameController"] = ExportSection(PerGameController),
             ["perGameModern"] = ExportSection(PerGameModern)
         };
+        if (_extensionData is not null)
+        {
+            foreach ((string key, JsonElement value) in _extensionData)
+            {
+                if (!payload.ContainsKey(key)) payload[key] = value;
+            }
+        }
         return JsonSerializer.Serialize(payload, indented ? JsonIndented : JsonCompact);
     }
 
@@ -187,17 +218,25 @@ public sealed class HostControlTierStore
         {
             ControlsPayloadDto? dto = JsonSerializer.Deserialize<ControlsPayloadDto>(json, JsonCaseInsensitive);
             if (dto is null) return false;
+            _loadedSchemaVersion = dto.SchemaVersion is int sv && sv >= 1 ? sv : 1;
+            _extensionData = dto.ExtensionData is { Count: > 0 }
+                ? dto.ExtensionData.ToDictionary(static kv => kv.Key, static kv => kv.Value.Clone(), StringComparer.Ordinal)
+                : null;
             if (!string.IsNullOrWhiteSpace(dto.InputProfileMode)) ActiveTier = ParseTierMode(dto.InputProfileMode);
             if (!string.IsNullOrWhiteSpace(dto.ActiveSchema)) ActiveSchema = HostInputSchemas.Parse(dto.ActiveSchema);
+            if (!string.IsNullOrWhiteSpace(dto.ControlMode)) ControlMode = HostControlModeCodec.Parse(dto.ControlMode);
+            if (dto.MouseSensitivity is double sens && double.IsFinite(sens)) MouseSensitivity = sens;
+            if (!string.IsNullOrWhiteSpace(dto.MenuControllerChord)) MenuControllerChord = HostMenuControllerChordCodec.Parse(dto.MenuControllerChord);
+
+            HostActions.ResetToDefaults();
+            if (dto.HostActionBindings is not null) HostActions.ImportJsonMap(dto.HostActionBindings);
+            else ImportLegacyHostActionsIfCustomized(dto);
 
             ApplySection(GlobalController, dto.GlobalController);
             ApplySection(PerGameController, dto.PerGameController);
             ApplySection(PerGameModern, dto.PerGameModern);
-
             if (dto.ModernActionBindings is not null || dto.ModernControllerBindings is not null)
-            {
-                ActiveRegistry.ImportBindings(dto.ModernActionBindings, dto.ModernControllerBindings, keyBindings: null);
-            }
+                ActiveRegistry.ImportBindings(FilterOutHostActions(dto.ModernActionBindings), FilterOutHostActions(dto.ModernControllerBindings), null);
             return true;
         }
         catch (JsonException) { return false; }
@@ -266,16 +305,54 @@ public sealed class HostControlTierStore
     private static Dictionary<string, object> ExportSection(HostMultiBindRegistry registry)
     {
         registry.ExportBindings(out Dictionary<string, int[]> actionMap, out Dictionary<string, int[]> padMap);
-        return new Dictionary<string, object>
-        {
-            ["modernActionBindings"] = actionMap,
-            ["modernControllerBindings"] = padMap
-        };
+        return new() { ["modernActionBindings"] = actionMap, ["modernControllerBindings"] = padMap };
     }
 
     private static void ApplySection(HostMultiBindRegistry registry, TierSectionDto? section)
     {
         if (section is null) return;
-        registry.ImportBindings(section.ModernActionBindings, section.ModernControllerBindings, section.KeyBindings);
+        registry.ImportBindings(FilterOutHostActions(section.ModernActionBindings), FilterOutHostActions(section.ModernControllerBindings), FilterOutHostActions(section.KeyBindings));
+    }
+
+    private static Dictionary<string, JsonElement>? FilterOutHostActions(Dictionary<string, JsonElement>? source)
+    {
+        if (source is null) return null;
+        Dictionary<string, JsonElement>? filtered = null;
+        foreach ((string key, JsonElement value) in source)
+        {
+            if (SupersededHostActions.Contains(key)) continue;
+            (filtered ??= new(StringComparer.Ordinal))[key] = value;
+        }
+        return filtered;
+    }
+
+    private void ImportLegacyHostActionsIfCustomized(ControlsPayloadDto dto)
+    {
+        Dictionary<string, JsonElement>? legacy = (ActiveTier switch
+        {
+            HostControlTierMode.GlobalController => dto.GlobalController?.ModernActionBindings,
+            HostControlTierMode.PerGameController => dto.PerGameController?.ModernActionBindings,
+            _ => dto.PerGameModern?.ModernActionBindings
+        }) ?? dto.PerGameModern?.ModernActionBindings ?? dto.ModernActionBindings;
+        if (legacy is null) return;
+
+        var custom = new Dictionary<string, JsonElement>(StringComparer.OrdinalIgnoreCase);
+        foreach ((string key, JsonElement val) in legacy)
+            if (SupersededHostActions.Contains(key) && !IsLegacyV06Default(key, val)) custom[key] = val;
+        if (custom.Count > 0) HostActions.ImportJsonMap(custom);
+    }
+
+    private static bool IsLegacyV06Default(string key, JsonElement val)
+    {
+        if (val.ValueKind != JsonValueKind.Array) return false;
+        int[] items = val.EnumerateArray().Select(static e => e.ValueKind == JsonValueKind.Number && e.TryGetInt32(out int v) ? v : 0).ToArray();
+        return key.ToLowerInvariant() switch
+        {
+            "quicksave" => items.SequenceEqual([HostScancodes.F5]),
+            "quickload" => items.SequenceEqual([HostScancodes.F9]),
+            "fastforward" => items.SequenceEqual([HostScancodes.Grave, HostScancodes.F6]),
+            "cutsceneskip" => items.SequenceEqual([HostScancodes.F7]),
+            _ => false
+        };
     }
 }

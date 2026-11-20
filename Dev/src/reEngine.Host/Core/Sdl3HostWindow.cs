@@ -20,6 +20,7 @@ internal sealed unsafe class Sdl3HostWindow : IDisposable
     private int _textureHeight;
     private IHostSurfacePresenter? _presenter;
     private bool _videoGamepadInitialized;
+    private bool _isVisible;
     private bool _disposed;
 
     public bool HasNativeWindow => _window != IntPtr.Zero && (_renderer != IntPtr.Zero || _presenter is not null);
@@ -28,6 +29,7 @@ internal sealed unsafe class Sdl3HostWindow : IDisposable
     public int ClientHeight { get; private set; }
     public bool IsFullscreen { get; private set; }
     public bool IsWindowFocused { get; private set; } = true;
+    public bool IsRelativeMouseCaptured { get; private set; }
     public HostDisplayMode DisplayMode { get; private set; } = HostDisplayMode.Windowed;
     public int MonitorIndex { get; private set; }
     public bool IsVsyncEnabled { get; private set; }
@@ -69,6 +71,7 @@ internal sealed unsafe class Sdl3HostWindow : IDisposable
         _window = Sdl3Native.CreateWindowUtf8(title, ClientWidth, ClientHeight, flags);
         if (_window == IntPtr.Zero) { DiagnosticStatus = $"SDL_CreateWindow fallback ({Sdl3Native.GetErrorString()})"; diagnostic = DiagnosticStatus; return false; }
 
+        _isVisible = visible;
         ApplyMonitorAndDisplayMode(displayMode, monitorIndex);
         if (!TryAttachPresenter(backendKind, out diagnostic)) { CloseWindowResources(); DiagnosticStatus = diagnostic; return false; }
         SetVSyncEnabled(vsyncEnabled);
@@ -93,13 +96,48 @@ internal sealed unsafe class Sdl3HostWindow : IDisposable
         { failReason = null; return true; }
         failReason = diag;
         if (options.RequireBackend) return false;
+        if (!TryOpenFallbackPresenter(options.WindowTitle, options.WindowWidth, options.WindowHeight, true, mode, options.MonitorIndex, options.IsVsyncEnabled, kind)) return false;
+        kind = ActiveBackendKind;
+        backendId = ActiveBackendId;
+        fallbackBanner ??= $"Fallback to {backendId}: init failed ({diag})";
+        return true;
+    }
+
+    public bool TrySwitchBackend(HostSessionOptions options, HostRenderBackendKind targetKind, out string activeBackendId, out string diagnostic)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        if (HasNativeWindow && ActiveBackendKind == targetKind) { activeBackendId = ActiveBackendId; diagnostic = $"{activeBackendId} already active."; return true; }
+
+        HostDisplayMode mode = _window != IntPtr.Zero ? DisplayMode : ResolveDisplayMode(options);
+        int mon = _window != IntPtr.Zero ? MonitorIndex : options.MonitorIndex;
+        bool vsync = _window != IntPtr.Zero ? IsVsyncEnabled : options.IsVsyncEnabled;
+        int w = ClientWidth > 0 ? ClientWidth : options.WindowWidth;
+        int h = ClientHeight > 0 ? ClientHeight : options.WindowHeight;
+        bool visible = _window != IntPtr.Zero ? _isVisible : (options.RequireVisibleWindow && !options.HeadlessFrameCount.HasValue);
+        bool hadCapture = IsRelativeMouseCaptured;
+
+        HostBackendCapability probed = HostBackendProbe.Probe(targetKind);
+        string failDiag = probed.Diagnostic;
+        if (probed.IsAvailable && TryOpen(options.WindowTitle, w, h, visible, targetKind, mode, mon, vsync, out failDiag))
+        {
+            if (hadCapture) _ = SetRelativeMouseMode(true);
+            activeBackendId = ActiveBackendId; diagnostic = failDiag; return true;
+        }
+        if (TryOpenFallbackPresenter(options.WindowTitle, w, h, visible, mode, mon, vsync, targetKind))
+        {
+            if (hadCapture) _ = SetRelativeMouseMode(true);
+            activeBackendId = ActiveBackendId;
+            diagnostic = $"Fallback to {activeBackendId}: {HostBackendProbe.GetCanonicalBackendId(targetKind)} failed ({failDiag})";
+            return true;
+        }
+        activeBackendId = ActiveBackendId; diagnostic = failDiag; return false;
+    }
+
+    private bool TryOpenFallbackPresenter(string title, int w, int h, bool visible, HostDisplayMode mode, int monitorIndex, bool vsync, HostRenderBackendKind excluded)
+    {
         foreach (HostRenderBackendKind fb in new[] { HostRenderBackendKind.ParallelCpu, HostRenderBackendKind.Software })
         {
-            if (kind == fb || !TryOpen(options.WindowTitle, options.WindowWidth, options.WindowHeight, true, fb, mode, options.MonitorIndex, options.IsVsyncEnabled, out _)) continue;
-            kind = fb;
-            backendId = HostBackendProbe.GetCanonicalBackendId(fb);
-            fallbackBanner ??= $"Fallback to {backendId}: init failed ({diag})";
-            return true;
+            if (excluded != fb && TryOpen(title, w, h, visible, fb, mode, monitorIndex, vsync, out _)) return true;
         }
         return false;
     }
@@ -179,9 +217,21 @@ internal sealed unsafe class Sdl3HostWindow : IDisposable
         else if (_renderer != IntPtr.Zero) _ = Sdl3Native.SDL_SetRenderVSync(_renderer, enabled ? 1 : 0);
     }
 
-    public bool PollEvents(HostInputMapper inputMapper, Action<int, int> onLeftClick) => PollEvents(inputMapper, onLeftClick, onRightClick: null);
+    public bool SetRelativeMouseMode(bool enabled)
+    {
+        if (_window == IntPtr.Zero) { IsRelativeMouseCaptured = false; return false; }
+        bool ok = Sdl3Native.SDL_SetWindowRelativeMouseMode(_window, enabled ? (byte)1 : (byte)0) != 0;
+        IsRelativeMouseCaptured = ok ? enabled : (Sdl3Native.SDL_GetWindowRelativeMouseMode(_window) != 0);
+        return ok;
+    }
 
-    public bool PollEvents(HostInputMapper inputMapper, Action<int, int> onLeftClick, Action<int, int>? onRightClick)
+    public bool PollEvents(HostInputMapper inputMapper, Action<int, int> onLeftClick) =>
+        PollEvents(inputMapper, onLeftClick, onRightClick: null, onFileDropped: null);
+
+    public bool PollEvents(HostInputMapper inputMapper, Action<int, int> onLeftClick, Action<int, int>? onRightClick) =>
+        PollEvents(inputMapper, onLeftClick, onRightClick, onFileDropped: null);
+
+    public bool PollEvents(HostInputMapper inputMapper, Action<int, int> onLeftClick, Action<int, int>? onRightClick, Action<string>? onFileDropped)
     {
         if (!_videoGamepadInitialized) return true;
         byte* ev = stackalloc byte[128];
@@ -223,6 +273,12 @@ internal sealed unsafe class Sdl3HostWindow : IDisposable
                 }
                 case Sdl3Native.EventMouseButtonUp: inputMapper.SetMouseButton(Sdl3Native.EventMouseButton(ev), false); break;
                 case Sdl3Native.EventMouseWheel: inputMapper.AccumulateMouseWheel(Sdl3Native.EventMouseWheelDeltaY(ev)); break;
+                case Sdl3Native.EventDropFile:
+                {
+                    string? dropPath = Sdl3Native.EventDropPath(ev);
+                    if (!string.IsNullOrWhiteSpace(dropPath)) onFileDropped?.Invoke(dropPath);
+                    break;
+                }
             }
         }
         return true;
@@ -231,90 +287,49 @@ internal sealed unsafe class Sdl3HostWindow : IDisposable
     public void PresentRgba(int width, int height, ReadOnlySpan<byte> rgba) =>
         PresentRgba(width, height, rgba, HostAspectRatioMode.NativeFit);
 
-    public void PresentRgba(
-        int width,
-        int height,
-        ReadOnlySpan<byte> rgba,
-        HostAspectRatioMode aspectMode,
-        HostOverscanCrop? overscanCrop = null,
-        double? contentPixelAspectRatio = null)
+    public void PresentRgba(int width, int height, ReadOnlySpan<byte> rgba, HostAspectRatioMode aspectMode, HostOverscanCrop? overscanCrop = null, double? contentPixelAspectRatio = null)
     {
         if (!HasNativeWindow || width <= 0 || height <= 0 || rgba.Length < checked(width * height * 4)) return;
-
         if (Sdl3Native.SDL_GetWindowSize(_window, out int winW, out int winH) != 0)
         {
             if (winW <= 0 || winH <= 0) return;
-            ClientWidth = winW;
-            ClientHeight = winH;
+            ClientWidth = winW; ClientHeight = winH;
         }
 
-        HostViewportRect srcCrop = overscanCrop.HasValue
-            ? HostViewportGeometry.ComputeSourceCropRect(width, height, overscanCrop.Value)
-            : new HostViewportRect(0, 0, width, height);
+        HostViewportRect srcCrop = overscanCrop.HasValue ? HostViewportGeometry.ComputeSourceCropRect(width, height, overscanCrop.Value) : new HostViewportRect(0, 0, width, height);
+        LastClientDestRect = HostViewportGeometry.ComputeDestinationRect(srcCrop.Width, srcCrop.Height, ClientWidth, ClientHeight, aspectMode, contentPixelAspectRatio);
+        if (!HostViewportGeometry.TryGetWindowPixelSize(_window, ClientWidth, ClientHeight, out int renderW, out int renderH)) return;
+        HostViewportRect destRect = HostViewportGeometry.ComputeDestinationRect(srcCrop.Width, srcCrop.Height, renderW, renderH, aspectMode, contentPixelAspectRatio);
 
-        LastClientDestRect = HostViewportGeometry.ComputeDestinationRect(
-            srcCrop.Width, srcCrop.Height, ClientWidth, ClientHeight, aspectMode, contentPixelAspectRatio);
-
-        if (!HostViewportGeometry.TryGetWindowPixelSize(_window, ClientWidth, ClientHeight, out int renderW, out int renderH))
-        {
-            return;
-        }
-
-        HostViewportRect destRect = HostViewportGeometry.ComputeDestinationRect(
-            srcCrop.Width, srcCrop.Height, renderW, renderH, aspectMode, contentPixelAspectRatio);
-
-        if (_presenter is not null)
-        {
-            _presenter.PresentRgba(width, height, rgba, destRect, srcCrop);
-            return;
-        }
+        if (_presenter is not null) { _presenter.PresentRgba(width, height, rgba, destRect, srcCrop); return; }
 
         EnsureTextureSize(width, height);
         if (_texture == IntPtr.Zero) return;
-
-        fixed (byte* px = rgba)
-        {
-            _ = Sdl3Native.SDL_UpdateTexture(_texture, IntPtr.Zero, px, width * 4);
-        }
-
+        fixed (byte* px = rgba) { _ = Sdl3Native.SDL_UpdateTexture(_texture, IntPtr.Zero, px, width * 4); }
         Sdl3Native.PresentSdlTexture(_renderer, _texture, width, height, renderW, renderH, destRect, srcCrop);
     }
 
     private bool TryAttachPresenter(HostRenderBackendKind backendKind, out string diagnostic)
     {
+        if (backendKind == HostRenderBackendKind.Metal) { diagnostic = "Metal surface presenter is not supported on this OS."; return false; }
+
         IHostSurfacePresenter? candidate = backendKind switch
         {
             HostRenderBackendKind.OpenGl => new Gl33Presenter(),
             HostRenderBackendKind.Vulkan => new VulkanPresenter(),
             HostRenderBackendKind.DirectX => new D3d12Presenter(),
             HostRenderBackendKind.ParallelCpu => new ParallelCpuPresenter(ClientWidth, ClientHeight),
-            HostRenderBackendKind.Metal => null,
             _ => null
         };
-
-        if (backendKind == HostRenderBackendKind.Metal)
-        {
-            diagnostic = "Metal surface presenter is not supported on this OS.";
-            return false;
-        }
-
         if (candidate is not null)
         {
-            if (candidate.TryInitialize(_window, ClientWidth, ClientHeight, out diagnostic))
-            {
-                _presenter = candidate;
-                return true;
-            }
+            if (candidate.TryInitialize(_window, ClientWidth, ClientHeight, out diagnostic)) { _presenter = candidate; return true; }
             candidate.Dispose();
             return false;
         }
 
         _renderer = Sdl3Native.SDL_CreateRenderer(_window, null);
-        if (_renderer == IntPtr.Zero)
-        {
-            diagnostic = $"SDL_CreateRenderer fallback ({Sdl3Native.GetErrorString()})";
-            return false;
-        }
+        if (_renderer == IntPtr.Zero) { diagnostic = $"SDL_CreateRenderer fallback ({Sdl3Native.GetErrorString()})"; return false; }
         _ = Sdl3Native.SDL_SetRenderVSync(_renderer, IsVsyncEnabled ? 1 : 0);
         diagnostic = "SDL3 software renderer initialized.";
         return true;
@@ -365,7 +380,12 @@ internal sealed unsafe class Sdl3HostWindow : IDisposable
         _presenter?.Dispose(); _presenter = null;
         if (_texture != IntPtr.Zero) { Sdl3Native.SDL_DestroyTexture(_texture); _texture = IntPtr.Zero; _textureWidth = 0; _textureHeight = 0; }
         if (_renderer != IntPtr.Zero) { Sdl3Native.SDL_DestroyRenderer(_renderer); _renderer = IntPtr.Zero; }
-        if (_window != IntPtr.Zero) { Sdl3Native.SDL_DestroyWindow(_window); _window = IntPtr.Zero; }
+        if (_window != IntPtr.Zero)
+        {
+            if (IsRelativeMouseCaptured) _ = Sdl3Native.SDL_SetWindowRelativeMouseMode(_window, 0);
+            Sdl3Native.SDL_DestroyWindow(_window); _window = IntPtr.Zero;
+        }
+        IsRelativeMouseCaptured = false; _isVisible = false;
         IsFullscreen = false; DisplayMode = HostDisplayMode.Windowed; IsWindowFocused = true;
         HasMousePosition = false; LastMouseX = 0f; LastMouseY = 0f; LastClientDestRect = default;
     }

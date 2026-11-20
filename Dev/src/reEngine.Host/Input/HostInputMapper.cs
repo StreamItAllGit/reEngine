@@ -61,6 +61,7 @@ public sealed class HostInputMapper
     private HostInputSchemaKind _activeSchema = HostInputSchemaKind.SchemaB;
     private long _frameSequence;
     private uint _pendingHotkeys;
+    private uint _pendingSyntheticGamepadMask;
     private float _pendingMouseDx, _pendingMouseDy, _pendingWheelDelta;
     private float _pointerContentX = -1f, _pointerContentY = -1f;
     private bool _isPointerInsideContent;
@@ -147,19 +148,7 @@ public sealed class HostInputMapper
         }
 
         if (HostMultiBindRegistry.IsKeyboardCode(scancode)) _latchedCodes.Add(scancode);
-        _pendingHotkeys |= scancode switch
-        {
-            HostScancodes.F1 => (uint)HostHotkeyFlags.ToggleDrawer,
-            HostScancodes.F3 => (uint)HostHotkeyFlags.ToggleHud,
-            HostScancodes.F5 => (uint)HostHotkeyFlags.QuickSave,
-            HostScancodes.F6 or HostScancodes.Grave => (uint)HostHotkeyFlags.FastForward,
-            HostScancodes.F7 => (uint)HostHotkeyFlags.CutsceneSkip,
-            HostScancodes.F9 => (uint)HostHotkeyFlags.QuickLoad,
-            HostScancodes.F11 => (uint)HostHotkeyFlags.ToggleFullscreen,
-            HostScancodes.F12 => (uint)(HostHotkeyFlags.DumpFrame | HostHotkeyFlags.TakeScreenshot),
-            HostScancodes.Escape => (uint)HostHotkeyFlags.Escape,
-            _ => 0u
-        };
+        if (scancode == HostScancodes.Escape) _pendingHotkeys |= (uint)HostHotkeyFlags.Escape;
     }
 
     /// <summary>Injects a synthetic single-key tap by key name (e.g., <c>"F1"</c>, <c>"Enter"</c>).</summary>
@@ -181,11 +170,19 @@ public sealed class HostInputMapper
         bool hasAlt = _heldScancodes.Contains(HostScancodes.LAlt) || _heldScancodes.Contains(HostScancodes.RAlt);
         if (TryMapKeyNameToScancode(trimmed, out int scancode))
         {
-            SetScancodeState(scancode, true, isRepeat: false);
-            if (IsInstantHotkeyScancode(scancode) || (hasAlt && scancode == HostScancodes.Return))
+            if (HostMultiBindRegistry.IsGamepadCode(scancode))
             {
-                _heldScancodes.Remove(scancode);
-                _altSuppressedScancodes.Remove(scancode);
+                _latchedCodes.Add(scancode);
+                _pendingSyntheticGamepadMask |= Sdl3GamepadProvider.ToGamepadMaskBit(scancode);
+            }
+            else
+            {
+                SetScancodeState(scancode, true, isRepeat: false);
+                if (IsInstantHotkeyScancode(scancode) || HostActions.IsCodeBound(scancode) || (hasAlt && scancode == HostScancodes.Return))
+                {
+                    _heldScancodes.Remove(scancode);
+                    _altSuppressedScancodes.Remove(scancode);
+                }
             }
         }
         if (tempMods is not null) foreach (int m in tempMods) _heldScancodes.Remove(m);
@@ -256,6 +253,8 @@ public sealed class HostInputMapper
         float lx = extLeftX, ly = extLeftY, rx = extRightX, ry = extRightY, tl = extTrigLeft, tr = extTrigRight;
         uint gpMask = 0u; bool gpConnected = false; int touchCount = 0;
         HostGamepadPortSnapshot[] padPorts = HostInputEvaluationHelper.PollProviders(_providers, ref nonGamepadButtons, ref lx, ref ly, ref rx, ref ry, ref tl, ref tr, ref gpMask, ref gpConnected, ref touchCount);
+        gpMask |= _pendingSyntheticGamepadMask;
+        _pendingSyntheticGamepadMask = 0u;
 
         float wheel = _pendingWheelDelta;
         IReadOnlySet<int> heldForEval = _altSuppressedScancodes.Count == 0 ? _heldScancodes : BuildUnsuppressedHeld();
@@ -264,12 +263,15 @@ public sealed class HostInputMapper
         digital |= nonGamepadButtons;
         if (IsMenuOpen) HostInputEvaluationHelper.ApplyMenuNavigationIsolation(ref digital, gpMask, padPorts, lx, ly, heldForEval, _latchedCodes);
 
-        uint hotkeys = _pendingHotkeys;
-        bool fastForwardHeld = IsFastForwardToggled || _heldScancodes.Contains(HostScancodes.Grave) || _heldScancodes.Contains(HostScancodes.F6) || Bindings.IsActionActive("fastForward");
-        bool cutsceneSkipPressed = (hotkeys & (uint)HostHotkeyFlags.CutsceneSkip) != 0 || Bindings.IsActionJustPressed("cutsceneSkip");
+        HostHotkeyFlags actionHotkeys = HostActions.EvaluateHotkeys(heldForEval, _latchedCodes, _mouseButtons, wheel, gpMask, MenuControllerChord, out bool actionFfHeld);
+        bool unboundTabHeld = heldForEval.Contains(HostScancodes.Tab) && !Bindings.IsCodeBound(HostScancodes.Tab) && !HostActions.IsCodeBound(HostScancodes.Tab);
+        uint hotkeys = _pendingHotkeys | (uint)actionHotkeys;
         if (Bindings.IsActionJustPressed("cutsceneSkip")) hotkeys |= (uint)HostHotkeyFlags.CutsceneSkip;
+        bool fastForwardHeld = IsFastForwardToggled || actionFfHeld || unboundTabHeld || Bindings.IsActionActive("fastForward");
+        bool cutsceneSkipPressed = (hotkeys & (uint)HostHotkeyFlags.CutsceneSkip) != 0;
 
-        float mdx = _pendingMouseDx, mdy = _pendingMouseDy;
+        float sens = (float)MouseSensitivity;
+        float mdx = _pendingMouseDx * sens, mdy = _pendingMouseDy * sens;
         _pendingHotkeys = 0; _pendingMouseDx = 0f; _pendingMouseDy = 0f; _pendingWheelDelta = 0f;
         _latchedCodes.Clear();
 
