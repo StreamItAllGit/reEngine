@@ -1,6 +1,6 @@
 // @module: reEngine.Host.Ui.F3HudOverlayView
-// @purpose: Renders the toggleable F3 telemetry HUD overlay onto Foundation.Core.PixelOverlayCanvas.
-// @depends-on: System, System.Drawing, System.Globalization, Foundation.Core, reEngine.Host.Contracts
+// @purpose: Renders the scaled 2-line F3 telemetry HUD overlay onto PixelOverlayCanvas with mode/FF badges and Clean-Capture suppression.
+// @depends-on: System, System.Collections.Generic, System.Drawing, System.Globalization, Foundation.Core, reEngine.Host.Contracts
 // @exports: F3HudTelemetry, F3HudOverlayView
 
 using System.Drawing;
@@ -13,12 +13,6 @@ namespace reEngine.Host.Ui;
 /// <summary>
 /// Telemetry snapshot rendered inside the F3 overlay pill.
 /// </summary>
-/// <param name="CurrentFps">Measured presentation frames per second.</param>
-/// <param name="AverageFrameMs">Smoothed average frame duration in milliseconds.</param>
-/// <param name="BackendLabel">Active render backend display label.</param>
-/// <param name="ResolutionScale">Active integer render scale multiplier.</param>
-/// <param name="ExecutionTier">Active execution tier label.</param>
-/// <param name="AudioFillRatio">Audio ring buffer fill ratio (<c>0..1</c>).</param>
 public sealed record F3HudTelemetry(
     double CurrentFps,
     double AverageFrameMs,
@@ -47,71 +41,99 @@ public sealed record F3HudTelemetry(
 
     /// <summary>Gets or sets whether master audio output is currently muted.</summary>
     public bool IsAudioMuted { get; init; }
+
+    /// <summary>Gets or sets the framerate cadence badge (<c>"[ORIG]"</c>, <c>"[ENH]"</c>, or <c>"[MAX]"</c>).</summary>
+    public string? FrameRateModeBadge { get; init; }
+
+    /// <summary>Gets or sets the active fast-forward multiplier (<c>2x..4x</c>).</summary>
+    public double FastForwardMultiplier { get; init; } = 2.0;
+
+    /// <summary>Gets or sets whether Clean-Capture Mode suppresses all F3 HUD rendering.</summary>
+    public bool IsCleanCaptureModeEnabled { get; init; }
+
+    /// <summary>Gets or sets the active overlay UI text scale (<c>0.75..2.0</c>).</summary>
+    public double UiTextScale { get; init; } = 1.0;
 }
 
 /// <summary>
-/// Renders and measures the F3 performance telemetry overlay on <see cref="PixelOverlayCanvas"/>.
+/// Renders and measures the scaled 2-line F3 performance telemetry overlay on <see cref="PixelOverlayCanvas"/>.
 /// </summary>
 public sealed class F3HudOverlayView
 {
+    private bool _lastCleanCaptureSuppressed;
+
     /// <summary>Gets or sets whether the F3 HUD overlay is visible.</summary>
     public bool IsVisible { get; set; }
 
-    /// <summary>Gets the bounds of the rendered F3 HUD pill.</summary>
-    public Rectangle CurrentBounds { get; private set; } = new(12, 12, 310, 46);
+    /// <summary>Gets or sets whether Clean-Capture Mode is forcing the F3 HUD hidden.</summary>
+    public bool IsCleanCaptureModeEnabled { get; set; }
 
-    /// <summary>Renders <paramref name="telemetry"/> onto <paramref name="canvas"/> when <see cref="IsVisible"/> is <see langword="true"/>.</summary>
+    /// <summary>Gets the bounds of the rendered F3 HUD pill.</summary>
+    public Rectangle CurrentBounds { get; private set; } = new(12, 12, 340, 50);
+
+    /// <summary>Renders <paramref name="telemetry"/> onto <paramref name="canvas"/> unless hidden or suppressed by Clean-Capture Mode.</summary>
     public void Render(PixelOverlayCanvas canvas, F3HudTelemetry telemetry)
     {
         ArgumentNullException.ThrowIfNull(canvas);
         ArgumentNullException.ThrowIfNull(telemetry);
-        if (!IsVisible) return;
+        _lastCleanCaptureSuppressed = telemetry.IsCleanCaptureModeEnabled;
+        if (!IsVisible || IsCleanCaptureModeEnabled || telemetry.IsCleanCaptureModeEnabled) return;
 
-        string badgeLine = BuildBadgeLine(telemetry);
-        bool hasBadges = !string.IsNullOrEmpty(badgeLine);
-        int w = Math.Min(460, Math.Max(220, canvas.Width - 24));
-        int h = hasBadges ? 62 : 46;
+        double scale = HostOverlayTextRenderer.ClampUiTextScale(telemetry.UiTextScale);
+        int lineH = HostOverlayTextRenderer.GetLineHeight(scale);
+
+        string modeBadge = string.IsNullOrWhiteSpace(telemetry.FrameRateModeBadge)
+            ? string.Empty
+            : telemetry.FrameRateModeBadge.Trim() + " ";
+        double ffMult = Math.Clamp(double.IsFinite(telemetry.FastForwardMultiplier) ? telemetry.FastForwardMultiplier : 2.0, 2.0, 4.0);
+        string ffTag = telemetry.IsFastForwardEnabled
+            ? string.Create(CultureInfo.InvariantCulture, $"[FF {ffMult:0.#}x] ")
+            : string.Empty;
+        string padTag = telemetry.ConnectedPadCount > 0 ? $" | Pads:{telemetry.ConnectedPadCount}" : string.Empty;
+
+        string line1 = string.Create(
+            CultureInfo.InvariantCulture,
+            $"{modeBadge}{ffTag}FPS: {telemetry.CurrentFps:F1} | Frame: {telemetry.AverageFrameMs:F2}ms{padTag}");
+
+        string aspectTag = !string.IsNullOrWhiteSpace(telemetry.AspectRatioLabel) ? $" {telemetry.AspectRatioLabel.Trim()}" : string.Empty;
+        string audioText = telemetry.IsAudioMuted ? "MUTED" : $"{telemetry.AudioFillRatio * 100.0:F0}%";
+        var line2Parts = new List<string>(4)
+        {
+            $"{telemetry.BackendLabel} {telemetry.ResolutionScale}x{aspectTag}",
+            telemetry.ExecutionTier,
+            $"Audio {audioText}"
+        };
+        if (!string.IsNullOrWhiteSpace(telemetry.DisplayModeLabel)) line2Parts.Add(telemetry.DisplayModeLabel.Trim());
+        if (!string.IsNullOrWhiteSpace(telemetry.VideoFilterLabel)) line2Parts.Add(telemetry.VideoFilterLabel.Trim());
+        if (telemetry.IsSafeModeActive) line2Parts.Add("SAFE MODE");
+        string line2 = string.Join(" | ", line2Parts);
+
+        int w1 = HostOverlayTextRenderer.MeasureText(line1, scale).Width;
+        int w2 = HostOverlayTextRenderer.MeasureText(line2, scale).Width;
+        int maxW = Math.Max(200, canvas.Width - 24);
+        int w = Math.Clamp(Math.Max(w1, w2) + 24, Math.Min(280, maxW), maxW);
+        int h = 16 + (lineH * 2);
         CurrentBounds = new Rectangle(12, 12, w, h);
+
         HostOverlayLayoutHelpers.DrawPanel(
             canvas,
             CurrentBounds,
             HostOverlayPalette.HudPillBg,
             telemetry.IsSafeModeActive ? HostOverlayPalette.AccentWarning : HostOverlayPalette.AccentCyan);
 
-        string ffTag = telemetry.IsFastForwardEnabled ? " | FF" : string.Empty;
-        string padTag = telemetry.ConnectedPadCount > 0 ? $" | Pads:{telemetry.ConnectedPadCount}" : string.Empty;
-        string aspectTag = !string.IsNullOrWhiteSpace(telemetry.AspectRatioLabel) ? $" {telemetry.AspectRatioLabel}" : string.Empty;
-        string audioText = telemetry.IsAudioMuted ? "MUTED" : $"{telemetry.AudioFillRatio * 100.0:F0}%";
-
-        string line1 = string.Create(
-            CultureInfo.InvariantCulture,
-            $"FPS: {telemetry.CurrentFps:F1} | Frame: {telemetry.AverageFrameMs:F2}ms{ffTag}{padTag}");
-        string line2 = string.Create(
-            CultureInfo.InvariantCulture,
-            $"{telemetry.BackendLabel} {telemetry.ResolutionScale}x{aspectTag} | {telemetry.ExecutionTier} | Audio {audioText}");
-
-        canvas.DrawText(CurrentBounds.X + 10, CurrentBounds.Y + 9, HostOverlayLayoutHelpers.FitText(line1, w - 20, 1), HostOverlayPalette.AccentCyan, 1);
-        canvas.DrawText(CurrentBounds.X + 10, CurrentBounds.Y + 25, HostOverlayLayoutHelpers.FitText(line2, w - 20, 1), HostOverlayPalette.TextPrimary, 1);
-        if (hasBadges)
-        {
-            RgbaColor badgeColor = telemetry.IsSafeModeActive || telemetry.IsAudioMuted
-                ? HostOverlayPalette.AccentWarning
-                : HostOverlayPalette.TextMuted;
-            canvas.DrawText(CurrentBounds.X + 10, CurrentBounds.Y + 41, HostOverlayLayoutHelpers.FitText(badgeLine, w - 20, 1), badgeColor, 1);
-        }
+        int textW = Math.Max(40, w - 20);
+        HostOverlayTextRenderer.DrawText(canvas, CurrentBounds.X + 10, CurrentBounds.Y + 8,
+            HostOverlayTextRenderer.FitText(line1, textW, scale), HostOverlayPalette.AccentCyan, scale);
+        RgbaColor line2Color = telemetry.IsSafeModeActive || telemetry.IsAudioMuted
+            ? HostOverlayPalette.AccentWarning
+            : HostOverlayPalette.TextPrimary;
+        HostOverlayTextRenderer.DrawText(canvas, CurrentBounds.X + 10, CurrentBounds.Y + 10 + lineH,
+            HostOverlayTextRenderer.FitText(line2, textW, scale), line2Color, scale);
     }
 
-    /// <summary>Builds automation widget bounds when the F3 HUD overlay is visible.</summary>
+    /// <summary>Builds automation widget bounds when visible and not suppressed by Clean-Capture Mode.</summary>
     public HostWidgetBounds? TryBuildWidgetBounds() =>
-        IsVisible ? new HostWidgetBounds("F3Hud", "Label", $"F3 Telemetry ({CurrentBounds.Width}x{CurrentBounds.Height})", CurrentBounds, true) : null;
-
-    private static string BuildBadgeLine(F3HudTelemetry telemetry)
-    {
-        var parts = new List<string>(4);
-        if (!string.IsNullOrWhiteSpace(telemetry.DisplayModeLabel)) parts.Add(telemetry.DisplayModeLabel!.Trim());
-        if (!string.IsNullOrWhiteSpace(telemetry.VideoFilterLabel)) parts.Add($"Filter: {telemetry.VideoFilterLabel!.Trim()}");
-        if (telemetry.IsSafeModeActive) parts.Add("SAFE MODE");
-        if (telemetry.IsAudioMuted) parts.Add("MUTED");
-        return parts.Count == 0 ? string.Empty : string.Join(" | ", parts);
-    }
+        IsVisible && !IsCleanCaptureModeEnabled && !_lastCleanCaptureSuppressed
+            ? new HostWidgetBounds("F3Hud", "Label", $"F3 Telemetry ({CurrentBounds.Width}x{CurrentBounds.Height})", CurrentBounds, true)
+            : null;
 }

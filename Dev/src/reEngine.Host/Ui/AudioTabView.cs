@@ -1,5 +1,5 @@
 // @module: reEngine.Host.Ui.AudioTabView
-// @purpose: Renders the 6th F1 drawer Audio tab (device picker, mixer gains, focus mute, filter presets, stereo width, resampling, FF mode, Sound Test) on PixelOverlayCanvas.
+// @purpose: Renders the F1 drawer Audio tab (device picker, scaled master stepper, mixer gains, DSP presets, FF mode, Sound Test) on PixelOverlayCanvas.
 // @depends-on: System, System.Collections.Generic, System.Drawing, System.Globalization, Foundation.Core, reEngine.Host.Audio, reEngine.Host.Contracts
 // @exports: AudioTabView
 
@@ -16,120 +16,115 @@ namespace reEngine.Host.Ui;
 /// </summary>
 public sealed class AudioTabView
 {
-    private sealed record ClickTarget(string ControlId, string ControlType, string Label, Rectangle Bounds, Action<bool> OnClick);
-
-    private readonly List<ClickTarget> _targets = new();
+    private readonly List<DrawerControl> _controls = new();
     private readonly List<HostWidgetBounds> _widgets = new();
+    private int _scrollOffset;
 
     /// <summary>Gets the bottom Y coordinate occupied by rendered Audio tab content.</summary>
     public int ContentBottomY { get; private set; }
 
     /// <summary>Renders the Audio mixer, DSP filter, and Sound Test audition controls into <paramref name="body"/>.</summary>
-    public void Render(PixelOverlayCanvas canvas, Rectangle body, F1SettingsDrawerView view, HostDrawerDescriptor descriptor)
+    public void Render(PixelOverlayCanvas canvas, Rectangle body, F1SettingsDrawerView view, HostDrawerDescriptor descriptor) =>
+        Render(canvas, body, view, descriptor, ref _scrollOffset, out _);
+
+    internal void Render(
+        PixelOverlayCanvas canvas, Rectangle body, F1SettingsDrawerView view, HostDrawerDescriptor descriptor,
+        ref int scrollOffset, out int maxScroll)
     {
         ArgumentNullException.ThrowIfNull(canvas);
         ArgumentNullException.ThrowIfNull(view);
         ArgumentNullException.ThrowIfNull(descriptor);
 
-        _targets.Clear();
+        _controls.Clear();
         _widgets.Clear();
 
         HostAudioMixerSettings s = view.AudioSettings;
         HostSoundTestService jukebox = view.SoundTestService;
-        const int gap = 4;
-        const int rowH = 22;
-        int colW2 = Math.Max(80, (body.Width - gap) / 2);
-        int colW3 = Math.Max(60, (body.Width - (gap * 2)) / 3);
-        int y = body.Y;
-
-        canvas.DrawText(body.X, y, "AUDIO DSP & SOUND TEST", HostOverlayPalette.AccentCyan, 1);
-        y += 14;
+        var layout = new HostDrawerScrollLayout(body, view.UiTextScale, view.FocusedControlId);
 
         string devName = string.IsNullOrWhiteSpace(s.AudioOutputDevice) ? "System Default" : s.AudioOutputDevice!;
-        string devLabel = $"Output: {devName}";
-        AddPill(canvas, new(body.X, y, body.Width, rowH), "Audio_Device", devLabel, !string.IsNullOrWhiteSpace(s.AudioOutputDevice), HostOverlayPalette.AccentCyan,
-            isRight => CycleDevice(view, isRight ? -1 : 1));
-        y += 26;
+        layout.AddPill("Audio_Device", $"Output: {devName}", !string.IsNullOrWhiteSpace(s.AudioOutputDevice),
+            HostOverlayPalette.AccentCyan, isRight => CycleDevice(view, isRight ? -1 : 1), _controls);
 
-        string masterLabel = string.Create(CultureInfo.InvariantCulture, $"Master: {Math.Round(s.MasterVolume * 100):F0}%");
-        AddPill(canvas, new(body.X, y, colW2, rowH), "Audio_MasterVolume", masterLabel, !s.IsAudioMuted, HostOverlayPalette.AccentCyan,
-            isRight => UpdateAudio(view, view.AudioSettings with { MasterVolume = StepRatio(view.AudioSettings.MasterVolume, isRight) }));
+        string masterPct = string.Create(CultureInfo.InvariantCulture, $"{Math.Round(s.MasterVolume * 100):F0}%");
+        layout.AddStepper("Audio_MasterVolume", "Audio_MasterVolume_Dec", "Audio_MasterVolume_Inc",
+            "Master Volume", masterPct, HostOverlayPalette.AccentCyan,
+            isRight => UpdateAudio(view, view.AudioSettings with { MasterVolume = StepRatioWrap(view.AudioSettings.MasterVolume, isRight) }),
+            _ => UpdateAudio(view, view.AudioSettings with { MasterVolume = ClampStep(view.AudioSettings.MasterVolume, -0.10) }),
+            _ => UpdateAudio(view, view.AudioSettings with { MasterVolume = ClampStep(view.AudioSettings.MasterVolume, 0.10) }),
+            _controls);
 
-        string muteLabel = s.IsAudioMuted ? "Mute: ON" : "Mute: OFF";
-        AddPill(canvas, new(body.X + colW2 + gap, y, body.Width - colW2 - gap, rowH), "Audio_Mute", muteLabel, s.IsAudioMuted, HostOverlayPalette.AccentWarning,
-            _ => UpdateAudio(view, view.AudioSettings with { IsAudioMuted = !view.AudioSettings.IsAudioMuted }));
-        y += 26;
-
-        AddToggle(canvas, new(body.X, y, body.Width, rowH), "Audio_FocusMute", "Mute on Focus Loss", s.ShouldMuteOnFocusLoss, HostOverlayPalette.AccentCyan,
-            _ => UpdateAudio(view, view.AudioSettings with { ShouldMuteOnFocusLoss = !view.AudioSettings.ShouldMuteOnFocusLoss }));
-        y += 26;
+        layout.AddColumns(_controls,
+            ("Audio_Mute", s.IsAudioMuted ? "Mute: ON" : "Mute: OFF", s.IsAudioMuted, false, HostOverlayPalette.AccentWarning,
+                _ => UpdateAudio(view, view.AudioSettings with { IsAudioMuted = !view.AudioSettings.IsAudioMuted }), null),
+            ("Audio_FocusMute", "Focus Mute", s.ShouldMuteOnFocusLoss, true, HostOverlayPalette.AccentCyan,
+                _ => UpdateAudio(view, view.AudioSettings with { ShouldMuteOnFocusLoss = !view.AudioSettings.ShouldMuteOnFocusLoss }), null));
 
         string bgmLabel = string.Create(CultureInfo.InvariantCulture, $"BGM:{Math.Round(s.BgmVolume * 100):F0}%");
         string sfxLabel = string.Create(CultureInfo.InvariantCulture, $"SFX:{Math.Round(s.SfxVolume * 100):F0}%");
         string voxLabel = string.Create(CultureInfo.InvariantCulture, $"Vox:{Math.Round(s.VoiceVolume * 100):F0}%");
-        AddPill(canvas, new(body.X, y, colW3, rowH), "Audio_BgmGain", bgmLabel, true, HostOverlayPalette.AccentCyan,
-            isRight => UpdateAudio(view, view.AudioSettings with { BgmVolume = StepRatio(view.AudioSettings.BgmVolume, isRight) }));
-        AddPill(canvas, new(body.X + colW3 + gap, y, colW3, rowH), "Audio_SfxGain", sfxLabel, true, HostOverlayPalette.AccentCyan,
-            isRight => UpdateAudio(view, view.AudioSettings with { SfxVolume = StepRatio(view.AudioSettings.SfxVolume, isRight) }));
-        AddPill(canvas, new(body.X + ((colW3 + gap) * 2), y, body.Width - ((colW3 + gap) * 2), rowH), "Audio_VoiceGain", voxLabel, true, HostOverlayPalette.AccentCyan,
-            isRight => UpdateAudio(view, view.AudioSettings with { VoiceVolume = StepRatio(view.AudioSettings.VoiceVolume, isRight) }));
-        y += 26;
+        layout.AddColumns(_controls,
+            ("Audio_BgmGain", bgmLabel, true, false, HostOverlayPalette.AccentCyan,
+                isRight => UpdateAudio(view, view.AudioSettings with { BgmVolume = StepRatioWrap(view.AudioSettings.BgmVolume, isRight) }), null),
+            ("Audio_SfxGain", sfxLabel, true, false, HostOverlayPalette.AccentCyan,
+                isRight => UpdateAudio(view, view.AudioSettings with { SfxVolume = StepRatioWrap(view.AudioSettings.SfxVolume, isRight) }), null),
+            ("Audio_VoiceGain", voxLabel, true, false, HostOverlayPalette.AccentCyan,
+                isRight => UpdateAudio(view, view.AudioSettings with { VoiceVolume = StepRatioWrap(view.AudioSettings.VoiceVolume, isRight) }), null));
 
         HostAudioFilterPreset preset = HostAudioFilterPresetCodec.DetectPreset(s.AudioLowPassHz, s.AudioHighPassHz);
-        string filterLabel = $"Filter: {HostAudioFilterPresetCodec.ToDisplayLabel(preset)}";
-        AddPill(canvas, new(body.X, y, body.Width, rowH), "Audio_FilterPreset", filterLabel, preset != HostAudioFilterPreset.Off, HostOverlayPalette.AccentCyan,
-            _ =>
+        string lpText = s.AudioLowPassHz > 0 ? $"{s.AudioLowPassHz}Hz" : "Off";
+        string hpText = s.AudioHighPassHz > 0 ? $"{s.AudioHighPassHz}Hz" : "Off";
+        layout.AddPill("Audio_FilterPreset", $"Filter: {HostAudioFilterPresetCodec.ToDisplayLabel(preset)}",
+            preset != HostAudioFilterPreset.Off, HostOverlayPalette.AccentCyan, _ =>
             {
                 HostAudioFilterPreset cur = HostAudioFilterPresetCodec.DetectPreset(view.AudioSettings.AudioLowPassHz, view.AudioSettings.AudioHighPassHz);
                 HostAudioFilterPreset next = HostAudioFilterPresetCodec.CycleNext(cur);
                 (int lp, int hp) = HostAudioFilterPresetCodec.ToCutoffsHz(next);
                 UpdateAudio(view, view.AudioSettings with { AudioLowPassHz = lp, AudioHighPassHz = hp });
-            });
-        y += 24;
-
-        string lpText = s.AudioLowPassHz > 0 ? $"{s.AudioLowPassHz}Hz" : "Off";
-        string hpText = s.AudioHighPassHz > 0 ? $"{s.AudioHighPassHz}Hz" : "Off";
-        canvas.DrawText(body.X, y, HostOverlayLayoutHelpers.FitText($"LP: {lpText} | HP: {hpText}", body.Width, 1), HostOverlayPalette.TextMuted, 1);
-        y += 14;
+            }, _controls);
+        layout.AddText($"LP: {lpText} | HP: {hpText}", HostOverlayPalette.TextMuted);
 
         string widthLabel = string.Create(CultureInfo.InvariantCulture, $"Width: {s.AudioStereoWidthPercent:F0}%");
-        AddPill(canvas, new(body.X, y, colW2, rowH), "Audio_StereoWidth", widthLabel, Math.Abs(s.AudioStereoWidthPercent - 100.0) > 0.1, HostOverlayPalette.AccentCyan,
-            isRight => UpdateAudio(view, view.AudioSettings with { AudioStereoWidthPercent = StepStereoWidth(view.AudioSettings.AudioStereoWidthPercent, isRight) }));
-
         string resampLabel = $"Resample: {HostAudioResamplingModeCodec.ToDisplayLabel(s.ResamplingMode)}";
-        AddPill(canvas, new(body.X + colW2 + gap, y, body.Width - colW2 - gap, rowH), "Audio_Resampling", resampLabel, s.ResamplingMode == HostAudioResamplingMode.SincCubic, HostOverlayPalette.AccentCyan,
-            _ =>
+        layout.AddColumns(_controls,
+            ("Audio_StereoWidth", widthLabel, Math.Abs(s.AudioStereoWidthPercent - 100.0) > 0.1, false, HostOverlayPalette.AccentCyan,
+                isRight => UpdateAudio(view, view.AudioSettings with { AudioStereoWidthPercent = StepStereoWidth(view.AudioSettings.AudioStereoWidthPercent, isRight) }), null),
+            ("Audio_Resampling", resampLabel, s.ResamplingMode == HostAudioResamplingMode.SincCubic, false, HostOverlayPalette.AccentCyan, _ =>
             {
                 HostAudioResamplingMode next = view.AudioSettings.ResamplingMode == HostAudioResamplingMode.SincCubic
                     ? HostAudioResamplingMode.Linear
                     : HostAudioResamplingMode.SincCubic;
                 UpdateAudio(view, view.AudioSettings with { ResamplingMode = next });
-            });
-        y += 26;
+            }, null));
 
-        string ffLabel = $"FF Audio: {HostFastForwardAudioModeCodec.ToDisplayLabel(s.FastForwardAudioMode)}";
-        AddPill(canvas, new(body.X, y, body.Width, rowH), "Audio_FfMode", ffLabel, s.FastForwardAudioMode != HostFastForwardAudioMode.Normal, HostOverlayPalette.AccentCyan,
-            _ => UpdateAudio(view, view.AudioSettings with { FastForwardAudioMode = HostFastForwardAudioModeCodec.CycleNext(view.AudioSettings.FastForwardAudioMode) }));
-        y += 30;
+        layout.AddPill("Audio_FfMode", $"FF Audio: {HostFastForwardAudioModeCodec.ToDisplayLabel(s.FastForwardAudioMode)}",
+            s.FastForwardAudioMode != HostFastForwardAudioMode.Normal, HostOverlayPalette.AccentCyan,
+            _ => UpdateAudio(view, view.AudioSettings with { FastForwardAudioMode = HostFastForwardAudioModeCodec.CycleNext(view.AudioSettings.FastForwardAudioMode) }),
+            _controls);
 
-        canvas.DrawText(body.X, y, "SOUND TEST JUKEBOX", HostOverlayPalette.AccentCyan, 1);
-        y += 14;
+        layout.AddText("SOUND TEST JUKEBOX", HostOverlayPalette.AccentCyan);
         string trackStatus = $"{jukebox.CurrentTrack.Title} [{(jukebox.IsPlaying ? "PLAY" : "STOP")}]";
-        canvas.DrawText(body.X, y, HostOverlayLayoutHelpers.FitText(trackStatus, body.Width, 1), jukebox.IsPlaying ? HostOverlayPalette.AccentSuccess : HostOverlayPalette.TextPrimary, 1);
-        y += 14;
-
-        AddPill(canvas, new(body.X, y, colW3, rowH), "Audio_SoundTest_Prev", "< Prev", false, HostOverlayPalette.AccentCyan,
-            _ => { HostSoundTestTrack t = view.SoundTestService.PrevTrack(); view.EventCallbacks?.OnSoundTestActionRequested("prev", t.TrackId); });
-        AddPill(canvas, new(body.X + colW3 + gap, y, colW3, rowH), "Audio_SoundTest_PlayStop", jukebox.IsPlaying ? "Stop" : "Play", jukebox.IsPlaying, HostOverlayPalette.AccentSuccess,
-            _ =>
+        layout.AddText(trackStatus, jukebox.IsPlaying ? HostOverlayPalette.AccentSuccess : HostOverlayPalette.TextPrimary);
+        layout.AddColumns(_controls,
+            ("Audio_SoundTest_Prev", "< Prev", false, false, HostOverlayPalette.AccentCyan, _ =>
+            {
+                HostSoundTestTrack t = view.SoundTestService.PrevTrack();
+                view.EventCallbacks?.OnSoundTestActionRequested("prev", t.TrackId);
+            }, null),
+            ("Audio_SoundTest_PlayStop", jukebox.IsPlaying ? "Stop" : "Play", jukebox.IsPlaying, false, HostOverlayPalette.AccentSuccess, _ =>
             {
                 view.SoundTestService.TogglePlayStop();
                 view.EventCallbacks?.OnSoundTestActionRequested(view.SoundTestService.IsPlaying ? "play" : "stop", view.SoundTestService.CurrentTrack.TrackId);
-            });
-        AddPill(canvas, new(body.X + ((colW3 + gap) * 2), y, body.Width - ((colW3 + gap) * 2), rowH), "Audio_SoundTest_Next", "Next >", false, HostOverlayPalette.AccentCyan,
-            _ => { HostSoundTestTrack t = view.SoundTestService.NextTrack(); view.EventCallbacks?.OnSoundTestActionRequested("next", t.TrackId); });
+            }, null),
+            ("Audio_SoundTest_Next", "Next >", false, false, HostOverlayPalette.AccentCyan, _ =>
+            {
+                HostSoundTestTrack t = view.SoundTestService.NextTrack();
+                view.EventCallbacks?.OnSoundTestActionRequested("next", t.TrackId);
+            }, null));
 
-        ContentBottomY = y + rowH + 6;
+        HostDrawerScrollLayout.AppendExtraRows(layout, HostDrawerTabId.Audio, descriptor.ExtraRows, view, _controls);
+        ContentBottomY = layout.Render(canvas, "AUDIO DSP & SOUND TEST", "Audio", ref scrollOffset, out maxScroll, _controls, d => view.ScrollActiveTab(d));
+        foreach (DrawerControl c in _controls) _widgets.Add(new(c.ControlId, c.ControlType, c.Label, c.Bounds, true));
     }
 
     /// <summary>Returns interactive widget bounds emitted by the latest render pass.</summary>
@@ -138,30 +133,16 @@ public sealed class AudioTabView
     /// <summary>Processes a pointer click on the Audio tab.</summary>
     public bool TryHandleClick(int x, int y, string? targetId, bool isRightClick = false)
     {
-        foreach (ClickTarget target in _targets)
+        foreach (DrawerControl c in _controls)
         {
             bool match = !string.IsNullOrEmpty(targetId)
-                ? string.Equals(targetId, target.ControlId, StringComparison.OrdinalIgnoreCase)
-                : target.Bounds.Contains(x, y);
+                ? string.Equals(targetId, c.ControlId, StringComparison.OrdinalIgnoreCase)
+                : c.Bounds.Contains(x, y);
             if (!match) continue;
-            target.OnClick(isRightClick);
+            c.OnClick(isRightClick);
             return true;
         }
         return false;
-    }
-
-    private void AddPill(PixelOverlayCanvas canvas, Rectangle rect, string id, string label, bool active, RgbaColor accent, Action<bool> onClick)
-    {
-        HostOverlayLayoutHelpers.DrawPillButton(canvas, rect, label, active, accent);
-        _targets.Add(new(id, "Button", label, rect, onClick));
-        _widgets.Add(new(id, "Button", label, rect, true));
-    }
-
-    private void AddToggle(PixelOverlayCanvas canvas, Rectangle rect, string id, string label, bool val, RgbaColor accent, Action<bool> onClick)
-    {
-        HostOverlayLayoutHelpers.DrawToggleRow(canvas, rect, label, val, accent);
-        _targets.Add(new(id, "CheckBox", label, rect, onClick));
-        _widgets.Add(new(id, "CheckBox", label, rect, true));
     }
 
     private static void UpdateAudio(F1SettingsDrawerView view, HostAudioMixerSettings next)
@@ -194,7 +175,10 @@ public sealed class AudioTabView
         view.EventCallbacks?.OnAudioSettingsChanged(updated);
     }
 
-    private static double StepRatio(double current, bool decrease)
+    private static double ClampStep(double current, double delta) =>
+        Math.Clamp(Math.Round(current + delta, 2), 0.0, 1.0);
+
+    private static double StepRatioWrap(double current, bool decrease)
     {
         double clamped = Math.Clamp(current, 0.0, 1.0);
         if (decrease) return clamped <= 0.01 ? 1.0 : Math.Max(0.0, Math.Round(clamped - 0.10, 2));
