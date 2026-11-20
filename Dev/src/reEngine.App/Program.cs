@@ -118,12 +118,17 @@ internal static partial class Program
     private static async Task<int> RunAsync(string[] args, AppEnvironment appEnv, Action<string, string> log, CancellationToken ct)
     {
         bool isIsolatedTest = IsIsolatedTestEnv();
-        SettingsMigrationResult mig = SettingsMigrationHelper.MigrateIfNeeded(
-            ReEngineAppStatusHelper.ResolveAppInstallRoot(), appEnv.DataDirectory, appEnv.ConfigFilePath, allowAppDataProbe: !isIsolatedTest);
+        IReEngineSettingsStore settingsStore = new AppFallbackSettingsStore(appEnv.DataDirectory, appEnv.ConfigFilePath);
+        (SettingsMigrationResult mig, ReEngineSettingsBundle settingsBundle) = SettingsMigrationHelper.MigrateAndLoadBundle(
+            ReEngineAppStatusHelper.ResolveAppInstallRoot(), appEnv.DataDirectory, appEnv.ConfigFilePath, settingsStore, allowAppDataProbe: !isIsolatedTest);
         if (mig.Migrated) log("INFO", mig.Summary);
+        if (settingsBundle.Diagnostics is not null)
+        {
+            foreach (string diag in settingsBundle.Diagnostics) log("INFO", diag);
+        }
 
         var updateCoordinator = new UpdateCoordinator(appEnv.DataDirectory, appEnv.ConfigFilePath);
-        ReEngineSettings settings = updateCoordinator.LoadSettings().Value;
+        ReEngineSettings settings = settingsBundle.Core;
         string? containmentRoot = isIsolatedTest ? ResolveContainmentRoot(appEnv) : null;
         string enginesDir = ResolveEnginesDir(RecompLaunchOptions.GetOptionValue(args, "--engines-dir", requiredIfPresent: true), settings, appEnv, containmentRoot);
         if (containmentRoot is not null) EnforceContainment(appEnv, enginesDir, containmentRoot);
@@ -168,7 +173,7 @@ internal static partial class Program
                 ? (RecompLaunchOptions.GetOptionValue(args, "--module", requiredIfPresent: true) ?? RecompLaunchOptions.GetPositionalArg(args, 1))
                 : openTarget;
             string? stageRaw = RecompLaunchOptions.GetOptionValue(args, "--stage", requiredIfPresent: true);
-            return RunVisibleMainForm(args, appEnv, enginesDir, updateCoordinator, assocStore, containmentRoot, log, decompPath, stageRaw);
+            return RunVisibleMainForm(args, appEnv, enginesDir, updateCoordinator, assocStore, containmentRoot, log, decompPath, stageRaw, settingsStore);
         }
 
         if (launchOpts.VerifyModule is not null)
@@ -176,25 +181,25 @@ internal static partial class Program
         if (CliArgumentHelper.HasFlag(args, "--check-updates"))
             return await RunUpdateCheckCliAsync(updateCoordinator, settings, enginesDir, RecompLaunchOptions.GetOptionValue(args, "--feed", requiredIfPresent: true), containmentRoot, CliArgumentHelper.HasFlag(args, "--strict"), log, ct).ConfigureAwait(false);
         if (launchOpts.HostDemo)
-            return await RunHostDemoSessionAsync(launchOpts, appEnv, containmentRoot, log, ct).ConfigureAwait(false);
+            return await RunHostDemoSessionAsync(launchOpts, appEnv, containmentRoot, log, ct, settingsBundle, settingsStore).ConfigureAwait(false);
         if (!string.IsNullOrWhiteSpace(openTarget))
-            return await new RecompLaunchCoordinator(updateCoordinator, log).LaunchAsync(openTarget, enginesDir, settings, appEnv, containmentRoot, launchOpts, ct).ConfigureAwait(false);
+            return await new RecompLaunchCoordinator(updateCoordinator, log, settingsStore).LaunchAsync(openTarget, enginesDir, settingsBundle, appEnv, containmentRoot, launchOpts, ct).ConfigureAwait(false);
 
         if (launchOpts.Verify || launchOpts.Doctor || launchOpts.TrayOnly || (isIsolatedTest && !explicitWindow))
             return RunTrayDiagnostics(enginesDir, settings, assocStore, appEnv, isIsolatedTest, null, log);
 
-        return RunVisibleMainForm(args, appEnv, enginesDir, updateCoordinator, assocStore, containmentRoot, log);
+        return RunVisibleMainForm(args, appEnv, enginesDir, updateCoordinator, assocStore, containmentRoot, log, settingsStore: settingsStore);
     }
 
     private static int RunVisibleMainForm(
         string[] args, AppEnvironment appEnv, string enginesDir, UpdateCoordinator updateCoordinator,
         IFileAssociationStore assocStore, string? containmentRoot, Action<string, string> log,
-        string? initialDecompPath = null, string? initialDecompStage = null)
+        string? initialDecompPath = null, string? initialDecompStage = null, IReEngineSettingsStore? settingsStore = null)
     {
         Application.EnableVisualStyles();
         Application.SetCompatibleTextRenderingDefault(false);
         Application.SetHighDpiMode(HighDpiMode.PerMonitorV2);
-        using var form = new ReEngineMainForm(appEnv, enginesDir, updateCoordinator, assocStore, log, containmentRoot, initialDecompPath, initialDecompStage);
+        using var form = new ReEngineMainForm(appEnv, enginesDir, updateCoordinator, assocStore, log, containmentRoot, initialDecompPath, initialDecompStage, settingsStore);
 
 #if REENGINE_ENABLE_AUTOMATION
         AutomationLoopbackServer? autoServer = null;
@@ -273,7 +278,13 @@ internal static partial class Program
     private static void PrintUsage()
     {
         Console.WriteLine("reEngine - Zero-Daemon .recomp & .decomp Static Recompilation Suite Router");
-        Console.WriteLine("Usage: reEngine.exe [--open <path> | <file.recomp>] [--backend opengl|vulkan|directx|parallelCpu|software] [--scale 1|2|4|8] [--fullscreen] [--save-dir <dir>] [--audio-driver <drv>] [--shutdown-timeout-ms <ms>] [--jit-bringup] [--wait] [--register-assoc] [--verify-module <pkg|engine> [--json] [--require-media]] [--check-updates [--strict]] [--verify] [--doctor] [--host-demo]");
+        Console.WriteLine("Usage: reEngine.exe [--open <path> | <file.recomp>] [--backend opengl|vulkan|directx|parallelCpu|software] [--scale 1|2|4|8] [--aspect-mode nativePar|fourByThree|squareInteger|nativeFit|horPlus16By9|horPlus21By9]");
+        Console.WriteLine("       [--fullscreen | --display-mode windowed|borderlessFullscreen|exclusiveFullscreen] [--monitor <n>] [--target-fps <n>] [--bg-fps-cap <n>] [--vsync | --no-vsync]");
+        Console.WriteLine("       [--video-filter nearest|bilinear|sharpBilinear|scanlines|crtLite|crt-aperture|lcdGrid|xbrz|ntscComposite] [--true-color | --no-true-color] [--dithering | --no-dithering] [--hud-anchor safeFourByThree|screenEdges|custom] [--screenshot-mode cleanNative|filteredComposite]");
+        Console.WriteLine("       [--execution-tier staticAotOnly|aotWithJitFallback|aotWithThreadedIr|jitBringup|interpreterOracle] [--jit-bringup] [--preload-media] [--preload-media-to-ram | --no-preload-media-to-ram] [--fast-boot | --no-fast-boot] [--safe-mode-reset] [--ff-multiplier 2.0..4.0]");
+        Console.WriteLine("       [--audio-driver <drv>] [--audio-device <name>] [--master-volume 0..1] [--bgm-volume 0..1] [--sfx-volume 0..1] [--voice-volume 0..1] [--audio-muted | --no-audio-muted] [--mute-on-focus-loss | --no-mute-on-focus-loss]");
+        Console.WriteLine("       [--audio-lowpass-hz <hz>] [--audio-highpass-hz <hz>] [--stereo-width 0..200] [--audio-resampling linear|sincCubic] [--ff-audio-mode attenuatedLowPass|muted|normal]");
+        Console.WriteLine("       [--save-dir <dir>] [--shutdown-timeout-ms <ms>] [--wait] [--register-assoc] [--verify-module <pkg|engine> [--json] [--require-media]] [--check-updates [--strict]] [--verify] [--doctor] [--host-demo]");
         Console.WriteLine("       reEngine.exe decomp --module <file.decomp> [--stage D0..D5] [--media-path <path>] [--engine-dir <dir>] [--toolchain-dir <dir>] [--output-dir <dir>] [--data-dir <dir>] [--log-dir <dir>] [--config <path>] [--headless] [--dry-run] [--window] [--version] [--help]");
     }
 }

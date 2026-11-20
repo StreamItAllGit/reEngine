@@ -27,9 +27,11 @@ internal sealed partial class ReEngineMainForm : Form
     private readonly AppEnvironment _appEnv;
     private readonly string _enginesDir;
     private readonly UpdateCoordinator _updateCoordinator;
+    private readonly IReEngineSettingsStore _settingsStore;
     private readonly IFileAssociationStore _assocStore;
     private readonly Action<string, string> _log;
     private readonly string? _containmentRoot;
+    private ReEngineSettingsBundle _settingsBundle;
     private ReEngineSettings _settings;
     private DecompDispatchStatusSummary _lastDecompStatus = new(false, string.Empty, 0, "lightweight");
     private AotCacheStatusSummary _lastAotStatus = new(string.Empty, 0, 0);
@@ -44,7 +46,8 @@ internal sealed partial class ReEngineMainForm : Form
         Action<string, string> log,
         string? containmentRoot = null,
         string? initialDecompPath = null,
-        string? initialDecompStage = null)
+        string? initialDecompStage = null,
+        IReEngineSettingsStore? settingsStore = null)
     {
         _appEnv = appEnv ?? throw new ArgumentNullException(nameof(appEnv));
         _enginesDir = enginesDir ?? throw new ArgumentNullException(nameof(enginesDir));
@@ -52,7 +55,9 @@ internal sealed partial class ReEngineMainForm : Form
         _assocStore = assocStore ?? throw new ArgumentNullException(nameof(assocStore));
         _log = log ?? throw new ArgumentNullException(nameof(log));
         _containmentRoot = containmentRoot;
-        _settings = _updateCoordinator.LoadSettings().Value;
+        _settingsStore = settingsStore ?? new AppFallbackSettingsStore(_appEnv.DataDirectory, _appEnv.ConfigFilePath);
+        _settingsBundle = _settingsStore.LoadOrMigrate();
+        _settings = _settingsBundle.Core;
 
         Name = "ReEngineMainForm";
         Text = $"reEngine — Suite Router & Engine Manager (v{ReEnginePackagingConstants.Version})";
@@ -111,7 +116,7 @@ internal sealed partial class ReEngineMainForm : Form
         var resolver = new EngineVersionResolver();
         IReadOnlyList<InstalledEngineCandidate> engines = resolver.DiscoverInstalledEngines(_enginesDir);
         _enginesShelf.Populate(engines, _settings);
-        _libraryShelf.ApplySettings(_settings);
+        _libraryShelf.ApplySettings(_settingsBundle);
 
         FileAssociationRecord? assoc = _assocStore.ReadRecompAssociation();
         _lblAssocPill.Text = _assocStore is VirtualRegistryAssociationStore ? (assoc is not null ? "VIRTUALIZED" : "UNREGISTERED") : (assoc is not null ? "REGISTERED" : "UNREGISTERED");
@@ -141,21 +146,35 @@ internal sealed partial class ReEngineMainForm : Form
 
     private void OnLibrarySelectionChanged(string backendId, int scale, bool jitBringup)
     {
-        _settings.BackendId = backendId;
-        _settings.ResolutionScale = scale;
-        _settings.PreferredResolutionScale = null;
-        _settings.IsFullscreen = _libraryShelf.FullscreenCheckBox.Checked;
-        ReEngineAppStatusHelper.SetJitBringup(_settings, jitBringup);
-        _updateCoordinator.SaveSettings(_settings);
+        _libraryShelf.WriteToBundle(_settingsBundle);
+        _settingsStore.SaveAll(_settingsBundle);
         _lblStatusText.Text = $"Launch defaults saved: backend={backendId}, scale={scale}x, liveJitFallback={(jitBringup ? "on" : "off")}.";
         UpdateDrawerSummary(_enginesShelf.SelectedCandidate);
     }
 
     private void OnFullscreenToggled()
     {
-        _settings.IsFullscreen = _libraryShelf.FullscreenCheckBox.Checked;
-        _updateCoordinator.SaveSettings(_settings);
-        _lblStatusText.Text = $"Default fullscreen presentation {(_settings.IsFullscreen ? "enabled" : "disabled")}.";
+        _libraryShelf.WriteToBundle(_settingsBundle);
+        _settingsStore.SaveAll(_settingsBundle);
+        _lblStatusText.Text = $"Default fullscreen presentation {(_settingsBundle.Video.IsFullscreen ? "enabled" : "disabled")} ({_settingsBundle.Video.DisplayMode}).";
+        UpdateDrawerSummary(_enginesShelf.SelectedCandidate);
+    }
+
+    private void OnDisplayAudioSettingsChanged()
+    {
+        _libraryShelf.WriteToBundle(_settingsBundle);
+        _settingsStore.SaveAll(_settingsBundle);
+        _lblStatusText.Text = $"Display/audio defaults saved: display={_settingsBundle.Video.DisplayMode}, filter={_settingsBundle.Video.VideoFilterMode}, muted={_settingsBundle.Audio.IsAudioMuted}.";
+        UpdateDrawerSummary(_enginesShelf.SelectedCandidate);
+    }
+
+    private void OnResetSafeModeRequested()
+    {
+        _settingsBundle.Core.IsSafeModeActive = false;
+        _settingsStore.SaveCore(_settingsBundle.Core);
+        _libraryShelf.ApplySettings(_settingsBundle);
+        UpdateDrawerSummary(_enginesShelf.SelectedCandidate);
+        _lblStatusText.Text = "Safe Mode cleared; next launch will restore configured HD packs and overrides.";
     }
 
     private void OnEngineOptionsChanged(bool shouldCheckUpdates, bool shouldAutoStage, string profile)
@@ -163,7 +182,7 @@ internal sealed partial class ReEngineMainForm : Form
         _settings.ShouldCheckUpdates = shouldCheckUpdates;
         _settings.ShouldAutoStagePatches = shouldAutoStage;
         ReEngineAppStatusHelper.SetInstallProfile(_settings, profile);
-        _updateCoordinator.SaveSettings(_settings);
+        _settingsStore.SaveCore(_settings);
         _lblStatusText.Text = $"Engine preferences saved (profile={ReEngineAppStatusHelper.GetInstallProfile(_settings)}).";
     }
 
@@ -182,7 +201,8 @@ internal sealed partial class ReEngineMainForm : Form
             _lastDecompStatus,
             _lastAotStatus,
             _appEnv.DataDirectory,
-            pinned);
+            pinned,
+            _settingsBundle);
     }
 
     private void OnPinTrackClicked(InstalledEngineCandidate? selected)
@@ -190,7 +210,7 @@ internal sealed partial class ReEngineMainForm : Form
         if (selected is null) { _lblStatusText.Text = "Select an engine row in the Engines list to pin its version."; return; }
         _settings.PinnedEngineVersions ??= new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         _settings.PinnedEngineVersions[selected.EngineId] = selected.Version.ToString();
-        _updateCoordinator.SaveSettings(_settings);
+        _settingsStore.SaveCore(_settings);
         UpdateDrawerSummary(selected);
         _lblStatusText.Text = $"Pinned '{selected.EngineId}' to v{selected.Version} for track rollback.";
     }
@@ -198,7 +218,7 @@ internal sealed partial class ReEngineMainForm : Form
     private void OnClearPinsClicked()
     {
         _settings.PinnedEngineVersions?.Clear();
-        _updateCoordinator.SaveSettings(_settings);
+        _settingsStore.SaveCore(_settings);
         UpdateDrawerSummary(_enginesShelf.SelectedCandidate);
         _lblStatusText.Text = "Cleared pinned engine track overrides.";
     }
@@ -247,15 +267,11 @@ internal sealed partial class ReEngineMainForm : Form
     {
         _settings.ShouldCheckUpdates = _enginesShelf.CheckUpdatesCheckBox.Checked;
         _settings.ShouldAutoStagePatches = _enginesShelf.AutoStageCheckBox.Checked;
-        _settings.BackendId = _libraryShelf.SelectedBackend;
-        _settings.ResolutionScale = _libraryShelf.SelectedResolutionScale;
-        _settings.PreferredResolutionScale = null;
-        _settings.IsFullscreen = _libraryShelf.FullscreenCheckBox.Checked;
-        ReEngineAppStatusHelper.SetJitBringup(_settings, _libraryShelf.JitBringupCheckBox.Checked);
         ReEngineAppStatusHelper.SetInstallProfile(_settings, _enginesShelf.InstallProfileCombo.SelectedItem as string);
+        _libraryShelf.WriteToBundle(_settingsBundle);
         _settings.WindowWidth = ClientSize.Width;
         _settings.WindowHeight = ClientSize.Height;
-        _updateCoordinator.SaveSettings(_settings);
+        _settingsStore.SaveAll(_settingsBundle);
         RefreshAllState();
         _lblStatusText.Text = "Settings saved atomically.";
     }
@@ -263,20 +279,16 @@ internal sealed partial class ReEngineMainForm : Form
     protected override void OnFormClosing(FormClosingEventArgs e)
     {
         bool windowResized = _settings.WindowWidth != ClientSize.Width || _settings.WindowHeight != ClientSize.Height;
-        bool libraryDiff = !string.Equals(_settings.BackendId, _libraryShelf.SelectedBackend, StringComparison.OrdinalIgnoreCase) ||
-                           _settings.ResolutionScale != _libraryShelf.SelectedResolutionScale ||
-                           _settings.IsFullscreen != _libraryShelf.FullscreenCheckBox.Checked ||
+        bool libraryDiff = !string.Equals(_settingsBundle.Video.BackendId, _libraryShelf.SelectedBackend, StringComparison.OrdinalIgnoreCase) ||
+                           _settingsBundle.Video.ResolutionScale != _libraryShelf.SelectedResolutionScale ||
+                           _settingsBundle.Video.IsFullscreen != _libraryShelf.FullscreenCheckBox.Checked ||
                            ReEngineAppStatusHelper.GetJitBringup(_settings) != _libraryShelf.JitBringupCheckBox.Checked;
         if (windowResized || libraryDiff)
         {
-            _settings.BackendId = _libraryShelf.SelectedBackend;
-            _settings.ResolutionScale = _libraryShelf.SelectedResolutionScale;
-            _settings.PreferredResolutionScale = null;
-            _settings.IsFullscreen = _libraryShelf.FullscreenCheckBox.Checked;
-            ReEngineAppStatusHelper.SetJitBringup(_settings, _libraryShelf.JitBringupCheckBox.Checked);
+            _libraryShelf.WriteToBundle(_settingsBundle);
             _settings.WindowWidth = ClientSize.Width;
             _settings.WindowHeight = ClientSize.Height;
-            _updateCoordinator.SaveSettings(_settings);
+            _settingsStore.SaveAll(_settingsBundle);
         }
         base.OnFormClosing(e);
     }

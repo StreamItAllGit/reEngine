@@ -1,6 +1,6 @@
 // @module: reEngine.App.RecompLaunchCoordinator
 // @purpose: Orchestrates .recomp manifest loading, data\rom preload discovery, track/alias engine resolution, and guarded child launch.
-// @depends-on: System, System.Collections.Generic, System.Diagnostics, System.IO, System.Linq, System.Threading, System.Threading.Tasks, Foundation.Core, reEngine.Core
+// @depends-on: System, System.Collections.Generic, System.Diagnostics, System.IO, System.Linq, System.Threading, System.Threading.Tasks, Foundation.Core, reEngine.Core, reEngine.Host.Contracts
 // @exports: RecompLaunchCoordinator
 
 using System.Diagnostics;
@@ -8,6 +8,7 @@ using Foundation.Core;
 using reEngine.Core.Manifests;
 using reEngine.Core.Resolution;
 using reEngine.Core.Updates;
+using reEngine.Host.Contracts;
 
 namespace reEngine.App;
 
@@ -15,13 +16,18 @@ internal sealed class RecompLaunchCoordinator
 {
     private readonly UpdateCoordinator _updateCoordinator;
     private readonly Action<string, string> _log;
+    private readonly IReEngineSettingsStore? _settingsStore;
 
     internal Func<InstalledEngineCandidate, ChildLaunchPlan, ProcessStartInfo>? StartInfoOverride { get; init; }
 
-    public RecompLaunchCoordinator(UpdateCoordinator updateCoordinator, Action<string, string> log)
+    public RecompLaunchCoordinator(
+        UpdateCoordinator updateCoordinator,
+        Action<string, string> log,
+        IReEngineSettingsStore? settingsStore = null)
     {
         _updateCoordinator = updateCoordinator ?? throw new ArgumentNullException(nameof(updateCoordinator));
         _log = log ?? throw new ArgumentNullException(nameof(log));
+        _settingsStore = settingsStore;
     }
 
     public Task<int> LaunchAsync(
@@ -33,7 +39,7 @@ internal sealed class RecompLaunchCoordinator
         CancellationToken ct) =>
         LaunchAsync(packagePath, enginesDir, settings, appEnv, containmentRoot, new RecompLaunchOptions(), ct);
 
-    public async Task<int> LaunchAsync(
+    public Task<int> LaunchAsync(
         string packagePath,
         string enginesDir,
         ReEngineSettings settings,
@@ -42,10 +48,45 @@ internal sealed class RecompLaunchCoordinator
         RecompLaunchOptions? launchOptions,
         CancellationToken ct)
     {
+        ArgumentNullException.ThrowIfNull(settings);
+        ArgumentNullException.ThrowIfNull(appEnv);
+        ReEngineSettingsBundle bundle = ResolveBundleForLegacyCaller(settings, appEnv);
+        return LaunchAsync(packagePath, enginesDir, bundle, appEnv, containmentRoot, launchOptions, ct);
+    }
+
+    public Task<int> LaunchAsync(
+        string packagePath,
+        string enginesDir,
+        ReEngineSettingsBundle settingsBundle,
+        AppEnvironment appEnv,
+        string? containmentRoot,
+        CancellationToken ct) =>
+        LaunchAsync(packagePath, enginesDir, settingsBundle, appEnv, containmentRoot, new RecompLaunchOptions(), ct);
+
+    public async Task<int> LaunchAsync(
+        string packagePath,
+        string enginesDir,
+        ReEngineSettingsBundle settingsBundle,
+        AppEnvironment appEnv,
+        string? containmentRoot,
+        RecompLaunchOptions? launchOptions,
+        CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(settingsBundle);
+        ArgumentNullException.ThrowIfNull(appEnv);
+
+        ReEngineSettings settings = settingsBundle.Core;
         string fullPkgPath = Path.GetFullPath(packagePath);
         if (!string.IsNullOrWhiteSpace(containmentRoot))
         {
             AppEnvironment.AssertPathContained(fullPkgPath, containmentRoot);
+        }
+
+        if (launchOptions?.SafeModeReset == true && settings.IsSafeModeActive)
+        {
+            settings.IsSafeModeActive = false;
+            (_settingsStore ?? new AppFallbackSettingsStore(appEnv.DataDirectory, appEnv.ConfigFilePath)).SaveCore(settings);
+            _log("INFO", "Safe Mode cleared before module launch (--safe-mode-reset).");
         }
 
         RecompPackageLoadResult loaded = RecompPackageReader.Load(fullPkgPath);
@@ -61,12 +102,20 @@ internal sealed class RecompLaunchCoordinator
             return 1;
         }
 
+        bool effectiveFullscreen = launchOptions?.DisplayMode is HostDisplayMode dm
+            ? dm != HostDisplayMode.Windowed
+            : (launchOptions?.Fullscreen == true || settingsBundle.Video.IsFullscreen || settings.IsFullscreen);
+        string? effectiveAudioDriver = !string.IsNullOrWhiteSpace(launchOptions?.AudioDriverOverride)
+            ? launchOptions!.AudioDriverOverride
+            : (settingsBundle.Audio.AudioDriver ?? settings.AudioDriver);
+
         RecompLaunchOptions effectiveOpts = (launchOptions ?? new RecompLaunchOptions()) with
         {
-            Fullscreen = (launchOptions?.Fullscreen == true) || settings.IsFullscreen,
-            AudioDriverOverride = !string.IsNullOrWhiteSpace(launchOptions?.AudioDriverOverride) ? launchOptions!.AudioDriverOverride : settings.AudioDriver
+            Fullscreen = effectiveFullscreen,
+            AudioDriverOverride = effectiveAudioDriver
         };
-        ChildLaunchPlan plan = RecompLaunchPlanBuilder.Build(loaded, appEnv, containmentRoot, effectiveOpts, resolution.SelectedEngine, _log, settings);
+        ChildLaunchPlan plan = RecompLaunchPlanBuilder.Build(
+            loaded, appEnv, containmentRoot, effectiveOpts, resolution.SelectedEngine, _log, settingsBundle);
         _log("INFO", resolution.DiagnosticMessage);
         Console.WriteLine(resolution.DiagnosticMessage);
         Console.WriteLine($"Preload media detected: {loaded.PreloadMedia.DiscoveredMediaFiles.Count} file(s) -> {loaded.PreloadMedia.PrimaryMediaPath ?? "none"}");
@@ -95,8 +144,22 @@ internal sealed class RecompLaunchCoordinator
         RecompPackageLoadResult loaded,
         AppEnvironment appEnv,
         string? containmentRoot,
-        RecompLaunchOptions? launchOptions = null) =>
-        RecompLaunchPlanBuilder.Build(loaded, appEnv, containmentRoot, launchOptions);
+        RecompLaunchOptions? launchOptions = null,
+        ReEngineSettingsBundle? settingsBundle = null) =>
+        RecompLaunchPlanBuilder.Build(loaded, appEnv, containmentRoot, launchOptions, selectedEngine: null, log: null, settingsBundle: settingsBundle);
+
+    private ReEngineSettingsBundle ResolveBundleForLegacyCaller(ReEngineSettings settings, AppEnvironment appEnv)
+    {
+        IReEngineSettingsStore store = _settingsStore ?? new AppFallbackSettingsStore(appEnv.DataDirectory, appEnv.ConfigFilePath);
+        string videoPath = Path.Combine(store.ConfigDirectory, "settings.video.json");
+        string audioPath = Path.Combine(store.ConfigDirectory, "settings.audio.json");
+        if (File.Exists(videoPath) || File.Exists(audioPath))
+        {
+            ReEngineSettingsBundle diskBundle = store.LoadOrMigrate();
+            return diskBundle with { Core = settings };
+        }
+        return SettingsMigrationHelper.BuildBundleFromLegacyCore(settings, Path.Combine(store.ConfigDirectory, "settings.controls.json"));
+    }
 
     private async Task TryNonBlockingUpdateCheckAsync(
         ReEngineSettings settings,

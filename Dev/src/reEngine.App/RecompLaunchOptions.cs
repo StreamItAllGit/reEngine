@@ -1,9 +1,8 @@
 // @module: reEngine.App.RecompLaunchOptions
-// @purpose: CLI option extraction and validated child passthrough flags (backends, aspect ratio, JIT bring-up, automation) for RecompLaunchCoordinator.
-// @depends-on: System, System.Collections.Generic, System.Globalization, Foundation.Core, reEngine.Core.Resolution, reEngine.Host.Contracts
+// @purpose: CLI option record, registered value flags matching LauncherArgsHelper, and delegated parser accessors for RecompLaunchCoordinator.
+// @depends-on: System, System.Collections.Generic, Foundation.Core, reEngine.Core.Resolution, reEngine.Host.Contracts
 // @exports: RecompLaunchOptions
 
-using System.Globalization;
 using Foundation.Core;
 using reEngine.Core.Resolution;
 using reEngine.Host.Contracts;
@@ -18,7 +17,12 @@ internal sealed record RecompLaunchOptions
         "--data-dir", "--config", "--log-dir", "--save-dir", "--feed", "--port", "--ui",
         "--backend", "--scale", "--aspect-mode", "--suite-tab", "--profile", "--automation-port", "--automation-token",
         "--frames", "--fixture", "--dump-screenshot", "--dump-audio",
-        "--shutdown-timeout-ms", "--audio-driver", "--media-path"
+        "--shutdown-timeout-ms", "--audio-driver", "--media-path",
+        "--execution-tier", "--display-mode", "--monitor", "--target-fps", "--bg-fps-cap",
+        "--video-filter", "--hud-anchor", "--screenshot-mode", "--audio-device",
+        "--master-volume", "--bgm-volume", "--sfx-volume", "--voice-volume",
+        "--audio-lowpass-hz", "--audio-highpass-hz", "--stereo-width", "--audio-resampling",
+        "--ff-audio-mode", "--ff-multiplier"
     };
 
     public static readonly IReadOnlyDictionary<string, string> SupportedBackends = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
@@ -70,160 +74,41 @@ internal sealed record RecompLaunchOptions
     public string? DumpScreenshotPath { get; init; }
     public string? DumpAudioPath { get; init; }
 
-    public static RecompLaunchOptions FromArgs(string[] args, AppEnvironment appEnv)
-    {
-        ArgumentNullException.ThrowIfNull(args);
-        ArgumentNullException.ThrowIfNull(appEnv);
+    // v0.6.0 Execution Resilience, Display/Filters, and Audio DSP CLI overrides
+    public bool? PreloadMediaToRam { get; init; }
+    public bool? FastBoot { get; init; }
+    public bool SafeModeReset { get; init; }
+    public string? ExecutionTierMode { get; init; }
+    public HostDisplayMode? DisplayMode { get; init; }
+    public int? MonitorIndex { get; init; }
+    public int? TargetFps { get; init; }
+    public int? BackgroundFpsCap { get; init; }
+    public bool? Vsync { get; init; }
+    public HostVideoFilterMode? VideoFilterMode { get; init; }
+    public bool? TrueColor { get; init; }
+    public bool? Dithering { get; init; }
+    public HostHudAnchorMode? HudAnchorMode { get; init; }
+    public HostScreenshotCaptureMode? ScreenshotCaptureMode { get; init; }
+    public double? FastForwardMultiplier { get; init; }
+    public string? AudioOutputDevice { get; init; }
+    public double? MasterVolume { get; init; }
+    public bool? AudioMuted { get; init; }
+    public bool? MuteOnFocusLoss { get; init; }
+    public double? BgmVolume { get; init; }
+    public double? SfxVolume { get; init; }
+    public double? VoiceVolume { get; init; }
+    public int? AudioLowPassHz { get; init; }
+    public int? AudioHighPassHz { get; init; }
+    public double? AudioStereoWidthPercent { get; init; }
+    public HostAudioResamplingMode? AudioResamplingMode { get; init; }
+    public HostFastForwardAudioMode? FastForwardAudioMode { get; init; }
 
-        int? frames = ParseOptionalPositiveInt(GetOptionValue(args, "--frames", requiredIfPresent: true), "--frames");
-        int? automationPort = ParseOptionalNonNegativeInt(GetOptionValue(args, "--automation-port", requiredIfPresent: true), "--automation-port");
-        int? shutdownTimeoutMs = ParseOptionalBoundedInt(GetOptionValue(args, "--shutdown-timeout-ms", requiredIfPresent: true), "--shutdown-timeout-ms", 100, 30000);
-        string? rawBackend = GetOptionValue(args, "--backend", requiredIfPresent: true);
-        string? normalizedBackend = null;
-        if (!string.IsNullOrWhiteSpace(rawBackend))
-        {
-            if (!HostRenderBackendIds.TryNormalize(rawBackend, out string canonical))
-            {
-                throw new ArgumentException($"Unsupported --backend '{rawBackend}'; expected opengl, vulkan, directx, parallelCpu, or software.");
-            }
-            normalizedBackend = canonical;
-        }
-        int? resolutionScale = ParseOptionalResolutionScale(GetOptionValue(args, "--scale", requiredIfPresent: true));
-        HostAspectRatioMode? aspectRatioMode = ParseOptionalAspectRatioMode(GetOptionValue(args, "--aspect-mode", requiredIfPresent: true));
+    public static RecompLaunchOptions FromArgs(string[] args, AppEnvironment appEnv) =>
+        RecompLaunchOptionParser.Parse(args, appEnv, ValueOptions);
 
-        return new RecompLaunchOptions
-        {
-            ShouldWaitForExit = CliArgumentHelper.HasFlag(args, "--wait"),
-            Fullscreen = CliArgumentHelper.HasFlag(args, "--fullscreen"),
-            Headless = CliArgumentHelper.HasFlag(args, "--headless"),
-            Json = CliArgumentHelper.HasFlag(args, "--json"),
-            RequireMedia = CliArgumentHelper.HasFlag(args, "--require-media"),
-            TrayOnly = appEnv.TrayOnly || appEnv.PresentationMode == UiPresentationMode.TrayOrBackground || CliArgumentHelper.HasFlag(args, "--tray-only"),
-            ShouldEnableRuntimeLogs = CliArgumentHelper.HasFlag(args, "--enable-logs"),
-            Verify = CliArgumentHelper.HasFlag(args, "--verify"),
-            VerifyModule = GetOptionValue(args, "--verify-module", requiredIfPresent: true),
-            Doctor = CliArgumentHelper.HasFlag(args, "--doctor"),
-            RequireBackend = CliArgumentHelper.HasFlag(args, "--require-backend"),
-            JitBringup = CliArgumentHelper.HasFlag(args, "--jit-bringup"),
-            PreloadMediaFlag = CliArgumentHelper.HasFlag(args, "--preload-media"),
-            HostDemo = CliArgumentHelper.HasFlag(args, "--host-demo"),
-            HdTexturePacks = CliArgumentHelper.HasFlag(args, "--hd-packs"),
-            BackendId = normalizedBackend,
-            ResolutionScale = resolutionScale,
-            AspectRatioMode = aspectRatioMode,
-            SaveDirOverride = GetOptionValue(args, "--save-dir", requiredIfPresent: true),
-            AudioDriverOverride = GetOptionValue(args, "--audio-driver", requiredIfPresent: true),
-            MediaPathOverride = GetOptionValue(args, "--media-path", requiredIfPresent: true),
-            ShutdownTimeoutMs = shutdownTimeoutMs,
-            SuiteTab = GetOptionValue(args, "--suite-tab", requiredIfPresent: true),
-            Profile = GetOptionValue(args, "--profile", requiredIfPresent: true),
-            AutomationPort = automationPort,
-            AutomationToken = GetOptionValue(args, "--automation-token", requiredIfPresent: true),
-            LogDirectoryOverride = GetOptionValue(args, "--log-dir", requiredIfPresent: true),
-            ConfigPathOverride = GetOptionValue(args, "--config", requiredIfPresent: true),
-            Frames = frames,
-            FixturePath = GetOptionValue(args, "--fixture", requiredIfPresent: true),
-            DumpScreenshotPath = GetOptionValue(args, "--dump-screenshot", requiredIfPresent: true),
-            DumpAudioPath = GetOptionValue(args, "--dump-audio", requiredIfPresent: true)
-        };
-    }
+    public static string? GetOptionValue(string[] args, string optionName, bool requiredIfPresent = false) =>
+        RecompLaunchOptionParser.GetOptionValue(args, optionName, requiredIfPresent);
 
-    public static string? GetOptionValue(string[] args, string optionName, bool requiredIfPresent = false)
-    {
-        if (args is null || args.Length == 0) return null;
-        string eqPrefix = optionName + "=";
-        for (int i = 0; i < args.Length; i++)
-        {
-            string arg = args[i] ?? string.Empty;
-            if (arg.StartsWith(eqPrefix, StringComparison.OrdinalIgnoreCase))
-            {
-                string inlineVal = arg[eqPrefix.Length..].Trim();
-                if (inlineVal.Length == 0 && requiredIfPresent) throw new ArgumentException($"Missing value for CLI option '{optionName}'.");
-                return inlineVal.Length > 0 ? inlineVal : null;
-            }
-            if (string.Equals(arg, optionName, StringComparison.OrdinalIgnoreCase))
-            {
-                if (i + 1 >= args.Length)
-                {
-                    if (requiredIfPresent) throw new ArgumentException($"Missing value for CLI option '{optionName}'.");
-                    return null;
-                }
-                string next = (args[i + 1] ?? string.Empty).Trim();
-                if (next.Length == 0 || next.StartsWith("--", StringComparison.Ordinal))
-                {
-                    if (requiredIfPresent) throw new ArgumentException($"Missing value for CLI option '{optionName}'.");
-                    return null;
-                }
-                return next;
-            }
-        }
-        return null;
-    }
-
-    public static string? GetPositionalArg(string[] args, int index)
-    {
-        if (args is null || args.Length == 0) return null;
-        int current = 0;
-        for (int i = 0; i < args.Length; i++)
-        {
-            string a = args[i] ?? string.Empty;
-            if (a.StartsWith("--", StringComparison.Ordinal))
-            {
-                if (!a.Contains('=', StringComparison.Ordinal) && ValueOptions.Contains(a) && i + 1 < args.Length) i++;
-                continue;
-            }
-            if (a.StartsWith("-", StringComparison.Ordinal) || string.Equals(a, "/?", StringComparison.Ordinal) || string.Equals(a, "help", StringComparison.OrdinalIgnoreCase))
-            {
-                continue;
-            }
-            if (current == index) return a;
-            current++;
-        }
-        return null;
-    }
-
-    private static int? ParseOptionalResolutionScale(string? raw)
-    {
-        if (raw is null) return null;
-        if (!int.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out int val) ||
-            val is not (1 or 2 or 4 or 8))
-        {
-            throw new ArgumentException($"Invalid --scale value '{raw}'; expected 1, 2, 4, or 8.");
-        }
-        return val;
-    }
-
-    private static HostAspectRatioMode? ParseOptionalAspectRatioMode(string? raw)
-    {
-        if (raw is null) return null;
-        if (!HostAspectRatioModeCodec.TryParseStrict(raw, out HostAspectRatioMode mode))
-        {
-            throw new ArgumentException($"Unsupported --aspect-mode '{raw}'; expected nativePar, fourByThree, squareInteger, nativeFit, or horPlus16By9.");
-        }
-        return mode;
-    }
-
-    private static int? ParseOptionalPositiveInt(string? raw, string optionName)
-    {
-        if (raw is null) return null;
-        if (!int.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out int val) || val <= 0)
-            throw new ArgumentException($"Invalid {optionName} value '{raw}'; expected a positive integer.");
-        return val;
-    }
-
-    private static int? ParseOptionalNonNegativeInt(string? raw, string optionName)
-    {
-        if (raw is null) return null;
-        if (!int.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out int val) || val < 0 || val > 65535)
-            throw new ArgumentException($"Invalid {optionName} value '{raw}'; expected port 0..65535.");
-        return val;
-    }
-
-    private static int? ParseOptionalBoundedInt(string? raw, string optionName, int min, int max)
-    {
-        if (raw is null) return null;
-        if (!int.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out int val) || val < min || val > max)
-            throw new ArgumentException($"Invalid {optionName} value '{raw}'; expected integer in {min}..{max}.");
-        return val;
-    }
+    public static string? GetPositionalArg(string[] args, int index) =>
+        RecompLaunchOptionParser.GetPositionalArg(args, index, ValueOptions);
 }

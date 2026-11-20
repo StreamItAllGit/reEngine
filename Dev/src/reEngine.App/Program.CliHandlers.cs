@@ -184,24 +184,75 @@ internal static partial class Program
         string? containmentRoot,
         Action<string, string> log,
         CancellationToken ct,
-        ReEngineSettings? settings = null)
+        ReEngineSettingsBundle? settingsBundle = null,
+        IReEngineSettingsStore? settingsStore = null)
     {
-        ReEngineSettings effectiveSettings = settings
-            ?? new UpdateCoordinator(appEnv.DataDirectory, appEnv.ConfigFilePath).LoadSettings().Value;
-        HostRenderBackendKind preferredKind = ParseHostBackendKind(opts.BackendId);
-        HostAspectRatioMode aspectRatioMode = opts.AspectRatioMode
-            ?? HostAspectRatioModeCodec.Parse(effectiveSettings.AspectRatioMode);
-        HostOverscanCrop overscanCropPx = effectiveSettings.OverscanCropPx is { } crop
-            ? new HostOverscanCrop(
-                Math.Max(0, crop.Top),
-                Math.Max(0, crop.Bottom),
-                Math.Max(0, crop.Left),
-                Math.Max(0, crop.Right))
+        IReEngineSettingsStore effectiveStore = settingsStore ?? new AppFallbackSettingsStore(appEnv.DataDirectory, appEnv.ConfigFilePath);
+        ReEngineSettingsBundle bundle = settingsBundle ?? effectiveStore.LoadOrMigrate();
+        ReEngineSettings core = bundle.Core;
+        ReEngineVideoSettings video = bundle.Video;
+        ReEngineAudioSettings audio = bundle.Audio;
+
+        if (opts.SafeModeReset && core.IsSafeModeActive)
+        {
+            core.IsSafeModeActive = false;
+            effectiveStore.SaveCore(core);
+            log("INFO", "Safe Mode cleared before host-demo launch (--safe-mode-reset).");
+        }
+
+        string effectiveBackendId = !string.IsNullOrWhiteSpace(opts.BackendId) ? opts.BackendId : video.BackendId;
+        HostRenderBackendKind preferredKind = ParseHostBackendKind(effectiveBackendId);
+        int effectiveScale = opts.ResolutionScale ?? video.ResolutionScale;
+        (HostDisplayMode displayMode, bool isFullscreen) = RecompLaunchFlagRouter.ResolveDisplayMode(opts, video, core);
+        HostAspectRatioMode aspectRatioMode = opts.AspectRatioMode ?? HostAspectRatioModeCodec.Parse(video.AspectRatioMode);
+        HostOverscanCrop overscanCropPx = video.OverscanCropPx is { } crop
+            ? new HostOverscanCrop(Math.Max(0, crop.Top), Math.Max(0, crop.Bottom), Math.Max(0, crop.Left), Math.Max(0, crop.Right))
             : HostOverscanCrop.None;
-        bool isFastForwardEnabled = effectiveSettings.IsFastForwardEnabled ?? false;
+
+        string executionTier = RecompLaunchFlagRouter.ResolveEffectiveExecutionTier(opts, manifest: null, core);
+        bool isJitEnabled = opts.JitBringup || core.IsJitEnabled ||
+                            (!string.Equals(executionTier, "staticAotOnly", StringComparison.OrdinalIgnoreCase) &&
+                             !string.Equals(executionTier, "interpreterOracle", StringComparison.OrdinalIgnoreCase));
+        double ffMultiplier = Math.Clamp(opts.FastForwardMultiplier ?? core.FastForwardMultiplier, 2.0, 4.0);
+        string? mediaPath = null;
+        if (!string.IsNullOrWhiteSpace(opts.MediaPathOverride))
+        {
+            string fullMedia = Path.GetFullPath(opts.MediaPathOverride.Trim());
+            mediaPath = containmentRoot is not null ? AppEnvironment.AssertPathContained(fullMedia, containmentRoot) : fullMedia;
+        }
+
+        var mixerSettings = new HostAudioMixerSettings
+        {
+            AudioOutputDevice = !string.IsNullOrWhiteSpace(opts.AudioOutputDevice) ? opts.AudioOutputDevice : audio.AudioOutputDevice,
+            MasterVolume = opts.MasterVolume ?? audio.MasterVolume,
+            IsAudioMuted = opts.AudioMuted ?? audio.IsAudioMuted,
+            BgmVolume = opts.BgmVolume ?? audio.BgmVolume,
+            SfxVolume = opts.SfxVolume ?? audio.SfxVolume,
+            VoiceVolume = opts.VoiceVolume ?? audio.VoiceVolume,
+            ShouldMuteOnFocusLoss = opts.MuteOnFocusLoss ?? audio.ShouldMuteOnFocusLoss,
+            AudioLowPassHz = opts.AudioLowPassHz ?? audio.AudioLowPassHz,
+            AudioHighPassHz = opts.AudioHighPassHz ?? audio.AudioHighPassHz,
+            AudioStereoWidthPercent = opts.AudioStereoWidthPercent ?? audio.AudioStereoWidthPercent,
+            ResamplingMode = opts.AudioResamplingMode ?? HostAudioResamplingModeCodec.Parse(audio.AudioResamplingMode),
+            FastForwardAudioMode = opts.FastForwardAudioMode ?? HostFastForwardAudioModeCodec.Parse(audio.FastForwardAudioMode)
+        };
+
+        var resilience = new HostExecutionResilienceOptions
+        {
+            DataDirectory = appEnv.DataDirectory,
+            ModuleId = "host-demo",
+            IsJitEnabled = isJitEnabled,
+            ExecutionTierMode = executionTier,
+            ShouldPreloadMediaToRam = opts.PreloadMediaToRam ?? core.ShouldPreloadMediaToRam,
+            PreloadMediaPath = mediaPath,
+            IsFastBootEnabled = opts.FastBoot ?? core.IsFastBootEnabled,
+            IsSafeModeActive = !opts.SafeModeReset && core.IsSafeModeActive,
+            ShouldFastLoadData = core.ShouldFastLoadData,
+            FastForwardMultiplier = ffMultiplier
+        };
 
         string verLabel = $"reEngine.Host v{ReEnginePackagingConstants.Version}";
-        var descriptor = HostDrawerDescriptor.CreateDefault("reEngine Visible Host Demo", verLabel);
+        var descriptor = new HostDrawerDescriptor("reEngine Visible Host Demo", verLabel, executionTier, effectiveBackendId, effectiveScale, "B");
         var runner = new HostSessionRunner(1280, 720, descriptor);
         var hostOpts = new HostSessionOptions
         {
@@ -210,7 +261,7 @@ internal static partial class Program
             WindowHeight = 720,
             ContentWidth = 320,
             ContentHeight = 240,
-            TargetFps = 60.0,
+            TargetFps = opts.TargetFps ?? video.TargetFps,
             HeadlessFrameCount = opts.Frames,
             DumpFramePath = opts.DumpScreenshotPath,
             DumpAudioPath = opts.DumpAudioPath,
@@ -221,17 +272,32 @@ internal static partial class Program
             ShowMediaGateInitially = opts.PreloadMediaFlag,
             PreferredBackend = preferredKind,
             RequireBackend = opts.RequireBackend,
-            IsFullscreen = opts.Fullscreen,
-            AudioDriverOverride = opts.AudioDriverOverride,
+            IsFullscreen = isFullscreen,
+            DisplayMode = displayMode,
+            MonitorIndex = opts.MonitorIndex ?? video.MonitorIndex,
+            BackgroundFpsCap = opts.BackgroundFpsCap ?? video.BackgroundFpsCap,
+            IsVsyncEnabled = opts.Vsync ?? video.IsVsyncEnabled,
+            FastForwardMultiplier = ffMultiplier,
+            HudAnchorMode = opts.HudAnchorMode ?? HostHudAnchorModeCodec.Parse(video.HudAnchorMode),
+            VideoFilterMode = opts.VideoFilterMode ?? HostVideoFilterModeCodec.Parse(video.VideoFilterMode),
+            IsTrueColor24BitEnabled = opts.TrueColor ?? video.IsTrueColor24BitEnabled,
+            IsDitheringEnabled = opts.Dithering ?? video.IsDitheringEnabled,
+            ScreenshotCaptureMode = opts.ScreenshotCaptureMode ?? HostScreenshotCaptureModeCodec.Parse(video.ScreenshotCaptureMode),
+            ScreenshotsDirectory = Path.Combine(appEnv.DataDirectory, "screenshots"),
+            ModuleId = "host-demo",
+            AudioDriverOverride = !string.IsNullOrWhiteSpace(opts.AudioDriverOverride) ? opts.AudioDriverOverride : audio.AudioDriver,
+            AudioSettings = mixerSettings,
+            ExecutionResilience = resilience,
             HdPacksDirectory = Path.Combine(appEnv.DataDirectory, "hdpacks"),
-            IsHdTexturePackEnabled = opts.HdTexturePacks,
+            IsHdTexturePackEnabled = opts.HdTexturePacks || video.IsHdTexturePackEnabled,
             AspectRatioMode = aspectRatioMode,
             OverscanCropPx = overscanCropPx,
-            IsFastForwardEnabled = isFastForwardEnabled,
-            DrawerDescriptor = descriptor
+            IsFastForwardEnabled = video.IsFastForwardEnabled,
+            DrawerDescriptor = descriptor,
+            SafeModeCallback = active => { core.IsSafeModeActive = active; effectiveStore.SaveCore(core); }
         };
 
-        log("INFO", $"Starting HostSessionRunner (backend={preferredKind}, aspect={hostOpts.AspectRatioMode}, fastForward={hostOpts.IsFastForwardEnabled}, require={hostOpts.RequireBackend}, fullscreen={hostOpts.IsFullscreen}, automationPort={hostOpts.AutomationPort?.ToString() ?? "off"}).");
+        log("INFO", $"Starting HostSessionRunner (backend={preferredKind}, displayMode={hostOpts.DisplayMode}, filter={hostOpts.VideoFilterMode}, aspect={hostOpts.AspectRatioMode}, tier={executionTier}, safeMode={resilience.IsSafeModeActive}, automationPort={hostOpts.AutomationPort?.ToString() ?? "off"}).");
         HostSessionResult res = await runner.RunAsync(hostOpts, new DemoHostCallbacks(), msg => log("HEARTBEAT", msg), ct).ConfigureAwait(false);
         if (res.ExitCode != 0) Console.Error.WriteLine(res.Summary);
         else Console.WriteLine(res.Summary);
