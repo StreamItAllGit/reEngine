@@ -27,6 +27,29 @@ internal struct SdlFRect
     public float H;
 }
 
+[StructLayout(LayoutKind.Sequential)]
+internal struct SdlRect
+{
+    public int X;
+    public int Y;
+    public int W;
+    public int H;
+}
+
+[StructLayout(LayoutKind.Sequential)]
+internal struct SdlDisplayMode
+{
+    public uint DisplayId;
+    public uint Format;
+    public int W;
+    public int H;
+    public float PixelDensity;
+    public float RefreshRate;
+    public int RefreshRateNumerator;
+    public int RefreshRateDenominator;
+    public IntPtr Internal;
+}
+
 internal static unsafe class Sdl3Native
 {
     private const string Lib = "SDL3";
@@ -45,6 +68,7 @@ internal static unsafe class Sdl3Native
     public const ulong WindowFullscreen = 0x01UL;
     public const ulong WindowOpenGl = 0x02UL;
     public const ulong WindowHidden = 0x08UL;
+    public const ulong WindowBorderless = 0x10UL;
     public const ulong WindowResizable = 0x20UL;
     public const ulong WindowVulkan = 0x10000000UL;
 
@@ -60,6 +84,8 @@ internal static unsafe class Sdl3Native
     public const int GlContextProfileCore = 1;
 
     public const uint EventQuit = 0x100U;
+    public const uint EventWindowFocusGained = 0x20EU;
+    public const uint EventWindowFocusLost = 0x20FU;
     public const uint EventWindowCloseRequested = 0x210U;
     public const uint EventKeyDown = 0x300U;
     public const uint EventKeyUp = 0x301U;
@@ -83,6 +109,15 @@ internal static unsafe class Sdl3Native
     [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)] public static extern byte SDL_ShowWindow(IntPtr window);
     [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)] public static extern byte SDL_RaiseWindow(IntPtr window);
     [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)] public static extern byte SDL_SetWindowFullscreen(IntPtr window, byte fullscreen);
+    [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)] public static extern byte SDL_SetWindowFullscreenMode(IntPtr window, SdlDisplayMode* mode);
+    [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)] public static extern byte SDL_SetWindowPosition(IntPtr window, int x, int y);
+    [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)] public static extern byte SDL_SetWindowBordered(IntPtr window, byte bordered);
+    [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)] public static extern uint* SDL_GetDisplays(out int count);
+    [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)] public static extern uint SDL_GetPrimaryDisplay();
+    [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)] public static extern byte SDL_GetDisplayBounds(uint displayId, SdlRect* rect);
+    [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)] public static extern byte* SDL_GetDisplayName(uint displayId);
+    [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)] public static extern SdlDisplayMode* SDL_GetCurrentDisplayMode(uint displayId);
+    [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)] public static extern void SDL_free(IntPtr mem);
     [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)] public static extern byte SDL_GetWindowSize(IntPtr window, out int w, out int h);
     [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)] public static extern byte SDL_GetWindowSizeInPixels(IntPtr window, out int w, out int h);
     [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)] public static extern uint SDL_GetWindowProperties(IntPtr window);

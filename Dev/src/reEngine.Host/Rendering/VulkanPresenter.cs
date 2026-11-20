@@ -15,14 +15,17 @@ namespace reEngine.Host.Rendering;
 /// </summary>
 public sealed unsafe class VulkanPresenter : IHostSurfacePresenter
 {
+    private readonly VulkanReadbackHelper _readback = new();
     private VkDispatch _vk;
     private IntPtr _sdlWindow, _instance, _physicalDevice, _device, _queue, _cmdBuffer;
     private ulong _surface, _swapchain, _cmdPool, _fence, _imgAvailSem, _renderDoneSem, _stagingBuf, _stagingMem;
     private void* _stagingMapped;
     private ulong _stagingSize;
     private ulong[] _swapImages = [];
-    private uint _queueFamily, _swapWidth, _swapHeight, _swapFormat;
-    private bool _vulkanLoaded, _disposed;
+    private uint _queueFamily, _swapWidth, _swapHeight, _swapFormat, _activePresentMode = VulkanNative.VkPresentModeFifoKhr, _lastImgIdx;
+    private int _ownerThreadId;
+    private HostViewportRect _lastPresentedDestRect;
+    private bool _vsyncEnabled, _swapSupportsTransferSrc, _hasPresentedFrame, _vulkanLoaded, _disposed;
     private VulkanContext? _graphicsContext;
 
     /// <inheritdoc />
@@ -58,6 +61,7 @@ public sealed unsafe class VulkanPresenter : IHostSurfacePresenter
             return false;
         }
 
+        _ownerThreadId = Environment.CurrentManagedThreadId;
         _graphicsContext = new VulkanContext(this, sdlWindow, _device, _queue, _instance, unchecked((IntPtr)(long)_surface));
         diagnostic = $"Vulkan swapchain initialized ({_swapWidth}x{_swapHeight}, fmt={_swapFormat}).";
         return true;
@@ -97,6 +101,7 @@ public sealed unsafe class VulkanPresenter : IHostSurfacePresenter
         if (!EnsureStagingBuffer(neededBytes)) return;
         HostViewportRect destRect = customDestRect ?? HostViewportGeometry.ComputeDestinationRect(width, height, (int)_swapWidth, (int)_swapHeight, HostAspectRatioMode.NativeFit);
         HostViewportRect srcCrop = customSrcCrop ?? new HostViewportRect(0, 0, width, height);
+        _lastPresentedDestRect = HostViewportGeometry.ClampDestinationRect((int)_swapWidth, (int)_swapHeight, destRect);
         VulkanNative.CopyRgbaToStaging(width, height, rgba, (byte*)_stagingMapped, (int)_swapWidth, (int)_swapHeight, _swapFormat == VulkanNative.VkFormatB8G8R8A8Unorm, destRect, srcCrop);
 
         _ = _vk.ResetFences(_device, 1, &fence);
@@ -114,7 +119,36 @@ public sealed unsafe class VulkanPresenter : IHostSurfacePresenter
 
         var present = new VkPresentInfoKHR { SType = 1000001001u, WaitSemaphoreCount = 1, PWaitSemaphores = &sigSem, SwapchainCount = 1, PSwapchains = &sc, PImageIndices = &imgIdx };
         int pres = _vk.QueuePresentKHR(_queue, &present);
+        if (pres == VulkanNative.VkSuccess || pres == VulkanNative.VkSuboptimalKhr) { _lastImgIdx = imgIdx; _hasPresentedFrame = true; }
         if (pres == VulkanNative.VkErrorOutOfDateKhr || pres == VulkanNative.VkSuboptimalKhr) _ = CreateOrResizeSwapchain((uint)winW, (uint)winH, out _);
+    }
+
+    internal int OwnerThreadId => _ownerThreadId;
+    internal HostViewportRect LastPresentedDestRect => _lastPresentedDestRect;
+
+    internal void FlushAndSyncForSnapshot()
+    {
+        if (_disposed || _device == IntPtr.Zero) return;
+        if (_ownerThreadId != 0 && Environment.CurrentManagedThreadId != _ownerThreadId) return;
+        _ = _vk.DeviceWaitIdle(_device);
+    }
+
+    internal void SetVSyncEnabled(bool enabled)
+    {
+        _vsyncEnabled = enabled;
+        if (_disposed || _device == IntPtr.Zero || _swapchain == 0) return;
+        if (_ownerThreadId != 0 && Environment.CurrentManagedThreadId != _ownerThreadId) return;
+        if (ChooseSurfacePresentMode() != _activePresentMode) _ = CreateOrResizeSwapchain(_swapWidth, _swapHeight, out _);
+    }
+
+    internal bool TryReadSurfaceRect(int x, int y, int width, int height, Span<byte> rgbaDestination)
+    {
+        if (_disposed || _device == IntPtr.Zero || !_hasPresentedFrame || _lastImgIdx >= (uint)_swapImages.Length) return false;
+        if (_ownerThreadId != 0 && Environment.CurrentManagedThreadId != _ownerThreadId) return false;
+        return _readback.TryReadSwapchainImageRect(
+            in _vk, _physicalDevice, _device, _queue, _cmdBuffer, _fence, _swapImages[_lastImgIdx],
+            _swapWidth, _swapHeight, _swapFormat, _swapSupportsTransferSrc, _stagingMapped, _stagingSize,
+            x, y, width, height, rgbaDestination);
     }
 
     private bool CreateInstance(out string diagnostic)
@@ -231,22 +265,38 @@ public sealed unsafe class VulkanPresenter : IHostSurfacePresenter
 
         uint imgCount = Math.Max(caps.MinImageCount + 1, 2u);
         if (caps.MaxImageCount > 0 && imgCount > caps.MaxImageCount) imgCount = caps.MaxImageCount;
-        uint usage = VulkanNative.VkImageUsageColorAttachmentBit | (caps.SupportedUsageFlags & VulkanNative.VkImageUsageTransferDstBit);
+        uint usage = VulkanNative.VkImageUsageColorAttachmentBit | (caps.SupportedUsageFlags & (VulkanNative.VkImageUsageTransferDstBit | VulkanNative.VkImageUsageTransferSrcBit));
         if ((usage & VulkanNative.VkImageUsageTransferDstBit) == 0) { diagnostic = "Swapchain surface lacks TRANSFER_DST support."; return false; }
 
+        uint presentMode = ChooseSurfacePresentMode();
         ulong oldSc = _swapchain, newSc = 0;
-        var scInfo = new VkSwapchainCreateInfoKHR { SType = 1000001000u, Surface = _surface, MinImageCount = imgCount, ImageFormat = chosen.Format, ImageColorSpace = chosen.ColorSpace, ImageExtent = new VkExtent2D { Width = extW, Height = extH }, ImageArrayLayers = 1, ImageUsage = usage, PreTransform = caps.CurrentTransform, CompositeAlpha = VulkanNative.VkCompositeAlphaOpaqueBitKhr, PresentMode = VulkanNative.VkPresentModeFifoKhr, Clipped = 1, OldSwapchain = oldSc };
+        var scInfo = new VkSwapchainCreateInfoKHR { SType = 1000001000u, Surface = _surface, MinImageCount = imgCount, ImageFormat = chosen.Format, ImageColorSpace = chosen.ColorSpace, ImageExtent = new VkExtent2D { Width = extW, Height = extH }, ImageArrayLayers = 1, ImageUsage = usage, PreTransform = caps.CurrentTransform, CompositeAlpha = VulkanNative.VkCompositeAlphaOpaqueBitKhr, PresentMode = presentMode, Clipped = 1, OldSwapchain = oldSc };
         int res = _vk.CreateSwapchainKHR(_device, &scInfo, IntPtr.Zero, &newSc);
         if (oldSc != 0) _vk.DestroySwapchainKHR(_device, oldSc, IntPtr.Zero);
         if (res != VulkanNative.VkSuccess || newSc == 0) { _swapchain = 0; diagnostic = $"vkCreateSwapchainKHR failed (VkResult={res})."; return false; }
 
         _swapchain = newSc; _swapWidth = extW; _swapHeight = extH; _swapFormat = chosen.Format;
+        _activePresentMode = presentMode;
+        _swapSupportsTransferSrc = (usage & VulkanNative.VkImageUsageTransferSrcBit) != 0;
+        _hasPresentedFrame = false;
         uint actualCount = 0;
         _ = _vk.GetSwapchainImagesKHR(_device, _swapchain, &actualCount, null);
         _swapImages = new ulong[actualCount];
         fixed (ulong* pImgs = _swapImages) _ = _vk.GetSwapchainImagesKHR(_device, _swapchain, &actualCount, pImgs);
         diagnostic = string.Empty;
         return true;
+    }
+
+    private uint ChooseSurfacePresentMode()
+    {
+        if (_vsyncEnabled || _vk.GetPhysicalDeviceSurfacePresentModesKHR == null) return VulkanNative.VkPresentModeFifoKhr;
+        uint count = 0;
+        if (_vk.GetPhysicalDeviceSurfacePresentModesKHR(_physicalDevice, _surface, &count, null) != VulkanNative.VkSuccess || count == 0)
+            return VulkanNative.VkPresentModeFifoKhr;
+        uint cap = Math.Min(count, 16u);
+        uint* modes = stackalloc uint[(int)cap];
+        _ = _vk.GetPhysicalDeviceSurfacePresentModesKHR(_physicalDevice, _surface, &cap, modes);
+        return VulkanReadbackHelper.SelectPresentMode(new ReadOnlySpan<uint>(modes, (int)cap), _vsyncEnabled);
     }
 
     private bool EnsureStagingBuffer(ulong sizeBytes)
@@ -268,6 +318,7 @@ public sealed unsafe class VulkanPresenter : IHostSurfacePresenter
         if (_device != IntPtr.Zero)
         {
             _ = _vk.DeviceWaitIdle(_device);
+            _readback.Dispose(in _vk, _device);
             if (_stagingMapped != null) { _vk.UnmapMemory(_device, _stagingMem); _stagingMapped = null; }
             if (_stagingBuf != 0) { _vk.DestroyBuffer(_device, _stagingBuf, IntPtr.Zero); _stagingBuf = 0; }
             if (_stagingMem != 0) { _vk.FreeMemory(_device, _stagingMem, IntPtr.Zero); _stagingMem = 0; }
@@ -294,6 +345,12 @@ public sealed unsafe class VulkanPresenter : IHostSurfacePresenter
         public VulkanContext(VulkanPresenter owner, IntPtr w, IntPtr dev, IntPtr q, IntPtr inst, IntPtr surf) =>
             (_owner, Handle) = (owner, new HostGraphicsContextHandle(HostRenderBackendKind.Vulkan, w, dev, q, inst, surf));
         public void PresentComposite(int width, int height, ReadOnlySpan<byte> rgba) => _owner.PresentRgba(width, height, rgba);
+        public int OwnerThreadId => _owner.OwnerThreadId;
+        public HostViewportRect LastPresentedDestRect => _owner.LastPresentedDestRect;
+        public bool TryReadSurfaceRect(int x, int y, int width, int height, Span<byte> rgbaDestination) =>
+            _owner.TryReadSurfaceRect(x, y, width, height, rgbaDestination);
+        public void FlushAndSyncForSnapshot() => _owner.FlushAndSyncForSnapshot();
+        public void SetVSyncEnabled(bool enabled) => _owner.SetVSyncEnabled(enabled);
         public void Dispose() { }
     }
 }

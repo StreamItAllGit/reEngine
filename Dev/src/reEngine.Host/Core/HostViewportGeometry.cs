@@ -52,19 +52,34 @@ public static class HostViewportGeometry
         int dstWidth,
         int dstHeight,
         HostAspectRatioMode mode,
-        double? contentPixelAspectRatio = null)
+        double? contentPixelAspectRatio = null) =>
+        ComputeDestinationRect(srcWidth, srcHeight, dstWidth, dstHeight, mode, contentPixelAspectRatio, isFmvActive: false);
+
+    /// <summary>
+    /// Computes a centered letterboxed or pillarboxed destination rectangle inside <paramref name="dstWidth"/> x <paramref name="dstHeight"/>
+    /// honoring <paramref name="mode"/>, optional <paramref name="contentPixelAspectRatio"/>, and <paramref name="isFmvActive"/> (<c>4:3</c> FMV centering inside widescreen).
+    /// </summary>
+    public static HostViewportRect ComputeDestinationRect(
+        int srcWidth,
+        int srcHeight,
+        int dstWidth,
+        int dstHeight,
+        HostAspectRatioMode mode,
+        double? contentPixelAspectRatio,
+        bool isFmvActive)
     {
         if (dstWidth <= 0 || dstHeight <= 0)
         {
             return new HostViewportRect(0, 0, 0, 0);
         }
 
+        HostAspectRatioMode effectiveMode = isFmvActive ? HostAspectRatioMode.FourByThree : mode;
         int sw = Math.Max(1, srcWidth);
         int sh = Math.Max(1, srcHeight);
         int fitW;
         int fitH;
 
-        if (mode == HostAspectRatioMode.SquareInteger)
+        if (effectiveMode == HostAspectRatioMode.SquareInteger)
         {
             int intScale = Math.Min(dstWidth / sw, dstHeight / sh);
             if (intScale >= 1)
@@ -79,13 +94,40 @@ public static class HostViewportGeometry
         }
         else
         {
-            double targetAspect = ResolveTargetDisplayAspect(sw, sh, mode, contentPixelAspectRatio);
+            double targetAspect = ResolveTargetDisplayAspect(sw, sh, effectiveMode, contentPixelAspectRatio);
             (fitW, fitH) = FitAspect(dstWidth, dstHeight, targetAspect);
         }
 
         int x = Math.Max(0, (dstWidth - fitW) / 2);
         int y = Math.Max(0, (dstHeight - fitH) / 2);
         return new HostViewportRect(x, y, fitW, fitH);
+    }
+
+    /// <summary>
+    /// Computes the anchored HUD bounding rectangle for widescreen/ultrawide layouts honoring <paramref name="anchorMode"/>.
+    /// </summary>
+    public static HostViewportRect ComputeHudAnchorRect(
+        HostViewportRect contentDest,
+        int surfaceWidth,
+        int surfaceHeight,
+        int hudWidth,
+        int hudHeight,
+        HostHudAnchorMode anchorMode,
+        HostOverscanCrop customOffsets = default)
+    {
+        int sw = Math.Max(1, surfaceWidth);
+        int sh = Math.Max(1, surfaceHeight);
+        HostViewportRect anchorZone = anchorMode switch
+        {
+            HostHudAnchorMode.SafeFourByThree => ComputeDestinationRect(4, 3, sw, sh, HostAspectRatioMode.FourByThree, null, isFmvActive: false),
+            HostHudAnchorMode.ScreenEdges => new HostViewportRect(0, 0, sw, sh),
+            _ => ComputeCustomHudZone(contentDest, sw, sh, customOffsets)
+        };
+
+        if (hudWidth <= 0 || hudHeight <= 0) return anchorZone;
+        int w = Math.Clamp(hudWidth, 1, Math.Max(1, anchorZone.Width));
+        int h = Math.Clamp(hudHeight, 1, Math.Max(1, anchorZone.Height));
+        return new HostViewportRect(anchorZone.X, anchorZone.Y, w, h);
     }
 
     /// <summary>
@@ -182,6 +224,8 @@ public static class HostViewportGeometry
                 return sw / (double)sh;
             case HostAspectRatioMode.HorPlus16By9:
                 return 16.0 / 9.0;
+            case HostAspectRatioMode.HorPlus21By9:
+                return 21.0 / 9.0;
             default:
             {
                 double defaultPar = (sw == 256 && sh == 240) ? (8.0 / 7.0) : 1.0;
@@ -214,5 +258,23 @@ public static class HostViewportGeometry
 
         int fitH = Math.Clamp((int)Math.Round(dstWidth / targetAspect), 1, dstHeight);
         return (dstWidth, fitH);
+    }
+
+    private static HostViewportRect ComputeCustomHudZone(HostViewportRect contentDest, int sw, int sh, HostOverscanCrop customOffsets)
+    {
+        HostViewportRect baseRect = (contentDest.Width > 0 && contentDest.Height > 0)
+            ? ClampDestinationRect(sw, sh, contentDest)
+            : new HostViewportRect(0, 0, sw, sh);
+        if (baseRect.Width <= 0 || baseRect.Height <= 0) baseRect = new HostViewportRect(0, 0, sw, sh);
+
+        int left = Math.Clamp(customOffsets.Left, 0, Math.Max(0, baseRect.Width - 1));
+        int top = Math.Clamp(customOffsets.Top, 0, Math.Max(0, baseRect.Height - 1));
+        int right = Math.Clamp(customOffsets.Right, 0, Math.Max(0, baseRect.Width - left - 1));
+        int bottom = Math.Clamp(customOffsets.Bottom, 0, Math.Max(0, baseRect.Height - top - 1));
+        return new HostViewportRect(
+            baseRect.X + left,
+            baseRect.Y + top,
+            Math.Max(1, baseRect.Width - left - right),
+            Math.Max(1, baseRect.Height - top - bottom));
     }
 }

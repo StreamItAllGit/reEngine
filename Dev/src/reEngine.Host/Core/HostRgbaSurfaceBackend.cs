@@ -39,6 +39,9 @@ public sealed class HostRgbaSurfaceBackend : IHostRenderBackend
     /// <summary>Gets or sets an optional explicit pixel aspect ratio override for <see cref="HostAspectRatioMode.NativePar"/>.</summary>
     public double? ContentPixelAspectRatio { get; set; }
 
+    /// <summary>Gets or sets whether an FMV sequence is active, centering 4:3 FMVs cleanly inside widescreen modes.</summary>
+    public bool IsFmvActive { get; set; }
+
     /// <summary>Gets the destination rectangle of the most recently presented content frame inside <see cref="Canvas"/>.</summary>
     public HostViewportRect LastContentDestRect { get; private set; }
 
@@ -96,7 +99,7 @@ public sealed class HostRgbaSurfaceBackend : IHostRenderBackend
 
         HostViewportRect srcCrop = HostViewportGeometry.ComputeSourceCropRect(width, height, OverscanCropPx);
         HostViewportRect dst = HostViewportGeometry.ComputeDestinationRect(
-            srcCrop.Width, srcCrop.Height, Canvas.Width, Canvas.Height, AspectRatioMode, ContentPixelAspectRatio);
+            srcCrop.Width, srcCrop.Height, Canvas.Width, Canvas.Height, AspectRatioMode, ContentPixelAspectRatio, IsFmvActive);
         PresentRgba(width, height, rgba, dst, srcCrop);
     }
 
@@ -170,6 +173,28 @@ public sealed class HostRgbaSurfaceBackend : IHostRenderBackend
             rgbaBytes = new byte[_snapshotRgba.Length];
             Buffer.BlockCopy(_snapshotRgba, 0, rgbaBytes, 0, _snapshotRgba.Length);
             return rgbaBytes.Length == width * height * 4;
+        }
+    }
+
+    /// <summary>Copies a top-down RGBA8888 sub-rectangle from the most recently published surface snapshot.</summary>
+    public bool TryReadSurfaceRect(int x, int y, int width, int height, Span<byte> rgbaDestination)
+    {
+        if (_disposed || x < 0 || y < 0 || width <= 0 || height <= 0) return false;
+        if (x > Canvas.Width - width || y > Canvas.Height - height) return false;
+        long required = (long)width * height * 4L;
+        if (required <= 0 || required > rgbaDestination.Length) return false;
+
+        lock (_snapshotSync)
+        {
+            int surfaceStride = Canvas.Width * 4;
+            if (_snapshotRgba.Length < surfaceStride * Canvas.Height) return false;
+            int dstStride = width * 4;
+            for (int row = 0; row < height; row++)
+            {
+                int srcOff = ((y + row) * surfaceStride) + (x * 4);
+                _snapshotRgba.AsSpan(srcOff, dstStride).CopyTo(rgbaDestination.Slice(row * dstStride, dstStride));
+            }
+            return true;
         }
     }
 

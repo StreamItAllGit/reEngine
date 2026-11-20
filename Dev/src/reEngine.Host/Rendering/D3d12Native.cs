@@ -17,10 +17,15 @@ internal static unsafe class D3d12Native
     public const uint DxgiSwapEffectFlipDiscard = 4u;
     public const uint DxgiScalingStretch = 0u;
     public const uint DxgiMwaNoAltEnter = 2u;
+    public const uint DxgiSwapChainFlagAllowTearing = 0x800u;
+    public const uint DxgiPresentAllowTearing = 0x200u;
+    public const uint DxgiFeaturePresentAllowTearing = 0u;
     public const int ResourceStatePresent = 0;
     public const int ResourceStateCopyDest = 0x400;
+    public const int ResourceStateCopySource = 0x800;
     public const int ResourceStateGenericRead = 0x1 | 0x2 | 0x40 | 0x80 | 0x200 | 0x800;
     public const int HeapTypeUpload = 2;
+    public const int HeapTypeReadback = 3;
     public const int ResourceDimensionBuffer = 1;
     public const int TextureLayoutRowMajor = 1;
     public const int CommandListTypeDirect = 0;
@@ -33,6 +38,7 @@ internal static unsafe class D3d12Native
     public static readonly Guid IidId3d12Resource = new("696442be-a72e-4059-bc79-5b5c98040fad");
     public static readonly Guid IidId3d12Fence = new("0a753dcf-c4d8-4b91-adf6-be5a60d95a76");
     public static readonly Guid IidIdxgiFactory4 = new("1bc6ea02-ef36-464f-bf0c-21ca39e5168a");
+    public static readonly Guid IidIdxgiFactory5 = new("7632e1f5-ee65-4dca-87fd-84cd75f8838d");
     public static readonly Guid IidIdxgiAdapter1 = new("29038f61-3839-4626-91fd-086879011a05");
     public static readonly Guid IidIdxgiSwapChain3 = new("94d99bdb-f1f8-4ab0-b236-7da0170edab1");
 
@@ -90,11 +96,10 @@ internal static unsafe class D3d12Native
         return false;
     }
 
-    public static bool TryCreateMappedUploadBuffer(IntPtr device, ulong sizeBytes, out IntPtr resource, out void* mapped)
+    public static bool TryCreateCommittedBuffer(IntPtr device, ulong sizeBytes, int heapType, int initialState, out IntPtr resource)
     {
         resource = IntPtr.Zero;
-        mapped = null;
-        var heap = new D3d12HeapProperties { Type = HeapTypeUpload, CreationNodeMask = 1, VisibleNodeMask = 1 };
+        var heap = new D3d12HeapProperties { Type = heapType, CreationNodeMask = 1, VisibleNodeMask = 1 };
         var desc = new D3d12ResourceDesc
         {
             Dimension = ResourceDimensionBuffer, Width = sizeBytes, Height = 1, DepthOrArraySize = 1, MipLevels = 1,
@@ -103,18 +108,28 @@ internal static unsafe class D3d12Native
         Guid iidRes = IidId3d12Resource;
         IntPtr res = IntPtr.Zero;
         if (((delegate* unmanaged[Stdcall]<IntPtr, D3d12HeapProperties*, int, D3d12ResourceDesc*, int, IntPtr, Guid*, IntPtr*, int>)GetVtblSlot(device, 27))
-            (device, &heap, 0, &desc, ResourceStateGenericRead, IntPtr.Zero, &iidRes, &res) < 0 || res == IntPtr.Zero)
+            (device, &heap, 0, &desc, initialState, IntPtr.Zero, &iidRes, &res) < 0 || res == IntPtr.Zero)
+        {
+            return false;
+        }
+        resource = res;
+        return true;
+    }
+
+    public static bool TryCreateMappedUploadBuffer(IntPtr device, ulong sizeBytes, out IntPtr resource, out void* mapped)
+    {
+        mapped = null;
+        if (!TryCreateCommittedBuffer(device, sizeBytes, HeapTypeUpload, ResourceStateGenericRead, out resource))
         {
             return false;
         }
         var readRange = new D3d12Range { Begin = 0, End = 0 };
         void* m = null;
-        if (((delegate* unmanaged[Stdcall]<IntPtr, uint, D3d12Range*, void**, int>)GetVtblSlot(res, 8))(res, 0, &readRange, &m) < 0 || m == null)
+        if (((delegate* unmanaged[Stdcall]<IntPtr, uint, D3d12Range*, void**, int>)GetVtblSlot(resource, 8))(resource, 0, &readRange, &m) < 0 || m == null)
         {
-            ReleaseCom(ref res);
+            ReleaseCom(ref resource);
             return false;
         }
-        resource = res;
         mapped = m;
         return true;
     }

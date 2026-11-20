@@ -16,13 +16,16 @@ public sealed unsafe class D3d12Presenter : IHostSurfacePresenter
 {
     private const int BufferCount = 2;
 
-    private IntPtr _sdlWindow, _hwnd, _factory, _device, _queue, _cmdAlloc, _cmdList, _swapChain, _uploadBuf, _fence, _fenceEvent;
     private readonly IntPtr[] _backBuffers = new IntPtr[BufferCount];
+    private readonly D3d12ReadbackHelper _readback = new();
+    private IntPtr _sdlWindow, _hwnd, _factory, _device, _queue, _cmdAlloc, _cmdList, _swapChain, _uploadBuf, _fence, _fenceEvent;
     private void* _uploadMapped;
     private ulong _uploadBytes, _fenceValue;
-    private uint _swapWidth, _swapHeight;
+    private uint _swapWidth, _swapHeight, _lastBackBufferIdx;
+    private int _ownerThreadId;
+    private HostViewportRect _lastPresentedDestRect;
+    private bool _vsyncEnabled, _tearingSupported, _hasPresentedFrame, _disposed;
     private D3d12Context? _graphicsContext;
-    private bool _disposed;
 
     /// <inheritdoc />
     public HostRenderBackendKind BackendKind => HostRenderBackendKind.DirectX;
@@ -54,6 +57,7 @@ public sealed unsafe class D3d12Presenter : IHostSurfacePresenter
             {
                 Dispose(); return false;
             }
+            _ownerThreadId = Environment.CurrentManagedThreadId;
             _graphicsContext = new D3d12Context(this, sdlWindow, _device, _queue, _factory, _swapChain);
             diagnostic = $"DirectX 12 initialized ({_swapWidth}x{_swapHeight}).";
             return true;
@@ -94,6 +98,7 @@ public sealed unsafe class D3d12Presenter : IHostSurfacePresenter
         if (!EnsureUploadBuffer(neededBytes)) return;
         HostViewportRect destRect = customDestRect ?? HostViewportGeometry.ComputeDestinationRect(width, height, (int)_swapWidth, (int)_swapHeight, HostAspectRatioMode.NativeFit);
         HostViewportRect srcCrop = customSrcCrop ?? new HostViewportRect(0, 0, width, height);
+        _lastPresentedDestRect = HostViewportGeometry.ClampDestinationRect((int)_swapWidth, (int)_swapHeight, destRect);
         D3d12Native.CopyRgbaToUpload(width, height, rgba, (byte*)_uploadMapped, (int)_swapWidth, (int)_swapHeight, (int)pitch, destRect, srcCrop);
 
         uint bbIdx = ((delegate* unmanaged[Stdcall]<IntPtr, uint>)D3d12Native.GetVtblSlot(_swapChain, 36))(_swapChain);
@@ -107,8 +112,40 @@ public sealed unsafe class D3d12Presenter : IHostSurfacePresenter
 
         IntPtr listPtr = _cmdList;
         ((delegate* unmanaged[Stdcall]<IntPtr, uint, IntPtr*, void>)D3d12Native.GetVtblSlot(_queue, 10))(_queue, 1, &listPtr);
-        _ = ((delegate* unmanaged[Stdcall]<IntPtr, uint, uint, int>)D3d12Native.GetVtblSlot(_swapChain, 8))(_swapChain, 0, 0);
+        int isFs = 0;
+        _ = ((delegate* unmanaged[Stdcall]<IntPtr, int*, IntPtr*, int>)D3d12Native.GetVtblSlot(_swapChain, 11))(_swapChain, &isFs, null);
+        (uint syncInterval, uint presentFlags) = D3d12ReadbackHelper.ComputePresentArgs(_vsyncEnabled, _tearingSupported, isFs != 0);
+        if (((delegate* unmanaged[Stdcall]<IntPtr, uint, uint, int>)D3d12Native.GetVtblSlot(_swapChain, 8))(_swapChain, syncInterval, presentFlags) >= 0)
+        {
+            _lastBackBufferIdx = bbIdx;
+            _hasPresentedFrame = true;
+        }
         WaitForGpuIdle();
+    }
+
+    internal int OwnerThreadId => _ownerThreadId;
+    internal HostViewportRect LastPresentedDestRect => _lastPresentedDestRect;
+
+    internal void SetVSyncEnabled(bool enabled)
+    {
+        if (_ownerThreadId != 0 && Environment.CurrentManagedThreadId != _ownerThreadId) return;
+        _vsyncEnabled = enabled;
+    }
+
+    internal void FlushAndSyncForSnapshot()
+    {
+        if (_disposed || _device == IntPtr.Zero) return;
+        if (_ownerThreadId != 0 && Environment.CurrentManagedThreadId != _ownerThreadId) return;
+        WaitForGpuIdle();
+    }
+
+    internal bool TryReadSurfaceRect(int x, int y, int width, int height, Span<byte> rgbaDestination)
+    {
+        if (_disposed || _device == IntPtr.Zero || !_hasPresentedFrame || _lastBackBufferIdx >= BufferCount) return false;
+        if (_ownerThreadId != 0 && Environment.CurrentManagedThreadId != _ownerThreadId) return false;
+        return _readback.TryReadBackBufferRect(
+            _device, _queue, _cmdAlloc, _cmdList, _backBuffers[_lastBackBufferIdx],
+            _swapWidth, _swapHeight, x, y, width, height, WaitForGpuIdle, rgbaDestination);
     }
 
     private bool CreateQueueAndCommandObjects(out string diagnostic)
@@ -132,11 +169,13 @@ public sealed unsafe class D3d12Presenter : IHostSurfacePresenter
 
     private bool CreateSwapChain(uint width, uint height, out string diagnostic)
     {
+        _tearingSupported = D3d12ReadbackHelper.CheckAllowTearingSupport(_factory);
         var scDesc = new DxgiSwapChainDesc1
         {
             Width = width, Height = height, Format = D3d12Native.DxgiFormatR8G8B8A8Unorm,
             SampleDesc = new DxgiSampleDesc { Count = 1, Quality = 0 }, BufferUsage = D3d12Native.DxgiUsageRenderTargetOutput,
-            BufferCount = BufferCount, Scaling = D3d12Native.DxgiScalingStretch, SwapEffect = D3d12Native.DxgiSwapEffectFlipDiscard
+            BufferCount = BufferCount, Scaling = D3d12Native.DxgiScalingStretch, SwapEffect = D3d12Native.DxgiSwapEffectFlipDiscard,
+            Flags = _tearingSupported ? D3d12Native.DxgiSwapChainFlagAllowTearing : 0u
         };
         IntPtr sc1 = IntPtr.Zero;
         int hr = ((delegate* unmanaged[Stdcall]<IntPtr, IntPtr, IntPtr, DxgiSwapChainDesc1*, IntPtr, IntPtr, IntPtr*, int>)D3d12Native.GetVtblSlot(_factory, 15))
@@ -157,8 +196,10 @@ public sealed unsafe class D3d12Presenter : IHostSurfacePresenter
     {
         WaitForGpuIdle();
         ReleaseBackBuffers();
+        _hasPresentedFrame = false;
+        uint flags = _tearingSupported ? D3d12Native.DxgiSwapChainFlagAllowTearing : 0u;
         if (((delegate* unmanaged[Stdcall]<IntPtr, uint, uint, uint, uint, uint, int>)D3d12Native.GetVtblSlot(_swapChain, 13))
-            (_swapChain, BufferCount, width, height, D3d12Native.DxgiFormatR8G8B8A8Unorm, 0) < 0) return false;
+            (_swapChain, BufferCount, width, height, D3d12Native.DxgiFormatR8G8B8A8Unorm, flags) < 0) return false;
         _swapWidth = width; _swapHeight = height;
         return AcquireBackBuffers();
     }
@@ -246,6 +287,7 @@ public sealed unsafe class D3d12Presenter : IHostSurfacePresenter
         if (_disposed) return;
         _disposed = true;
         WaitForGpuIdle();
+        _readback.Dispose();
         ReleaseUploadBuffer();
         ReleaseBackBuffers();
         if (_fenceEvent != IntPtr.Zero) { _ = D3d12Native.CloseHandle(_fenceEvent); _fenceEvent = IntPtr.Zero; }
@@ -268,6 +310,12 @@ public sealed unsafe class D3d12Presenter : IHostSurfacePresenter
         public D3d12Context(D3d12Presenter owner, IntPtr w, IntPtr dev, IntPtr q, IntPtr fac, IntPtr sc) =>
             (_owner, Handle) = (owner, new HostGraphicsContextHandle(HostRenderBackendKind.DirectX, w, dev, q, fac, sc));
         public void PresentComposite(int width, int height, ReadOnlySpan<byte> rgba) => _owner.PresentRgba(width, height, rgba);
+        public int OwnerThreadId => _owner.OwnerThreadId;
+        public HostViewportRect LastPresentedDestRect => _owner.LastPresentedDestRect;
+        public bool TryReadSurfaceRect(int x, int y, int width, int height, Span<byte> rgbaDestination) =>
+            _owner.TryReadSurfaceRect(x, y, width, height, rgbaDestination);
+        public void FlushAndSyncForSnapshot() => _owner.FlushAndSyncForSnapshot();
+        public void SetVSyncEnabled(bool enabled) => _owner.SetVSyncEnabled(enabled);
         public void Dispose() { }
     }
 }

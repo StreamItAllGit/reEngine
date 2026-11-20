@@ -91,6 +91,7 @@ internal static class Gl33Native
     public const uint Rgba = 0x1908u;
     public const int Rgba8 = 0x8058;
     public const int Nearest = 0x2600;
+    public const int Linear = 0x2601;
     public const uint TextureMagFilter = 0x2800u;
     public const uint TextureMinFilter = 0x2801u;
     public const uint PackRowLength = 0x0D02u;

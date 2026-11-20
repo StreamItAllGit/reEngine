@@ -166,8 +166,11 @@ internal sealed class SdlAutomationProxyControl : IHostAutomationBridge, IRender
     private sealed class ProxyHostForm : Form
     {
         private const int WmKeyDown = 0x0100;
+        private const int WmKeyUp = 0x0101;
         private const int WmSysKeyDown = 0x0104;
+        private const int WmSysKeyUp = 0x0105;
         private readonly SdlAutomationProxyControl _owner;
+        private bool _ctrlDown, _altDown, _shiftDown;
 
         public ProxyHostForm(SdlAutomationProxyControl owner, int width, int height)
         {
@@ -180,6 +183,7 @@ internal sealed class SdlAutomationProxyControl : IHostAutomationBridge, IRender
             Location = new Point(-32000, -32000);
             ClientSize = new Size(width, height);
             Opacity = 0.0;
+            KeyPreview = true;
         }
 
         public void ApplyWidgets(IReadOnlyList<HostWidgetBounds> widgets)
@@ -207,18 +211,41 @@ internal sealed class SdlAutomationProxyControl : IHostAutomationBridge, IRender
             }
         }
 
-        internal void ForwardKeyMessage(int wParam)
+        internal bool ForwardKeyMessage(int wParam, Keys keyDataMods = Keys.None)
         {
-            string? keyName = MapVkToName(wParam);
-            if (keyName is not null)
+            int vk = wParam & 0xFFFF;
+            string? keyName = MapVkToName(vk);
+            if (keyName is null) return false;
+            _owner.Enqueue(new QueuedAction(true, keyName, 0, 0, GetActiveModifiers(keyDataMods)));
+            return true;
+        }
+
+        internal void HandleKeyMessage(int msg, int wParam)
+        {
+            int vk = wParam & 0xFFFF;
+            if (msg is WmKeyDown or WmSysKeyDown)
             {
-                _owner.Enqueue(new QueuedAction(true, keyName, 0, 0, GetActiveModifiers()));
+                UpdateModifierState(vk, true);
+                _ = ForwardKeyMessage(vk);
             }
+            else if (msg is WmKeyUp or WmSysKeyUp)
+            {
+                UpdateModifierState(vk, false);
+            }
+        }
+
+        protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
+        {
+            if (msg.Msg is WmKeyDown or WmSysKeyDown && ForwardKeyMessage((int)(keyData & Keys.KeyCode), keyData))
+            {
+                return true;
+            }
+            return base.ProcessCmdKey(ref msg, keyData);
         }
 
         protected override void WndProc(ref Message m)
         {
-            if (m.Msg is WmKeyDown or WmSysKeyDown) ForwardKeyMessage((int)m.WParam);
+            HandleKeyMessage(m.Msg, (int)m.WParam);
             base.WndProc(ref m);
         }
 
@@ -226,34 +253,46 @@ internal sealed class SdlAutomationProxyControl : IHostAutomationBridge, IRender
         {
             private readonly ProxyHostForm _parent;
             public KeyForwardButton(ProxyHostForm parent) => _parent = parent;
+            protected override bool IsInputKey(Keys keyData) => true;
+            protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
+            {
+                if (msg.Msg is WmKeyDown or WmSysKeyDown && _parent.ForwardKeyMessage((int)(keyData & Keys.KeyCode), keyData))
+                {
+                    return true;
+                }
+                return base.ProcessCmdKey(ref msg, keyData);
+            }
             protected override void WndProc(ref Message m)
             {
-                if (m.Msg is WmKeyDown or WmSysKeyDown) _parent.ForwardKeyMessage((int)m.WParam);
+                _parent.HandleKeyMessage(m.Msg, (int)m.WParam);
                 base.WndProc(ref m);
             }
         }
 
-        private static IReadOnlyList<string>? GetActiveModifiers()
+        private void UpdateModifierState(int vk, bool down)
         {
-            Keys mods = Control.ModifierKeys;
-            if ((mods & (Keys.Alt | Keys.Control | Keys.Shift)) == 0) return null;
+            if (vk is 0x11 or 0xA2 or 0xA3) _ctrlDown = down;
+            else if (vk is 0x12 or 0xA4 or 0xA5) _altDown = down;
+            else if (vk is 0x10 or 0xA0 or 0xA1) _shiftDown = down;
+        }
+
+        private IReadOnlyList<string>? GetActiveModifiers(Keys keyDataMods)
+        {
+            Keys mods = Control.ModifierKeys | keyDataMods;
+            bool ctrl = _ctrlDown || (mods & Keys.Control) != 0;
+            bool alt = _altDown || (mods & Keys.Alt) != 0;
+            bool shift = _shiftDown || (mods & Keys.Shift) != 0;
+            if (!ctrl && !alt && !shift) return null;
             var list = new List<string>(3);
-            if ((mods & Keys.Control) != 0) list.Add("CTRL");
-            if ((mods & Keys.Alt) != 0) list.Add("ALT");
-            if ((mods & Keys.Shift) != 0) list.Add("SHIFT");
+            if (ctrl) list.Add("CTRL");
+            if (alt) list.Add("ALT");
+            if (shift) list.Add("SHIFT");
             return list;
         }
 
         private static string? MapVkToName(int vk) => vk switch
         {
-            0x70 => "F1",
-            0x72 => "F3",
-            0x74 => "F5",
-            0x75 => "F6",
-            0x76 => "F7",
-            0x78 => "F9",
-            0x7A => "F11",
-            0x7B => "F12",
+            >= 0x70 and <= 0x7B => $"F{vk - 0x6F}",
             0xC0 => "Grave",
             0x1B => "ESC",
             0x09 => "TAB",
@@ -267,6 +306,12 @@ internal sealed class SdlAutomationProxyControl : IHostAutomationBridge, IRender
             >= 0x30 and <= 0x39 => ((char)vk).ToString(),
             _ => null
         };
+    }
+
+    internal bool TryForwardVirtualKeyForTest(int vk, Keys modifierKeys = Keys.None)
+    {
+        using var probe = new ProxyHostForm(this, _width, _height);
+        return probe.ForwardKeyMessage(vk, modifierKeys);
     }
 }
 #endif
