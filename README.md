@@ -8,7 +8,7 @@ Lightweight, zero-daemon package router, unified 5-backend SDL3 host runtime (`r
 
 ![Version](https://img.shields.io/badge/version-0.5.0--beta-blue?style=flat) ![License](https://img.shields.io/badge/license-MPL--2.0-green?style=flat) ![Runtime](https://img.shields.io/badge/.NET-8.0-512BD4?style=flat) ![Platform](https://img.shields.io/badge/platform-Windows-lightgrey?style=flat)
 
-**Milestone Progress:** `▓▓▓▓▓▓░░░░` **62% toward v1.0.0** (5/8 milestones) — `v0.5.0` adds `HostViewportGeometry` 5-aspect modes & overscan crop across all 5 presenters, OpenGL FBO/readback & pre-QuickSave sync, 4-port SDL3 gamepads & 3-tier input profiles, interactive `F1` drawer controls & `F5`/`F9`/`F11`/`Alt+Enter` hotkeys, 3-way `reCart`/`reCartOne`/`reNes` routing, `-hf.<n>` hotfix precedence, `hostProtocolVersion` >= `0.3.0` forwarding, `.fds` discovery, `--aspect-mode`, and Dual-Binary Release `ExitCode = 2`
+**Milestone Progress:** `▓▓▓▓░░░░░░` **42% toward v1.0.0** (5/12 milestones) — `v0.5.0` adds `HostViewportGeometry` 5-aspect modes & overscan crop across all 5 presenters, OpenGL FBO/readback & pre-QuickSave sync, 4-port SDL3 gamepads & 3-tier input profiles, interactive `F1` drawer controls & `F5`/`F9`/`F11`/`Alt+Enter` hotkeys, 3-way `reCart`/`reCartOne`/`reNes` routing, `-hf.<n>` hotfix precedence, `hostProtocolVersion` >= `0.3.0` forwarding, `.fds` discovery, `--aspect-mode`, and Dual-Binary Release `ExitCode = 2`
 
 </div>
 
@@ -18,7 +18,7 @@ Lightweight, zero-daemon package router, unified 5-backend SDL3 host runtime (`r
 
 > **Beta (Pre-1.0):** `reEngine` (`v0.5.0`) is an active pre-1.0 beta release targeting `v1.0.0` desktop stability and `v2.0.0` cross-platform support.
 
-`reEngine` routes `.recomp` and `.decomp` packages to compatible platform static recompilation engines (`reStation` / `reSlate`, `reCart` / `reCartOne` / `reNes`, `re64` / `reCart64`, `reGenesis` / `reBlast16`, `reCube`, `rePS2`, `reAdvance`) while leaving **0 MB** resident in memory when closed and adding **zero** Windows Startup entries. Built strictly for native static recompilation rather than legacy console simulation or bundled retail data, `reEngine` provides a clean-room `reEngine.Host.dll` video/audio/input runtime, isolates per-game settings and logs under `<dataDir>\modules\<moduleId>\`, manages local `<dataDir>\cache\` Ahead-of-Time (AOT) assemblies, and discovers your legally dumped disc or ROM files inside each game's `data\rom\` folder or suite directory tree.
+`reEngine` routes `.recomp` and `.decomp` packages to compatible platform static recompilation engines (`reSlate` / `reStation`, `reCart` / `reCartOne` / `reNes`, `reCart64` / `re64`, `reBlast16` / `reGenesis`, `reSlateTwo` / `rePS2`, `reCartTwo` / `reSnes`, `reDotCart` / `reBoy`, `reCube`, `reAdvance`) while leaving **0 MB** resident in memory when closed and adding **zero** Windows Startup entries. Built strictly for native static recompilation rather than legacy console simulation or bundled retail data, `reEngine` provides a clean-room `reEngine.Host.dll` video/audio/input runtime, isolates per-game settings and logs under `<dataDir>\modules\<moduleId>\`, manages local `<dataDir>\cache\` Ahead-of-Time (AOT) assemblies, and discovers your legally dumped disc or ROM files inside each game's `data\rom\` folder or suite directory tree.
 
 ## Key Features
 

@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **Scoped Sequential Path to `v1.0.0` Desktop Gold & `v2.0.0–v5.0.0` Scaffold:** Updated [ROADMAP.md](ROADMAP.md), [FEATURES.md](FEATURES.md), [README.md](README.md), and [active.state](active.state) to break `v0.5.0 -> v1.0.0` into six focused stepping stones (`v0.6.0` execution/display/VRR/filters/`F12`/audio -> `v0.7.0` dynamic prompts/accessibility/10-rail overlay menu + early SDL3 `reEngine.App` UI cutover -> `v0.8.0` profiles/vaults/Quick-Save 1-step undo/multi-disc virtual volumes + Dual-Installer adoption -> `v0.9.0` bundled manual/notebook/asset catalog/`.re*` hot-reload -> `v0.10.0` dumper wizard/deterministic HD & subtitle recipes/modder docs -> `v0.11.0` research tools/opt-in runtime API/clean-capture/Steam/playtime) converging on symmetric `2+` engine lockstep certification (`reSlate v1.0.0` + `reCart v1.0.0`) at `v1.0.0`, followed by `v1.1.0–v2.0.0` cross-platform/Hub and major anchors through `v5.0.0`.
+
 ## [0.5.0] - 2026-11-20
 
 ### Added
