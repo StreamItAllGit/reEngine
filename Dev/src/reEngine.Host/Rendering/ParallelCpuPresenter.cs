@@ -26,6 +26,12 @@ public sealed unsafe class ParallelCpuPresenter : IHostSurfacePresenter, IHostRe
     private IntPtr _sdlTexture;
     private int _textureW;
     private int _textureH;
+    private int _ownerThreadId;
+    private bool _vsyncEnabled;
+    private HostViewportRect _lastPresentedDestRect;
+    private byte[]? _lastInputRgba;
+    private int _lastInputW, _lastInputH, _lastRenderW, _lastRenderH;
+    private HostViewportRect _lastSrcCrop;
     private IHostGraphicsContext? _graphicsContext;
     private bool _disposed;
 
@@ -59,6 +65,7 @@ public sealed unsafe class ParallelCpuPresenter : IHostSurfacePresenter, IHostRe
     /// <param name="scaleFactor">Initial resolution multiplier (1..8).</param>
     public ParallelCpuPresenter(int surfaceWidth, int surfaceHeight, int scaleFactor = 2)
     {
+        _ownerThreadId = Environment.CurrentManagedThreadId;
         _surface = new HostRgbaSurfaceBackend(surfaceWidth, surfaceHeight, scaleFactor, HostRenderBackendIds.ParallelCpu)
         {
             UseParallelBandBlit = true
@@ -82,7 +89,8 @@ public sealed unsafe class ParallelCpuPresenter : IHostSurfacePresenter, IHostRe
             return false;
         }
 
-        _ = Sdl3Native.SDL_SetRenderVSync(_sdlRenderer, 0);
+        _ownerThreadId = Environment.CurrentManagedThreadId;
+        _ = Sdl3Native.SDL_SetRenderVSync(_sdlRenderer, _vsyncEnabled ? 1 : 0);
         _graphicsContext = new CpuPresenterContext(this, sdlWindow, _sdlRenderer);
         diagnostic = "ParallelCpu SDL3 presenter initialized.";
         return true;
@@ -107,6 +115,7 @@ public sealed unsafe class ParallelCpuPresenter : IHostSurfacePresenter, IHostRe
         }
 
         _surface.PresentRgba(width, height, rgba);
+        _lastPresentedDestRect = _surface.LastContentDestRect;
     }
 
     /// <inheritdoc />
@@ -122,6 +131,37 @@ public sealed unsafe class ParallelCpuPresenter : IHostSurfacePresenter, IHostRe
         }
 
         _surface.PresentRgba(width, height, rgba, destRect, srcCropRect);
+        _lastPresentedDestRect = _surface.LastContentDestRect;
+    }
+
+    internal int OwnerThreadId => _ownerThreadId;
+    internal HostViewportRect LastPresentedDestRect => _lastPresentedDestRect;
+
+    internal void FlushAndSyncForSnapshot()
+    {
+        if (_disposed || (_ownerThreadId != 0 && Environment.CurrentManagedThreadId != _ownerThreadId)) return;
+        _surface.PublishSnapshot();
+    }
+
+    internal void SetVSyncEnabled(bool enabled)
+    {
+        if (_disposed || (_ownerThreadId != 0 && Environment.CurrentManagedThreadId != _ownerThreadId)) return;
+        _vsyncEnabled = enabled;
+        if (_sdlRenderer != IntPtr.Zero) _ = Sdl3Native.SDL_SetRenderVSync(_sdlRenderer, enabled ? 1 : 0);
+    }
+
+    internal bool TryReadSurfaceRect(int x, int y, int width, int height, Span<byte> rgbaDestination)
+    {
+        if (_disposed || (_ownerThreadId != 0 && Environment.CurrentManagedThreadId != _ownerThreadId)) return false;
+        if (x < 0 || y < 0 || width <= 0 || height <= 0) return false;
+        long req = (long)width * height * 4L;
+        if (req <= 0 || req > rgbaDestination.Length) return false;
+        if (_sdlRenderer == IntPtr.Zero || _lastInputRgba is null || _lastRenderW <= 0 || _lastRenderH <= 0)
+            return _surface.TryReadSurfaceRect(x, y, width, height, rgbaDestination);
+        if (x > _lastRenderW - width || y > _lastRenderH - height) return false;
+        using var composite = new HostRgbaSurfaceBackend(_lastRenderW, _lastRenderH, ScaleFactor, BackendId) { UseParallelBandBlit = true };
+        composite.PresentRgba(_lastInputW, _lastInputH, _lastInputRgba, _lastPresentedDestRect, _lastSrcCrop);
+        return composite.TryReadSurfaceRect(x, y, width, height, rgbaDestination);
     }
 
     /// <inheritdoc />
@@ -197,6 +237,12 @@ public sealed unsafe class ParallelCpuPresenter : IHostSurfacePresenter, IHostRe
             _ = Sdl3Native.SDL_UpdateTexture(_sdlTexture, IntPtr.Zero, px, width * 4);
         }
 
+        _lastPresentedDestRect = HostViewportGeometry.ClampDestinationRect(renderW, renderH, destRect);
+        _lastSrcCrop = HostViewportGeometry.ClampSourceRect(width, height, srcCropRect);
+        _lastInputW = width; _lastInputH = height; _lastRenderW = renderW; _lastRenderH = renderH;
+        int needed = checked(width * height * 4);
+        if (_lastInputRgba is null || _lastInputRgba.Length < needed) _lastInputRgba = new byte[needed];
+        rgba[..needed].CopyTo(_lastInputRgba);
         Sdl3Native.PresentSdlTexture(_sdlRenderer, _sdlTexture, width, height, renderW, renderH, destRect, srcCropRect);
     }
 
@@ -226,6 +272,12 @@ public sealed unsafe class ParallelCpuPresenter : IHostSurfacePresenter, IHostRe
         }
 
         public void PresentComposite(int width, int height, ReadOnlySpan<byte> rgba) => _owner.PresentRgba(width, height, rgba);
+        public int OwnerThreadId => _owner.OwnerThreadId;
+        public HostViewportRect LastPresentedDestRect => _owner.LastPresentedDestRect;
+        public bool TryReadSurfaceRect(int x, int y, int width, int height, Span<byte> rgbaDestination) =>
+            _owner.TryReadSurfaceRect(x, y, width, height, rgbaDestination);
+        public void FlushAndSyncForSnapshot() => _owner.FlushAndSyncForSnapshot();
+        public void SetVSyncEnabled(bool enabled) => _owner.SetVSyncEnabled(enabled);
         public void Dispose() { }
     }
 }

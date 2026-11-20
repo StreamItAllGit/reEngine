@@ -14,19 +14,24 @@ internal static unsafe class VulkanNative
 {
     public const int VkSuccess = 0, VkSuboptimalKhr = 1000001003, VkErrorOutOfDateKhr = -1000001004;
     public const uint VkFormatR8G8B8A8Unorm = 37u, VkFormatB8G8R8A8Unorm = 44u, VkQueueGraphicsBit = 1u;
-    public const uint VkImageUsageTransferDstBit = 0x02u, VkImageUsageColorAttachmentBit = 0x10u, VkBufferUsageTransferSrcBit = 0x01u;
+    public const uint VkImageUsageTransferSrcBit = 0x01u, VkImageUsageTransferDstBit = 0x02u, VkImageUsageColorAttachmentBit = 0x10u;
+    public const uint VkBufferUsageTransferSrcBit = 0x01u, VkBufferUsageTransferDstBit = 0x02u;
     public const uint VkMemoryPropertyHostVisibleBit = 0x02u, VkMemoryPropertyHostCoherentBit = 0x04u;
-    public const uint VkImageLayoutUndefined = 0u, VkImageLayoutTransferDstOptimal = 7u, VkImageLayoutPresentSrcKhr = 1000001002u;
-    public const uint VkAccessTransferWriteBit = 0x1000u, VkPipelineStageTopOfPipeBit = 0x1u, VkPipelineStageTransferBit = 0x1000u, VkPipelineStageBottomOfPipeBit = 0x2000u;
+    public const uint VkImageLayoutUndefined = 0u, VkImageLayoutTransferSrcOptimal = 6u, VkImageLayoutTransferDstOptimal = 7u, VkImageLayoutPresentSrcKhr = 1000001002u;
+    public const uint VkAccessTransferReadBit = 0x800u, VkAccessTransferWriteBit = 0x1000u;
+    public const uint VkPipelineStageTopOfPipeBit = 0x1u, VkPipelineStageTransferBit = 0x1000u, VkPipelineStageBottomOfPipeBit = 0x2000u;
     public const uint VkFenceCreateSignaledBit = 1u, VkCommandPoolCreateResetBit = 2u, VkCommandBufferOneTimeSubmitBit = 1u;
-    public const uint VkPresentModeFifoKhr = 2u, VkCompositeAlphaOpaqueBitKhr = 1u, VkQueueFamilyIgnored = ~0u;
+    public const uint VkPresentModeImmediateKhr = 0u, VkPresentModeMailboxKhr = 1u, VkPresentModeFifoKhr = 2u, VkCompositeAlphaOpaqueBitKhr = 1u, VkQueueFamilyIgnored = ~0u;
 
     public static uint MakeApiVersion(uint major, uint minor, uint patch) => (major << 22) | (minor << 12) | patch;
 
-    public static bool TryCreateStagingBuffer(in VkDispatch vk, IntPtr physicalDevice, IntPtr device, ulong sizeBytes, out ulong buffer, out ulong memory, out void* mapped)
+    public static bool TryCreateStagingBuffer(in VkDispatch vk, IntPtr physicalDevice, IntPtr device, ulong sizeBytes, out ulong buffer, out ulong memory, out void* mapped) =>
+        TryCreateBuffer(in vk, physicalDevice, device, sizeBytes, VkBufferUsageTransferSrcBit, out buffer, out memory, out mapped);
+
+    public static bool TryCreateBuffer(in VkDispatch vk, IntPtr physicalDevice, IntPtr device, ulong sizeBytes, uint usage, out ulong buffer, out ulong memory, out void* mapped)
     {
         buffer = 0; memory = 0; mapped = null;
-        var bufInfo = new VkBufferCreateInfo { SType = 12u, Size = sizeBytes, Usage = VkBufferUsageTransferSrcBit };
+        var bufInfo = new VkBufferCreateInfo { SType = 12u, Size = sizeBytes, Usage = usage };
         ulong buf = 0, mem = 0;
         if (vk.CreateBuffer(device, &bufInfo, IntPtr.Zero, &buf) != VkSuccess) return false;
         VkMemoryRequirements req;
@@ -186,6 +191,7 @@ internal unsafe struct VkDispatch
     public delegate* unmanaged[Stdcall]<IntPtr, VkPhysicalDeviceMemoryProperties*, void> GetPhysicalDeviceMemoryProperties;
     public delegate* unmanaged[Stdcall]<IntPtr, ulong, VkSurfaceCapabilitiesKHR*, int> GetPhysicalDeviceSurfaceCapabilitiesKHR;
     public delegate* unmanaged[Stdcall]<IntPtr, ulong, uint*, VkSurfaceFormatKHR*, int> GetPhysicalDeviceSurfaceFormatsKHR;
+    public delegate* unmanaged[Stdcall]<IntPtr, ulong, uint*, uint*, int> GetPhysicalDeviceSurfacePresentModesKHR;
     public delegate* unmanaged[Stdcall]<IntPtr, VkDeviceCreateInfo*, IntPtr, IntPtr*, int> CreateDevice;
     public delegate* unmanaged[Stdcall]<IntPtr, byte*, IntPtr> GetDeviceProcAddr;
     public delegate* unmanaged[Stdcall]<IntPtr, IntPtr, void> DestroyDevice;
@@ -219,6 +225,7 @@ internal unsafe struct VkDispatch
     public delegate* unmanaged[Stdcall]<IntPtr, int> EndCommandBuffer;
     public delegate* unmanaged[Stdcall]<IntPtr, uint, uint, uint, uint, IntPtr, uint, IntPtr, uint, VkImageMemoryBarrier*, void> CmdPipelineBarrier;
     public delegate* unmanaged[Stdcall]<IntPtr, ulong, ulong, uint, uint, VkBufferImageCopy*, void> CmdCopyBufferToImage;
+    public delegate* unmanaged[Stdcall]<IntPtr, ulong, uint, ulong, uint, VkBufferImageCopy*, void> CmdCopyImageToBuffer;
 
     public bool LoadInstanceProcs(IntPtr instance)
     {
@@ -230,6 +237,7 @@ internal unsafe struct VkDispatch
         GetPhysicalDeviceMemoryProperties = (delegate* unmanaged[Stdcall]<IntPtr, VkPhysicalDeviceMemoryProperties*, void>)GetInst(instance, "vkGetPhysicalDeviceMemoryProperties");
         GetPhysicalDeviceSurfaceCapabilitiesKHR = (delegate* unmanaged[Stdcall]<IntPtr, ulong, VkSurfaceCapabilitiesKHR*, int>)GetInst(instance, "vkGetPhysicalDeviceSurfaceCapabilitiesKHR");
         GetPhysicalDeviceSurfaceFormatsKHR = (delegate* unmanaged[Stdcall]<IntPtr, ulong, uint*, VkSurfaceFormatKHR*, int>)GetInst(instance, "vkGetPhysicalDeviceSurfaceFormatsKHR");
+        GetPhysicalDeviceSurfacePresentModesKHR = (delegate* unmanaged[Stdcall]<IntPtr, ulong, uint*, uint*, int>)GetInst(instance, "vkGetPhysicalDeviceSurfacePresentModesKHR");
         GetDeviceProcAddr = (delegate* unmanaged[Stdcall]<IntPtr, byte*, IntPtr>)GetInst(instance, "vkGetDeviceProcAddr");
         return CreateDevice != null && EnumeratePhysicalDevices != null && GetDeviceProcAddr != null;
     }
@@ -267,6 +275,7 @@ internal unsafe struct VkDispatch
         EndCommandBuffer = (delegate* unmanaged[Stdcall]<IntPtr, int>)GetDev(device, "vkEndCommandBuffer");
         CmdPipelineBarrier = (delegate* unmanaged[Stdcall]<IntPtr, uint, uint, uint, uint, IntPtr, uint, IntPtr, uint, VkImageMemoryBarrier*, void>)GetDev(device, "vkCmdPipelineBarrier");
         CmdCopyBufferToImage = (delegate* unmanaged[Stdcall]<IntPtr, ulong, ulong, uint, uint, VkBufferImageCopy*, void>)GetDev(device, "vkCmdCopyBufferToImage");
+        CmdCopyImageToBuffer = (delegate* unmanaged[Stdcall]<IntPtr, ulong, uint, ulong, uint, VkBufferImageCopy*, void>)GetDev(device, "vkCmdCopyImageToBuffer");
         return CreateSwapchainKHR != null && QueueSubmit != null && QueuePresentKHR != null;
     }
 

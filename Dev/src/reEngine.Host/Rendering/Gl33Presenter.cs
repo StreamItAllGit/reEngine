@@ -19,9 +19,15 @@ public sealed unsafe class Gl33Presenter : IHostSurfacePresenter
     private IntPtr _glContext;
     private uint _textureId;
     private uint _readFboId;
+    private uint _surfaceTexId;
+    private uint _surfaceFboId;
     private int _textureWidth;
     private int _textureHeight;
+    private int _surfaceWidth;
+    private int _surfaceHeight;
     private int _ownerThreadId;
+    private bool _vsyncEnabled;
+    private HostViewportRect _lastPresentedDestRect;
     private Gl33Context? _graphicsContext;
     private bool _disposed;
 
@@ -72,7 +78,7 @@ public sealed unsafe class Gl33Presenter : IHostSurfacePresenter
             return false;
         }
 
-        _ = Sdl3Native.SDL_GL_SetSwapInterval(0);
+        _ = Sdl3Native.SDL_GL_SetSwapInterval(_vsyncEnabled ? 1 : 0);
         if (!Gl33Dispatch.TryLoad(out _gl, out string missing))
         {
             diagnostic = $"Missing OpenGL 3.3 entry point '{missing}'.";
@@ -91,20 +97,25 @@ public sealed unsafe class Gl33Presenter : IHostSurfacePresenter
             return false;
         }
 
-        uint tex = 0;
-        uint fbo = 0;
-        _gl.GenTextures(1, &tex);
-        _gl.GenFramebuffers(1, &fbo);
-        _textureId = tex;
-        _readFboId = fbo;
-        if (_textureId == 0 || _readFboId == 0)
+        uint* tex = stackalloc uint[2];
+        uint* fbo = stackalloc uint[2];
+        _gl.GenTextures(2, tex);
+        _gl.GenFramebuffers(2, fbo);
+        _textureId = tex[0];
+        _surfaceTexId = tex[1];
+        _readFboId = fbo[0];
+        _surfaceFboId = fbo[1];
+        if (_textureId == 0 || _readFboId == 0 || _surfaceTexId == 0 || _surfaceFboId == 0)
         {
-            diagnostic = "Failed to allocate OpenGL texture or FBO.";
+            diagnostic = "Failed to allocate OpenGL textures or FBOs.";
             Dispose();
             return false;
         }
 
         _gl.BindTexture(Gl33Native.Texture2D, _textureId);
+        _gl.TexParameteri(Gl33Native.Texture2D, Gl33Native.TextureMinFilter, Gl33Native.Nearest);
+        _gl.TexParameteri(Gl33Native.Texture2D, Gl33Native.TextureMagFilter, Gl33Native.Nearest);
+        _gl.BindTexture(Gl33Native.Texture2D, _surfaceTexId);
         _gl.TexParameteri(Gl33Native.Texture2D, Gl33Native.TextureMinFilter, Gl33Native.Nearest);
         _gl.TexParameteri(Gl33Native.Texture2D, Gl33Native.TextureMagFilter, Gl33Native.Nearest);
         _gl.BindTexture(Gl33Native.Texture2D, 0);
@@ -150,33 +161,66 @@ public sealed unsafe class Gl33Presenter : IHostSurfacePresenter
             }
         }
 
+        EnsureSurfaceTexture(winW, winH);
         _gl.BindFramebuffer(Gl33Native.ReadFramebuffer, _readFboId);
         _gl.FramebufferTexture2D(Gl33Native.ReadFramebuffer, Gl33Native.ColorAttachment0, Gl33Native.Texture2D, _textureId, 0);
-        uint fboStatus = _gl.CheckFramebufferStatus(Gl33Native.ReadFramebuffer);
-        if (!IsRenderTargetReady(winW, winH, fboStatus))
+        _gl.BindFramebuffer(Gl33Native.DrawFramebuffer, _surfaceFboId);
+        _gl.FramebufferTexture2D(Gl33Native.DrawFramebuffer, Gl33Native.ColorAttachment0, Gl33Native.Texture2D, _surfaceTexId, 0);
+        uint readStatus = _gl.CheckFramebufferStatus(Gl33Native.ReadFramebuffer);
+        uint drawStatus = _gl.CheckFramebufferStatus(Gl33Native.DrawFramebuffer);
+        if (!IsRenderTargetReady(winW, winH, readStatus) || drawStatus != Gl33Native.FramebufferComplete)
         {
             _gl.BindFramebuffer(Gl33Native.ReadFramebuffer, 0);
+            _gl.BindFramebuffer(Gl33Native.DrawFramebuffer, 0);
             _gl.BindTexture(Gl33Native.Texture2D, 0);
             return;
         }
 
-        _gl.BindFramebuffer(Gl33Native.DrawFramebuffer, 0);
         _gl.Viewport(0, 0, winW, winH);
         _gl.ClearColor(14f / 255f, 14f / 255f, 16f / 255f, 1f);
         _gl.Clear(Gl33Native.ColorBufferBit);
 
-        (int sx0, int sy0, int sx1, int sy1, int dx0, int dy0, int dx1, int dy1) = ComputeBlitCoordinates(width, height, winW, winH, destRect, srcCropRect);
-        if (dx1 > dx0 && dy1 > dy0 && sx1 > sx0 && sy0 > sy1)
+        HostViewportRect clampedSrc = HostViewportGeometry.ClampSourceRect(width, height, srcCropRect);
+        HostViewportRect clampedDst = HostViewportGeometry.ClampDestinationRect(winW, winH, destRect);
+        _lastPresentedDestRect = clampedDst;
+        if (clampedDst.Width > 0 && clampedDst.Height > 0 && clampedSrc.Width > 0 && clampedSrc.Height > 0)
         {
-            _gl.BlitFramebuffer(sx0, sy0, sx1, sy1, dx0, dy0, dx1, dy1, Gl33Native.ColorBufferBit, (uint)Gl33Native.Nearest);
+            _gl.BlitFramebuffer(
+                clampedSrc.X, clampedSrc.Y, clampedSrc.X + clampedSrc.Width, clampedSrc.Y + clampedSrc.Height,
+                clampedDst.X, clampedDst.Y, clampedDst.X + clampedDst.Width, clampedDst.Y + clampedDst.Height,
+                Gl33Native.ColorBufferBit, (uint)Gl33Native.Nearest);
         }
+
+        _gl.BindFramebuffer(Gl33Native.ReadFramebuffer, _surfaceFboId);
+        _gl.BindFramebuffer(Gl33Native.DrawFramebuffer, 0);
+        _gl.BlitFramebuffer(0, winH, winW, 0, 0, 0, winW, winH, Gl33Native.ColorBufferBit, (uint)Gl33Native.Nearest);
 
         _gl.BindFramebuffer(Gl33Native.ReadFramebuffer, 0);
         _gl.BindTexture(Gl33Native.Texture2D, 0);
         _ = Sdl3Native.SDL_GL_SwapWindow(_sdlWindow);
     }
 
+    private void EnsureSurfaceTexture(int winW, int winH)
+    {
+        if (_surfaceWidth == winW && _surfaceHeight == winH) return;
+        _gl.BindTexture(Gl33Native.Texture2D, _surfaceTexId);
+        _gl.TexImage2D(Gl33Native.Texture2D, 0, Gl33Native.Rgba8, winW, winH, 0, Gl33Native.Rgba, Gl33Native.UnsignedByte, null);
+        _gl.BindTexture(Gl33Native.Texture2D, 0);
+        _surfaceWidth = winW;
+        _surfaceHeight = winH;
+    }
+
     internal int OwnerThreadId => _ownerThreadId;
+    internal HostViewportRect LastPresentedDestRect => _lastPresentedDestRect;
+
+    internal void SetVSyncEnabled(bool enabled)
+    {
+        _vsyncEnabled = enabled;
+        if (_disposed || _glContext == IntPtr.Zero || _sdlWindow == IntPtr.Zero) return;
+        if (_ownerThreadId != 0 && Environment.CurrentManagedThreadId != _ownerThreadId) return;
+        if (Sdl3Native.SDL_GL_MakeCurrent(_sdlWindow, _glContext) == 0) return;
+        _ = Sdl3Native.SDL_GL_SetSwapInterval(enabled ? 1 : 0);
+    }
 
     internal void FlushAndSyncForSnapshot()
     {
@@ -191,14 +235,14 @@ public sealed unsafe class Gl33Presenter : IHostSurfacePresenter
         if (_disposed || _glContext == IntPtr.Zero || _sdlWindow == IntPtr.Zero) return false;
         if (_ownerThreadId != 0 && Environment.CurrentManagedThreadId != _ownerThreadId) return false;
         if (x < 0 || y < 0 || width <= 0 || height <= 0) return false;
-        if (_textureId == 0 || _readFboId == 0 || _textureWidth <= 0 || _textureHeight <= 0) return false;
-        if (x > _textureWidth - width || y > _textureHeight - height) return false;
+        if (_surfaceTexId == 0 || _surfaceFboId == 0 || _surfaceWidth <= 0 || _surfaceHeight <= 0) return false;
+        if (x > _surfaceWidth - width || y > _surfaceHeight - height) return false;
         long requiredBytes = (long)width * height * 4L;
         if (requiredBytes <= 0 || requiredBytes > rgbaDestination.Length) return false;
         if (_gl.ReadPixels == null || Sdl3Native.SDL_GL_MakeCurrent(_sdlWindow, _glContext) == 0) return false;
 
-        _gl.BindFramebuffer(Gl33Native.ReadFramebuffer, _readFboId);
-        _gl.FramebufferTexture2D(Gl33Native.ReadFramebuffer, Gl33Native.ColorAttachment0, Gl33Native.Texture2D, _textureId, 0);
+        _gl.BindFramebuffer(Gl33Native.ReadFramebuffer, _surfaceFboId);
+        _gl.FramebufferTexture2D(Gl33Native.ReadFramebuffer, Gl33Native.ColorAttachment0, Gl33Native.Texture2D, _surfaceTexId, 0);
         uint fboStatus = _gl.CheckFramebufferStatus(Gl33Native.ReadFramebuffer);
         if (fboStatus != Gl33Native.FramebufferComplete)
         {
@@ -243,17 +287,15 @@ public sealed unsafe class Gl33Presenter : IHostSurfacePresenter
         if (_glContext != IntPtr.Zero && _sdlWindow != IntPtr.Zero)
         {
             _ = Sdl3Native.SDL_GL_MakeCurrent(_sdlWindow, _glContext);
-            if (_readFboId != 0 && _gl.DeleteFramebuffers != null)
+            if (_gl.DeleteFramebuffers != null)
             {
-                uint fbo = _readFboId;
-                _gl.DeleteFramebuffers(1, &fbo);
-                _readFboId = 0;
+                if (_readFboId != 0) { uint fbo = _readFboId; _gl.DeleteFramebuffers(1, &fbo); _readFboId = 0; }
+                if (_surfaceFboId != 0) { uint fbo = _surfaceFboId; _gl.DeleteFramebuffers(1, &fbo); _surfaceFboId = 0; }
             }
-            if (_textureId != 0 && _gl.DeleteTextures != null)
+            if (_gl.DeleteTextures != null)
             {
-                uint tex = _textureId;
-                _gl.DeleteTextures(1, &tex);
-                _textureId = 0;
+                if (_textureId != 0) { uint tex = _textureId; _gl.DeleteTextures(1, &tex); _textureId = 0; }
+                if (_surfaceTexId != 0) { uint tex = _surfaceTexId; _gl.DeleteTextures(1, &tex); _surfaceTexId = 0; }
             }
             _ = Sdl3Native.SDL_GL_MakeCurrent(_sdlWindow, IntPtr.Zero);
             _ = Sdl3Native.SDL_GL_DestroyContext(_glContext);
@@ -285,9 +327,11 @@ public sealed unsafe class Gl33Presenter : IHostSurfacePresenter
 
         public void PresentComposite(int width, int height, ReadOnlySpan<byte> rgba) => _owner.PresentRgba(width, height, rgba);
         public int OwnerThreadId => _owner.OwnerThreadId;
+        public HostViewportRect LastPresentedDestRect => _owner.LastPresentedDestRect;
         public bool TryReadSurfaceRect(int x, int y, int width, int height, Span<byte> rgbaDestination) =>
             _owner.TryReadSurfaceRect(x, y, width, height, rgbaDestination);
         public void FlushAndSyncForSnapshot() => _owner.FlushAndSyncForSnapshot();
+        public void SetVSyncEnabled(bool enabled) => _owner.SetVSyncEnabled(enabled);
         public void Dispose() { }
     }
 }

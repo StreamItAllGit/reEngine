@@ -26,9 +26,13 @@ public sealed class HostSessionRunner : IHostAutomationTarget
     private readonly F1SettingsDrawerView _drawer = new();
     private readonly F3HudOverlayView _hud = new();
     private readonly FirstRunMediaGateView _mediaGate = new();
+    private readonly HostFramePacingController _pacingController = new();
+    private readonly HostScreenshotService _screenshotService = new();
+    private readonly HostVideoFilterPipeline _filterPipeline = new();
     private readonly object _commandSync = new();
     private readonly Queue<(int X, int Y, string? TargetId, bool IsRightClick)> _pendingClicks = new();
     private HostTouchOverlayView? _touchOverlay;
+    private HostDisplayMode _activeDisplayMode = HostDisplayMode.Windowed;
     private uint _prevCaptureGpMask;
     private bool _swallowNextEscapeHotkey;
     private volatile bool _stopRequested;
@@ -96,16 +100,19 @@ public sealed class HostSessionRunner : IHostAutomationTarget
 
         using var window = new Sdl3HostWindow();
         bool useWindow = options.RequireVisibleWindow && !options.HeadlessFrameCount.HasValue;
+        HostDisplayMode initialMode = Sdl3HostWindow.ResolveDisplayMode(options);
+        _activeDisplayMode = initialMode;
         string? failReason = null;
-        bool windowOpened = useWindow && TryOpenWithFallback(window, options, ref activeKind, ref activeBackendId, ref fallbackBanner, out failReason);
+        bool windowOpened = useWindow && window.TryOpenWithFallback(options, initialMode, ref activeKind, ref activeBackendId, ref fallbackBanner, out failReason);
         if (useWindow && !windowOpened && options.RequireBackend)
             return BuildUnavailableResult(activeBackendId, failReason ?? window.DiagnosticStatus);
 
         Sdl3HostWindow? activeWindow = windowOpened ? window : null;
-        ConfigureDrawerAndSurface(options, activeKind, fallbackBanner, window.GraphicsContext, activeWindow?.IsFullscreen ?? options.IsFullscreen);
+        ConfigureDrawerAndSurface(options, activeKind, fallbackBanner, window.GraphicsContext, activeWindow?.IsFullscreen ?? (initialMode != HostDisplayMode.Windowed));
         using var audioPump = new Sdl3AudioPump(options.AudioFormat, options.DumpAudioPath, openNativeStream: windowOpened, audioDriverOverride: options.AudioDriverOverride);
         string activeAudioDriver = audioPump.ActiveDriver ?? audioPump.SelectedDriver;
         using var pacer = new HighResFramePacer(options.TargetFps);
+        _ = _pacingController.SyncPacer(pacer, options.TargetFps, options.BackgroundFpsCap, options.FastForwardMultiplier, _drawer.IsFastForwardEnabled, activeWindow?.IsWindowFocused ?? true, options.IsVsyncEnabled);
         var heartbeat = new HeartbeatLogger("reEngine HostSession", heartbeatSink);
         if (automation is not null)
         {
@@ -118,31 +125,32 @@ public sealed class HostSessionRunner : IHostAutomationTarget
         byte[] contentRgba = new byte[checked(contentW * contentH * 4)];
         short[] audioBuffer = new short[Math.Max(512, (options.AudioFormat.SampleRate / 60) * options.AudioFormat.Channels * 2)];
         long frameNumber = 0;
+        string? lastScreenshotPath = null;
 
         try
         {
             while (!ct.IsCancellationRequested && !_stopRequested)
             {
                 if (options.HeadlessFrameCount is int limit && frameNumber >= limit) break;
-                if (activeWindow is not null && !PollMappedWindowEvents(activeWindow)) break;
+                if (!HostFramePacingController.PumpLateLatchBeforeTick(
+                    () => activeWindow is null || PollMappedWindowEvents(activeWindow),
+                    () => PrepareLateLatchInput(activeWindow, automation, contentW, contentH, options),
+                    () => _inputMapper.BuildFrame(),
+                    out HostInputFrame frameInput)) break;
 
-                automation?.DrainPendingCommands();
-                HandleQueuedClicksOrCapture(activeWindow);
-                _inputMapper.SetMenuOpen(_drawer.IsOpen || _mediaGate.IsVisible);
-                UpdatePointerContentPosition(activeWindow, contentW, contentH, options);
-                HostInputFrame frameInput = _inputMapper.BuildFrame();
                 CaptureGamepadInputIfPressed(frameInput.GamepadButtonsMask);
-                ApplyHotkeys(frameInput, options, activeWindow);
+                ApplyNonSnapshotHotkeys(frameInput, options, activeWindow);
                 _inputMapper.SetMenuOpen(_drawer.IsOpen || _mediaGate.IsVisible);
+                _ = _pacingController.SyncPacer(
+                    pacer, options.TargetFps, options.BackgroundFpsCap, options.FastForwardMultiplier,
+                    _drawer.IsFastForwardEnabled || frameInput.IsFastForwardHeld, activeWindow?.IsWindowFocused ?? true, options.IsVsyncEnabled);
 
                 _surface.BeginFrame(contentW, contentH);
                 await callbacks.OnFrameTickAsync(frameNumber, frameInput, contentRgba, contentW, contentH, ct);
-                int connectedPads = 0;
-                foreach (HostGamepadPortSnapshot port in frameInput.PadPorts)
-                {
-                    if (port.IsConnected) connectedPads++;
-                }
-                PresentCompositeFrame(options, contentW, contentH, contentRgba, pacer, audioPump, activeWindow, connectedPads);
+                ReadOnlySpan<byte> filteredRgba = PresentGameAndOverlays(
+                    options, contentW, contentH, contentRgba, frameInput, pacer, audioPump, activeWindow, frameNumber,
+                    out int filteredW, out int filteredH);
+                HandlePostPresentActions(frameInput, options, contentRgba, contentW, contentH, filteredRgba, filteredW, filteredH, ref lastScreenshotPath);
 
                 int readSamples = callbacks.ReadAudioSamples(audioBuffer);
                 if (readSamples > 0) _ = audioPump.EnqueueInterleaved(audioBuffer.AsSpan(0, Math.Min(readSamples, audioBuffer.Length)));
@@ -150,11 +158,11 @@ public sealed class HostSessionRunner : IHostAutomationTarget
                 automation?.SyncWidgets(GetOverlayWidgets());
                 frameNumber++;
                 heartbeat.ReportProgress(frameNumber, options.HeadlessFrameCount ?? 0, window.DiagnosticStatus);
-                pacer.WaitForNextFrame();
+                _ = _pacingController.WaitForNextFrame(pacer);
             }
 
-            string? savedPng = string.IsNullOrWhiteSpace(options.DumpFramePath) ? null : Path.GetFullPath(options.DumpFramePath);
-            if (savedPng is not null) _surface.SavePng(savedPng);
+            string? savedPng = string.IsNullOrWhiteSpace(options.DumpFramePath) ? lastScreenshotPath : Path.GetFullPath(options.DumpFramePath);
+            if (!string.IsNullOrWhiteSpace(options.DumpFramePath)) _surface.SavePng(Path.GetFullPath(options.DumpFramePath));
             return new HostSessionResult(0, frameNumber, _drawer.IsOpen, _hud.IsVisible, _drawer.ActiveTab, savedPng, audioPump.CaptureFilePath, $"Completed {frameNumber} frame(s).", activeBackendId, activeAudioDriver, fallbackBanner);
         }
         finally
@@ -208,27 +216,6 @@ public sealed class HostSessionRunner : IHostAutomationTarget
     private HostSessionResult BuildUnavailableResult(string requestedBackendId, string reason) =>
         new(6, 0, false, false, _drawer.ActiveTab, null, null, $"Required render backend '{requestedBackendId}' unavailable: {reason}", null, null, null);
 
-    private static bool TryOpenWithFallback(
-        Sdl3HostWindow window, HostSessionOptions options, ref HostRenderBackendKind activeKind, ref string activeBackendId, ref string? fallbackBanner, out string? failureDiag)
-    {
-        if (window.TryOpen(options.WindowTitle, options.WindowWidth, options.WindowHeight, visible: true, activeKind, options.IsFullscreen, out string diag))
-        {
-            failureDiag = null;
-            return true;
-        }
-        failureDiag = diag;
-        if (options.RequireBackend) return false;
-        foreach (HostRenderBackendKind fbKind in new[] { HostRenderBackendKind.ParallelCpu, HostRenderBackendKind.Software })
-        {
-            if (activeKind == fbKind || !window.TryOpen(options.WindowTitle, options.WindowWidth, options.WindowHeight, visible: true, fbKind, options.IsFullscreen, out _)) continue;
-            activeKind = fbKind;
-            activeBackendId = HostBackendProbe.GetCanonicalBackendId(fbKind);
-            fallbackBanner ??= $"Fallback to {activeBackendId}: init failed ({diag})";
-            return true;
-        }
-        return false;
-    }
-
     private void ConfigureDrawerAndSurface(
         HostSessionOptions options, HostRenderBackendKind activeKind, string? fallbackBanner, IHostGraphicsContext? graphicsContext, bool isFullscreen)
     {
@@ -258,7 +245,15 @@ public sealed class HostSessionRunner : IHostAutomationTarget
             (x, y) => { if (TryMapWindowPointToSurface(window, x, y, out int sx, out int sy)) EnqueuePointerClick(sx, sy, null, false); },
             (x, y) => { if (TryMapWindowPointToSurface(window, x, y, out int sx, out int sy)) EnqueuePointerClick(sx, sy, null, true); });
 
-    private void HandleQueuedClicksOrCapture(Sdl3HostWindow? window)
+    private void PrepareLateLatchInput(Sdl3HostWindow? window, IHostAutomationBridge? automation, int contentW, int contentH, HostSessionOptions options)
+    {
+        automation?.DrainPendingCommands();
+        HandleQueuedClicksOrCapture(window, options);
+        _inputMapper.SetMenuOpen(_drawer.IsOpen || _mediaGate.IsVisible);
+        UpdatePointerContentPosition(window, contentW, contentH, options);
+    }
+
+    private void HandleQueuedClicksOrCapture(Sdl3HostWindow? window, HostSessionOptions options)
     {
         if (_drawer.IsOpen && _drawer.ActiveTab == HostDrawerTabId.Keybinds && _drawer.KeybindsTab.IsCapturing
             && _inputMapper.TryConsumeFirstLatchedCode(out int capturedCode))
@@ -271,10 +266,13 @@ public sealed class HostSessionRunner : IHostAutomationTarget
         {
             (int X, int Y, string? TargetId, bool IsRightClick) click;
             lock (_commandSync) { if (_pendingClicks.Count == 0) break; click = _pendingClicks.Dequeue(); }
-            if (_mediaGate.TryHandleClick(click.X, click.Y, click.TargetId)) continue;
-            _ = _drawer.TryHandleClick(click.X, click.Y, click.TargetId, _inputMapper, click.IsRightClick);
+            if (!_mediaGate.TryHandleClick(click.X, click.Y, click.TargetId)) _ = _drawer.TryHandleClick(click.X, click.Y, click.TargetId, _inputMapper, click.IsRightClick);
         }
-        if (window is not null && window.IsFullscreen != _drawer.IsFullscreen) _ = window.TrySetFullscreen(_drawer.IsFullscreen);
+        if (window is not null && window.IsFullscreen != _drawer.IsFullscreen)
+        {
+            _activeDisplayMode = _drawer.IsFullscreen ? (options.DisplayMode == HostDisplayMode.ExclusiveFullscreen ? HostDisplayMode.ExclusiveFullscreen : HostDisplayMode.BorderlessFullscreen) : HostDisplayMode.Windowed;
+            _ = window.TrySetDisplayMode(_activeDisplayMode, options.MonitorIndex);
+        }
         _inputMapper.IsFastForwardToggled = _drawer.IsFastForwardEnabled;
     }
 
@@ -322,15 +320,19 @@ public sealed class HostSessionRunner : IHostAutomationTarget
         if (bindingCode <= HostBindingCodes.GamepadMax) _ = _drawer.TryCaptureInputCode(bindingCode, _inputMapper);
     }
 
-    private void ApplyHotkeys(HostInputFrame input, HostSessionOptions options, Sdl3HostWindow? window)
+    private void ApplyNonSnapshotHotkeys(HostInputFrame input, HostSessionOptions options, Sdl3HostWindow? window)
     {
         if ((input.HotkeyFlags & (uint)HostHotkeyFlags.ToggleDrawer) != 0) _drawer.IsOpen = !_drawer.IsOpen;
         if ((input.HotkeyFlags & (uint)HostHotkeyFlags.ToggleHud) != 0) _hud.IsVisible = !_hud.IsVisible;
         if ((input.HotkeyFlags & (uint)HostHotkeyFlags.ToggleFullscreen) != 0)
         {
             _drawer.IsFullscreen = !_drawer.IsFullscreen;
-            _ = window?.TrySetFullscreen(_drawer.IsFullscreen);
+            _activeDisplayMode = _drawer.IsFullscreen
+                ? (options.DisplayMode == HostDisplayMode.ExclusiveFullscreen ? HostDisplayMode.ExclusiveFullscreen : HostDisplayMode.BorderlessFullscreen)
+                : HostDisplayMode.Windowed;
+            _ = window?.TrySetDisplayMode(_activeDisplayMode, options.MonitorIndex);
             options.SessionEventCallbacks?.OnFullscreenChanged(_drawer.IsFullscreen);
+            options.SessionEventCallbacks?.OnDisplayModeChanged(_activeDisplayMode);
         }
         if ((input.HotkeyFlags & (uint)HostHotkeyFlags.FastForward) != 0)
         {
@@ -338,7 +340,6 @@ public sealed class HostSessionRunner : IHostAutomationTarget
             _inputMapper.IsFastForwardToggled = _drawer.IsFastForwardEnabled;
             options.SessionEventCallbacks?.OnFastForwardChanged(_drawer.IsFastForwardEnabled);
         }
-        if ((input.HotkeyFlags & (uint)HostHotkeyFlags.QuickSave) != 0) DispatchQuickSave(ActiveGraphicsContext, options.SessionEventCallbacks);
         if ((input.HotkeyFlags & (uint)HostHotkeyFlags.QuickLoad) != 0) options.SessionEventCallbacks?.OnQuickLoadRequested();
         if ((input.HotkeyFlags & (uint)HostHotkeyFlags.CutsceneSkip) != 0) options.SessionEventCallbacks?.OnCutsceneSkipRequested();
         if ((input.HotkeyFlags & (uint)HostHotkeyFlags.Escape) == 0) return;
@@ -352,27 +353,55 @@ public sealed class HostSessionRunner : IHostAutomationTarget
         callbacks?.OnQuickSaveRequested();
     }
 
-    private void PresentCompositeFrame(
-        HostSessionOptions options, int contentW, int contentH, byte[] contentRgba, HighResFramePacer pacer, Sdl3AudioPump audioPump, Sdl3HostWindow? window, int connectedPads)
+    private void HandlePostPresentActions(
+        HostInputFrame input, HostSessionOptions options,
+        byte[] cleanRgba, int cleanW, int cleanH,
+        ReadOnlySpan<byte> filteredRgba, int filteredW, int filteredH,
+        ref string? lastScreenshotPath)
+    {
+        if ((input.HotkeyFlags & (uint)HostHotkeyFlags.QuickSave) != 0) DispatchQuickSave(ActiveGraphicsContext, options.SessionEventCallbacks);
+        if ((input.HotkeyFlags & (uint)(HostHotkeyFlags.TakeScreenshot | HostHotkeyFlags.DumpFrame)) == 0) return;
+
+        HostScreenshotResult shot = _screenshotService.Capture(
+            options.ScreenshotCaptureMode, cleanRgba, cleanW, cleanH, filteredRgba, filteredW, filteredH,
+            options.ScreenshotsDirectory, options.ExecutionResilience?.DataDirectory, options.ModuleId,
+            options.DumpFramePath, options.AllowedSnapshotRoot);
+        if (shot.Succeeded) lastScreenshotPath = shot.FilePath;
+        options.SessionEventCallbacks?.OnScreenshotCaptured(shot);
+    }
+
+    private ReadOnlySpan<byte> PresentGameAndOverlays(
+        HostSessionOptions options, int contentW, int contentH, byte[] contentRgba,
+        HostInputFrame frameInput, HighResFramePacer pacer, Sdl3AudioPump audioPump, Sdl3HostWindow? window, long frameNumber,
+        out int filteredW, out int filteredH)
     {
         _surface.ScaleFactor = _drawer.ResolutionScale;
         _surface.AspectRatioMode = _drawer.AspectRatioMode;
         _surface.OverscanCropPx = _drawer.OverscanCropPx;
         _surface.ContentPixelAspectRatio = options.ContentPixelAspectRatio;
         (HostViewportRect srcCrop, HostViewportRect contentDest) = ComputeContentRects(contentW, contentH, options);
-        _surface.PresentRgba(contentW, contentH, contentRgba, contentDest, srcCrop, publishSnapshot: false);
+
+        (int targetW, int targetH) = HostVideoFilterPipeline.ResolveTargetSize(
+            options.VideoFilterMode, options.IsTrueColor24BitEnabled, options.IsDitheringEnabled,
+            _drawer.ResolutionScale, contentW, contentH, contentDest);
+        ReadOnlySpan<byte> filteredRgba = _filterPipeline.Process(
+            contentRgba, contentW, contentH, targetW, targetH, options.VideoFilterMode,
+            options.IsTrueColor24BitEnabled, options.IsDitheringEnabled, (int)frameNumber,
+            out filteredW, out filteredH);
+        HostViewportRect filteredCrop = HostVideoFilterPipeline.ScaleSourceCrop(srcCrop, contentW, contentH, filteredW, filteredH);
+        _surface.PresentRgba(filteredW, filteredH, filteredRgba, contentDest, filteredCrop, publishSnapshot: false);
+
+        int connectedPads = 0;
+        foreach (HostGamepadPortSnapshot port in frameInput.PadPorts) if (port.IsConnected) connectedPads++;
 
         _touchOverlay?.Render(_surface.Canvas);
         if (_drawer.IsOpen) _drawer.Render(_surface.Canvas, options.DrawerDescriptor, _inputMapper.Bindings);
         if (_mediaGate.IsVisible) _mediaGate.Render(_surface.Canvas, options.DrawerDescriptor);
         if (_hud.IsVisible)
             _hud.Render(_surface.Canvas, new F3HudTelemetry(pacer.CurrentFps, pacer.AverageFrameMs, _drawer.SelectedBackend.ToString(), _drawer.ResolutionScale, _drawer.ExecutionTierLabel, audioPump.FillRatio)
-            {
-                AspectRatioLabel = HostAspectRatioModeCodec.ToDisplayLabel(_drawer.AspectRatioMode),
-                IsFastForwardEnabled = _drawer.IsFastForwardEnabled,
-                ConnectedPadCount = Math.Min(4, connectedPads)
-            });
+            { AspectRatioLabel = HostAspectRatioModeCodec.ToDisplayLabel(_drawer.AspectRatioMode), IsFastForwardEnabled = _drawer.IsFastForwardEnabled, ConnectedPadCount = Math.Min(4, connectedPads) });
         _surface.PublishSnapshot();
         window?.PresentRgba(_surface.SurfaceWidth, _surface.SurfaceHeight, _surface.Canvas.Buffer, HostAspectRatioMode.NativeFit);
+        return filteredRgba;
     }
 }
