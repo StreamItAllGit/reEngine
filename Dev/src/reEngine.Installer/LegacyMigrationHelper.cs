@@ -21,6 +21,9 @@ internal sealed record LegacyMigrationResult(
 
 internal static class LegacyMigrationHelper
 {
+    private static readonly string[] MigratedConfigFileNames =
+        ["settings.json", "settings.video.json", "settings.audio.json", "settings.controls.json"];
+
     public static string NormalizeProfileId(string? rawProfile)
     {
         if (string.IsNullOrWhiteSpace(rawProfile))
@@ -69,7 +72,7 @@ internal static class LegacyMigrationHelper
         reEngineDir = null;
         if (string.IsNullOrWhiteSpace(installDir)) return false;
 
-        string sourcePath = ResolveSettingsPaths(installDir.Trim(), out _);
+        string sourcePath = ResolveSettingsPath(installDir.Trim(), "settings.json", out _);
         JsonObject? root = TryLoadSettingsObject(sourcePath);
         if (root is null) return false;
 
@@ -86,12 +89,15 @@ internal static class LegacyMigrationHelper
     public static void PersistInstallProfileSettings(
         string installDir, string? profileId, string? suiteDir, string? reEngineDir)
     {
-        string sourceToRead = ResolveSettingsPaths(installDir, out string settingsPath);
+        string sourceToRead = ResolveSettingsPath(installDir, "settings.json", out string settingsPath);
         Directory.CreateDirectory(Path.GetDirectoryName(settingsPath)!);
         bool hasExisting = File.Exists(sourceToRead);
         JsonObject root = TryLoadSettingsObject(sourceToRead) ?? new JsonObject();
 
-        SetCanonicalNode(root, "schemaVersion", 1);
+        int schemaVersion = TryGetInt(root, "schemaVersion", out int existingSchemaVersion)
+            ? Math.Max(existingSchemaVersion, 1)
+            : 1;
+        SetCanonicalNode(root, "schemaVersion", schemaVersion);
         SetCanonicalNode(root, "appId", ReEnginePackagingConstants.AppId);
         if (!string.IsNullOrWhiteSpace(profileId))
         {
@@ -118,12 +124,12 @@ internal static class LegacyMigrationHelper
         File.Move(tmpPath, settingsPath, overwrite: true);
     }
 
-    private static string ResolveSettingsPaths(string installDir, out string canonicalSettingsPath)
+    private static string ResolveSettingsPath(string installDir, string fileName, out string canonicalPath)
     {
         string fullInstall = Path.GetFullPath(installDir);
-        canonicalSettingsPath = Path.Combine(fullInstall, "data", "config", "settings.json");
-        string legacyFlatPath = Path.Combine(fullInstall, "data", "settings.json");
-        return File.Exists(canonicalSettingsPath) ? canonicalSettingsPath : legacyFlatPath;
+        canonicalPath = Path.Combine(fullInstall, "data", "config", fileName);
+        string legacyFlatPath = Path.Combine(fullInstall, "data", fileName);
+        return File.Exists(canonicalPath) ? canonicalPath : legacyFlatPath;
     }
 
     private static JsonObject? TryLoadSettingsObject(string path)
@@ -131,6 +137,21 @@ internal static class LegacyMigrationHelper
         if (!File.Exists(path)) return null;
         try { return JsonNode.Parse(File.ReadAllText(path, Encoding.UTF8)) as JsonObject; }
         catch (Exception ex) when (ex is JsonException or IOException) { return null; }
+    }
+
+    private static bool TryGetInt(JsonObject root, string key, out int value)
+    {
+        foreach (KeyValuePair<string, JsonNode?> kv in root)
+        {
+            if (string.Equals(kv.Key, key, StringComparison.OrdinalIgnoreCase) && kv.Value is JsonValue jv)
+            {
+                if (jv.TryGetValue(out int intVal)) { value = intVal; return true; }
+                if (jv.TryGetValue(out long longVal) && longVal is >= int.MinValue and <= int.MaxValue) { value = (int)longVal; return true; }
+                if (jv.TryGetValue(out JsonElement je) && je.ValueKind == JsonValueKind.Number && je.TryGetInt32(out int elVal)) { value = elVal; return true; }
+            }
+        }
+        value = 0;
+        return false;
     }
 
     private static bool TryGetString(JsonObject root, string key, out string value)
@@ -174,12 +195,15 @@ internal static class LegacyMigrationHelper
         {
             string targetConfigDir = Path.Combine(targetDataDir, "config");
             Directory.CreateDirectory(targetConfigDir);
-            string legacySettings = ResolveSettingsPaths(legacyRoot, out _);
-            string targetSettings = Path.Combine(targetConfigDir, "settings.json");
-            if (File.Exists(legacySettings) && !File.Exists(targetSettings))
+            foreach (string fileName in MigratedConfigFileNames)
             {
-                File.Copy(legacySettings, targetSettings, overwrite: false);
-                migratedSettings = true;
+                string legacyFile = ResolveSettingsPath(legacyRoot, fileName, out _);
+                string targetFile = Path.Combine(targetConfigDir, fileName);
+                if (File.Exists(legacyFile) && !File.Exists(targetFile))
+                {
+                    File.Copy(legacyFile, targetFile, overwrite: false);
+                    migratedSettings = true;
+                }
             }
 
             string legacyRomDir = Path.Combine(legacyRoot, "data", "rom");
