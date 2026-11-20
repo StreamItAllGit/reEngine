@@ -78,6 +78,35 @@ function Assert-BinaryPurity([string]$DllPath, [string[]]$ForbiddenTokens) {
     }
 }
 
+function Assert-FailClosedAutomation([string]$ExePath) {
+    if (-not (Test-Path $ExePath)) { throw "Binary missing for fail-closed automation check: $ExePath" }
+    $psi = [System.Diagnostics.ProcessStartInfo]::new()
+    $psi.FileName = $ExePath
+    $psi.WorkingDirectory = Split-Path -Parent $ExePath
+    $psi.Arguments = "--automation-port 5199"
+    $psi.UseShellExecute = $false
+    $psi.CreateNoWindow = $true
+    $psi.RedirectStandardOutput = $true
+    $psi.RedirectStandardError = $true
+    $p = [System.Diagnostics.Process]::Start($psi)
+    if ($null -eq $p) { throw "Failed to start '$ExePath' for fail-closed automation check." }
+    try {
+        $outTask = $p.StandardOutput.ReadToEndAsync()
+        $errTask = $p.StandardError.ReadToEndAsync()
+        if (-not $p.WaitForExit(20000)) {
+            try { $p.Kill() } catch { }
+            throw "Release fail-closed --automation-port check timed out for '$ExePath'."
+        }
+        $null = $outTask.Wait(2000)
+        $null = $errTask.Wait(2000)
+        if ($p.ExitCode -ne 2) {
+            throw "Fail-closed automation gate violation in '$ExePath': expected ExitCode 2, got $($p.ExitCode)."
+        }
+    } finally {
+        $p.Dispose()
+    }
+}
+
 if (-not $SkipTests) {
     Write-Host "[1/6] Running Release tests with /warnaserror (APP_ISOLATED_TEST=1)..."
     $prevIso = $env:APP_ISOLATED_TEST
@@ -121,10 +150,11 @@ Copy-Item (Join-Path $devDir "scripts\interactive\*.bat") $stageInteractive -For
 Get-ChildItem $stageDir -Include *.pdb, *.xml -Recurse -File | Remove-Item -Force
 Assert-BinaryPurity (Join-Path $stageApp "reEngine.Core.dll") @("Foundation.Automation", "System.Windows.Forms", "Foundation.UI")
 Assert-BinaryPurity (Join-Path $stageApp "reEngine.Host.dll") @("Foundation.Automation", "System.Windows.Forms", "Foundation.UI")
-Assert-BinaryPurity (Join-Path $stageApp "reEngine.dll") @("Foundation.Automation")
+Assert-BinaryPurity (Join-Path $stageApp "reEngine.dll") @("Foundation.Automation", "Foundation.UI")
 
 Invoke-Sign (Join-Path $stageApp "reEngine.exe")
 Invoke-Sign (Join-Path $stageDir "reEngine.exe")
+Assert-FailClosedAutomation (Join-Path $stageDir "reEngine.exe")
 
 Get-ChildItem -Path $buildsRoot -Directory -ErrorAction SilentlyContinue | Where-Object { $_.Name -match '^v\d+\.\d+\.\d+' } |
     Sort-Object { try { [version]($_.Name.TrimStart('v').Split('-')[0]) } catch { [version]"0.0.0" } } -Descending |
@@ -165,6 +195,7 @@ $installerName = "reEngine-Setup-v$Version-win-x64.exe"
 $installerPath = Join-Path $relVerDir $installerName
 Copy-Item $builtInstaller.FullName $installerPath -Force
 Invoke-Sign $installerPath
+Assert-FailClosedAutomation $installerPath
 
 $rawNotes = (@'
 # reEngine — Release v__VER__
@@ -172,11 +203,11 @@ $rawNotes = (@'
 Clean-room static recompilation suite router, unified 5-backend `reEngine.Host.dll` runtime, interactive `.decomp` Bring-Up runner, and multi-track side-by-side engine manager.
 
 ## Highlights
-- **`HostViewportGeometry` & 5-Backend Resize/Aspect Precision:** Centralizes aspect-locked viewport calculation (`nativePar`, `fourByThree`, `squareInteger`, `nativeFit`, `horPlus16By9`), bounded `overscanCropPx`, `Surface0` margin clearing, inverse normalized content pointer mapping, and `--aspect-mode` CLI passthrough across `OpenGL 3.3+`, `Vulkan 1.3+`, `DirectX 12`, `ParallelCpu`, and `Software` presenters plus live `F11` / `Alt+Enter` fullscreen transitions.
-- **OpenGL FBO Safety Guards & Owner-Thread Readback/QuickSave Sync (`IHostGraphicsContext`):** Guards `Gl33Presenter` against `0x0` minimized framebuffers and incomplete FBOs (`0x8CD5`), adds optional `OwnerThreadId`, owner-thread-guarded `TryReadSurfaceRect` (`glReadPixels` without Y-flip inversion), and `FlushAndSyncForSnapshot()` invoked prior to `F5` QuickSave and live presenter teardown.
-- **4-Port SDL3 Gamepads & 3-Tier Input Controls:** Polls up to 4 hot-pluggable SDL3 controllers (`PadPorts[0..3]`), implements 3-tier input profiles (`Global 1:1`, `Game 1:1`, `Modern PC`) persisted in `settings.controls.json` with zero hidden-slot conflicts, and isolates Menu navigation to `D-Pad` and `Left Stick`.
-- **Interactive `F1` Drawer, Hotkeys & Responsive Startup Pump:** Enables live interactive toggles inside the `F1` settings drawer, `Controls` and `Keybinds` tabs, `F3` telemetry HUD, `F5`/`F9`/`F11`/`Alt+Enter`, Fast-Forward and Cutscene-Skip callbacks, and responsive SDL event pumping during startup/AOT compile wait states.
-- **3-Way `reCart`/`reCartOne`/`reNes` Routing, `-hf.<n>` SemVer Precedence & `.fds` Parity:** Adds symmetric 3-way `reCart` <-> `reCartOne` <-> `reNes` resolution, fixes `SemVer.CompareTo` to rank `-hf.<n>` hotfix releases above stable releases while preserving `.ready` enforcement on `0.3.0+`, adds `hostProtocolVersion` >= `0.3.0` CLI forwarding, `.fds` Famicom Disk System discovery with clean-room rejection, `Foundation v0.5.2` `"suiteId": "reEngine"` packaging, and fail-closed `ExitCode = 2` automation rejection on both Release app and Release setup executables.
+- **Host Execution Resilience & Split-Domain Settings (`settings.video.json` / `settings.audio.json`):** Adds `BootCrashSentinel` (`booting.sentinel` crash-recovery Safe Mode disabling `.re*` packs and overrides in memory without overwriting saved user preferences), `MediaRamPreloader` (`--preload-media-to-ram` with physical RAM headroom gating), `ExecutionTierPolicy` (`staticAotOnly`, `aotWithJitFallback`, `aotWithThreadedIr`, `jitBringup`, and CLI-only `interpreterOracle`), fast-boot (`--fast-boot`), atomic split-domain settings (`settings.json`, `settings.video.json`, `settings.audio.json`, and `settings.controls.json`) with stepwise `v1` to `v2` migration, quarantine/backup/history self-healing, and installer preservation of `v2`/`v3+` `schemaVersion` plus split configs.
+- **Display Modes, Multi-Monitor, Late-Latch VRR, `21:9` & HUD Anchoring:** Supports `windowed`, `borderlessFullscreen`, and `exclusiveFullscreen` (`--display-mode`), SDL3 multi-monitor placement (`--monitor`), per-backend VSync (`--vsync` / `--no-vsync`), dynamic VRR frame pacing (`--target-fps`, `--bg-fps-cap`, `--ff-multiplier` `2.0x..4.0x`) with zero-drift pacer resets, `horPlus21By9` (`21:9`) ultrawide scaling with automatic `4:3` FMV framing fallback, and `hudAnchorMode` (`safeFourByThree`, `screenEdges`, `custom`).
+- **8 Live Presentation Filters, 24-Bit/15-Bit Dithering & Multi-Backend `F12` Capture (`TryReadSurfaceRect`):** Adds `24-bit` true color (`--true-color`) and `15-bit` RGB555 with `4x4` Bayer ordered dithering (`--dithering`), all 8 live video filters (`nearest`, `bilinear`, `sharpBilinear`, `scanlines`, `crtLite`, `lcdGrid`, `xbrz`, `ntscComposite` via `--video-filter`), `F12` PNG screenshot capture (`--screenshot-mode` `cleanNative` / `filteredComposite`), and owner-thread `TryReadSurfaceRect` / `FlushAndSyncForSnapshot` across `OpenGL 3.3+`, `Vulkan 1.3+`, `DirectX 12`, `ParallelCpu`, and `Software`.
+- **Audio DSP Pipeline, Hot-Switchable Playback Devices, Sound Test & Dedicated `Audio` Tab:** Delivers 2nd-order Butterworth Low-Pass/High-Pass biquads with 1-click presets (`Off`, `CRT Warm`, `Handheld`), master/BGM/SFX/voice mixer gains, mute-preserving volume, `5ms` anti-pop mute-on-focus-loss, mid-side stereo width (`0..200%`), `linear`/`sincCubic` resampling, fast-forward audio clamping (`attenuatedLowPass`, `muted`, `normal`), zero-restart hot-switchable SDL3 playback devices (`--audio-device`), clean-room Sound Test auditioning, and a dedicated 6th `Audio` tab + expanded `System` tab in `F1` and `F3` HUD badges.
+- **`0.6.0+` Protocol-Gated CLI Routing, WinForms Quick Controls & Fail-Closed Release Security:** Routes new `v0.6.0+` CLI flags only to engines declaring `hostProtocolVersion` / `minSuiteVersion` >= `0.6.0` (keeping `v0.3.0`–`v0.5.0` children isolated), expands WinForms `Library` quick controls for execution, display, filters, capture, and audio presets, publishes pure `net8.0` SDK binaries with zero automation or WinForms references, and enforces dual-binary fail-closed Release `--automation-port` rejection (`ExitCode = 2`).
 '@).Replace('__VER__', $Version)
 
 $docMap = [ordered]@{
@@ -231,7 +262,7 @@ if (-not (Test-Path $hubJunction)) { & cmd /c mklink /J "`"$hubJunction`"" "`"$r
 
 $auditScript = Join-Path $env:USERPROFILE ".gemini\config\skills\dev\scripts\audit_installer.ps1"
 if ((-not $SkipSigning) -and (Test-Path $auditScript)) {
-    & powershell -NoProfile -ExecutionPolicy Bypass -File $auditScript -InstallerPath $relVerDir -StagingDir $stageDir -ExpectedVersion $Version
+    & powershell -NoProfile -ExecutionPolicy Bypass -File $auditScript -InstallerPath $relVerDir -StagingDir $stageDir -ExpectedVersion $Version -ReleaseLayoutMode SingleSetup7
     if ($LASTEXITCODE -ne 0) { throw "audit_installer.ps1 failed ($LASTEXITCODE)" }
 }
 
@@ -250,7 +281,7 @@ if ($vm.Success) {
             Remove-Item -LiteralPath $a.File.FullName -Force
         }
     }
-    Get-ChildItem -Path $releasesDir -Directory -ErrorAction SilentlyContinue | Where-Object { $_.Name -match '^v\d+\.\d+\.\d+-' } |
+    Get-ChildItem -Path $releasesDir -Directory -ErrorAction SilentlyContinue | Where-Object { ($_.Name -match '^v\d+\.\d+\.\d+-') -and ($_.Name -ine "v$Version") } |
         ForEach-Object { Remove-Item -LiteralPath $_.FullName -Recurse -Force }
     $unpackedDirs = @(Get-ChildItem -Path $releasesDir -Directory -ErrorAction SilentlyContinue | Where-Object { $_.Name -match '^v(\d+)\.(\d+)\.(\d+)$' } | ForEach-Object {
         $dm = [regex]::Match($_.Name, '^v(\d+)\.(\d+)\.(\d+)$')
