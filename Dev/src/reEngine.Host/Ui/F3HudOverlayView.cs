@@ -35,6 +35,18 @@ public sealed record F3HudTelemetry(
 
     /// <summary>Gets or sets the count of connected controller ports (<c>0..4</c>).</summary>
     public int ConnectedPadCount { get; init; }
+
+    /// <summary>Gets or sets an optional live presentation filter badge label.</summary>
+    public string? VideoFilterLabel { get; init; }
+
+    /// <summary>Gets or sets an optional host display mode badge label.</summary>
+    public string? DisplayModeLabel { get; init; }
+
+    /// <summary>Gets or sets whether crash-recovery Safe Mode is active.</summary>
+    public bool IsSafeModeActive { get; init; }
+
+    /// <summary>Gets or sets whether master audio output is currently muted.</summary>
+    public bool IsAudioMuted { get; init; }
 }
 
 /// <summary>
@@ -46,7 +58,7 @@ public sealed class F3HudOverlayView
     public bool IsVisible { get; set; }
 
     /// <summary>Gets the bounds of the rendered F3 HUD pill.</summary>
-    public Rectangle CurrentBounds { get; private set; } = new(12, 12, 310, 44);
+    public Rectangle CurrentBounds { get; private set; } = new(12, 12, 310, 46);
 
     /// <summary>Renders <paramref name="telemetry"/> onto <paramref name="canvas"/> when <see cref="IsVisible"/> is <see langword="true"/>.</summary>
     public void Render(PixelOverlayCanvas canvas, F3HudTelemetry telemetry)
@@ -55,26 +67,51 @@ public sealed class F3HudOverlayView
         ArgumentNullException.ThrowIfNull(telemetry);
         if (!IsVisible) return;
 
-        int w = Math.Min(400, Math.Max(220, canvas.Width - 24));
-        CurrentBounds = new Rectangle(12, 12, w, 46);
-        HostOverlayLayoutHelpers.DrawPanel(canvas, CurrentBounds, HostOverlayPalette.HudPillBg, HostOverlayPalette.AccentCyan);
+        string badgeLine = BuildBadgeLine(telemetry);
+        bool hasBadges = !string.IsNullOrEmpty(badgeLine);
+        int w = Math.Min(460, Math.Max(220, canvas.Width - 24));
+        int h = hasBadges ? 62 : 46;
+        CurrentBounds = new Rectangle(12, 12, w, h);
+        HostOverlayLayoutHelpers.DrawPanel(
+            canvas,
+            CurrentBounds,
+            HostOverlayPalette.HudPillBg,
+            telemetry.IsSafeModeActive ? HostOverlayPalette.AccentWarning : HostOverlayPalette.AccentCyan);
 
         string ffTag = telemetry.IsFastForwardEnabled ? " | FF" : string.Empty;
         string padTag = telemetry.ConnectedPadCount > 0 ? $" | Pads:{telemetry.ConnectedPadCount}" : string.Empty;
         string aspectTag = !string.IsNullOrWhiteSpace(telemetry.AspectRatioLabel) ? $" {telemetry.AspectRatioLabel}" : string.Empty;
+        string audioText = telemetry.IsAudioMuted ? "MUTED" : $"{telemetry.AudioFillRatio * 100.0:F0}%";
 
         string line1 = string.Create(
             CultureInfo.InvariantCulture,
             $"FPS: {telemetry.CurrentFps:F1} | Frame: {telemetry.AverageFrameMs:F2}ms{ffTag}{padTag}");
         string line2 = string.Create(
             CultureInfo.InvariantCulture,
-            $"{telemetry.BackendLabel} {telemetry.ResolutionScale}x{aspectTag} | {telemetry.ExecutionTier} | Audio {(telemetry.AudioFillRatio * 100.0):F0}%");
+            $"{telemetry.BackendLabel} {telemetry.ResolutionScale}x{aspectTag} | {telemetry.ExecutionTier} | Audio {audioText}");
 
         canvas.DrawText(CurrentBounds.X + 10, CurrentBounds.Y + 9, HostOverlayLayoutHelpers.FitText(line1, w - 20, 1), HostOverlayPalette.AccentCyan, 1);
         canvas.DrawText(CurrentBounds.X + 10, CurrentBounds.Y + 25, HostOverlayLayoutHelpers.FitText(line2, w - 20, 1), HostOverlayPalette.TextPrimary, 1);
+        if (hasBadges)
+        {
+            RgbaColor badgeColor = telemetry.IsSafeModeActive || telemetry.IsAudioMuted
+                ? HostOverlayPalette.AccentWarning
+                : HostOverlayPalette.TextMuted;
+            canvas.DrawText(CurrentBounds.X + 10, CurrentBounds.Y + 41, HostOverlayLayoutHelpers.FitText(badgeLine, w - 20, 1), badgeColor, 1);
+        }
     }
 
     /// <summary>Builds automation widget bounds when the F3 HUD overlay is visible.</summary>
     public HostWidgetBounds? TryBuildWidgetBounds() =>
         IsVisible ? new HostWidgetBounds("F3Hud", "Label", $"F3 Telemetry ({CurrentBounds.Width}x{CurrentBounds.Height})", CurrentBounds, true) : null;
+
+    private static string BuildBadgeLine(F3HudTelemetry telemetry)
+    {
+        var parts = new List<string>(4);
+        if (!string.IsNullOrWhiteSpace(telemetry.DisplayModeLabel)) parts.Add(telemetry.DisplayModeLabel!.Trim());
+        if (!string.IsNullOrWhiteSpace(telemetry.VideoFilterLabel)) parts.Add($"Filter: {telemetry.VideoFilterLabel!.Trim()}");
+        if (telemetry.IsSafeModeActive) parts.Add("SAFE MODE");
+        if (telemetry.IsAudioMuted) parts.Add("MUTED");
+        return parts.Count == 0 ? string.Empty : string.Join(" | ", parts);
+    }
 }
