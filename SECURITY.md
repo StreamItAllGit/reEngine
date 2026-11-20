@@ -4,9 +4,9 @@
 
 | Version | Supported | Security Boundary Notes |
 | :--- | :--- | :--- |
-| `0.3.x` | Yes | Active mainline (`reEngine.Core`, `reEngine.Host`, `reEngine.App`, `reEngine.Launcher`, `reEngine.Installer`) |
-| `0.2.x` | Security fixes only | Prior minor release |
-| `< 0.2.0` | No | Upgrade to `v0.3.0+` |
+| `0.6.x` | Yes | Active mainline (`reEngine.Core`, `reEngine.Host`, `reEngine.App`, `reEngine.Launcher`, `reEngine.Installer`) |
+| `0.5.x` | Security fixes only | Prior minor release |
+| `< 0.5.0` | No | Upgrade to `v0.6.0+` |
 
 ## Built-In Security & Containment Invariants
 
@@ -26,5 +26,5 @@
 Please **do not** open a public GitHub issue for suspected security vulnerabilities.
 
 1. Report privately via GitHub **Security Advisories** (`Report a vulnerability` on the repository Security tab) or direct maintainer contact.
-2. Include the affected component (`reEngine.Core`, `reEngine.Host`, `reEngine.App`, `reEngine.Installer`), version (`v0.3.x`), reproduction steps, and expected vs. actual behavior.
+2. Include the affected component (`reEngine.Core`, `reEngine.Host`, `reEngine.App`, `reEngine.Installer`), version (`v0.6.x`), reproduction steps, and expected vs. actual behavior.
 3. Maintainers acknowledge reports within **72 hours** and coordinate remediation prior to public disclosure.

@@ -6,9 +6,9 @@
 
 Lightweight, zero-daemon package router, unified 5-backend SDL3 host runtime (`reEngine.Host`), clean-room decompilation coordinator, and engine version manager for static recompilation modules.
 
-![Version](https://img.shields.io/badge/version-0.5.0--beta-blue?style=flat) ![License](https://img.shields.io/badge/license-MPL--2.0-green?style=flat) ![Runtime](https://img.shields.io/badge/.NET-8.0-512BD4?style=flat) ![Platform](https://img.shields.io/badge/platform-Windows-lightgrey?style=flat)
+![Version](https://img.shields.io/badge/version-0.6.0--beta-blue?style=flat) ![License](https://img.shields.io/badge/license-MPL--2.0-green?style=flat) ![Runtime](https://img.shields.io/badge/.NET-8.0-512BD4?style=flat) ![Platform](https://img.shields.io/badge/platform-Windows-lightgrey?style=flat)
 
-**Milestone Progress:** `▓▓▓▓░░░░░░` **42% toward v1.0.0** (5/12 milestones) — `v0.5.0` adds `HostViewportGeometry` 5-aspect modes & overscan crop across all 5 presenters, OpenGL FBO/readback & pre-QuickSave sync, 4-port SDL3 gamepads & 3-tier input profiles, interactive `F1` drawer controls & `F5`/`F9`/`F11`/`Alt+Enter` hotkeys, 3-way `reCart`/`reCartOne`/`reNes` routing, `-hf.<n>` hotfix precedence, `hostProtocolVersion` >= `0.3.0` forwarding, `.fds` discovery, `--aspect-mode`, and Dual-Binary Release `ExitCode = 2`
+**Milestone Progress:** `▓▓▓▓▓░░░░░` **50% toward v1.0.0** (6/12 milestones) — `v0.6.0` is now shipped with crash-recovery Safe Mode, RAM media preloading, split `settings.video.json` / `settings.audio.json`, Display Modes & multi-monitor routing, Late-Latch VRR frame pacing, `21:9` ultrawide + centered `4:3` FMVs + HUD anchoring, 24-bit/15-bit Bayer dithering & 8 live filters, post-present `F12` capture across all 5 backends, dedicated Audio DSP + hot-switched playback devices + Sound Test jukebox in a 6th `Audio` drawer tab, protocol-gated `>= 0.6.0` CLI routing, and full WinForms quick controls. Next milestone: `v0.7.0`.
 
 </div>
 
@@ -16,17 +16,17 @@ Lightweight, zero-daemon package router, unified 5-backend SDL3 host runtime (`r
 
 ## About
 
-> **Beta (Pre-1.0):** `reEngine` (`v0.5.0`) is an active pre-1.0 beta release targeting `v1.0.0` desktop stability and `v2.0.0` cross-platform support.
+> **Beta (Pre-1.0):** `reEngine` (`v0.6.0`) is an active pre-1.0 beta release targeting `v1.0.0` desktop stability and `v2.0.0` cross-platform support.
 
 `reEngine` routes `.recomp` and `.decomp` packages to compatible platform static recompilation engines (`reSlate` / `reStation`, `reCart` / `reCartOne` / `reNes`, `reCart64` / `re64`, `reBlast16` / `reGenesis`, `reSlateTwo` / `rePS2`, `reCartTwo` / `reSnes`, `reDotCart` / `reBoy`, `reCube`, `reAdvance`) while leaving **0 MB** resident in memory when closed and adding **zero** Windows Startup entries. Built strictly for native static recompilation rather than legacy console simulation or bundled retail data, `reEngine` provides a clean-room `reEngine.Host.dll` video/audio/input runtime, isolates per-game settings and logs under `<dataDir>\modules\<moduleId>\`, manages local `<dataDir>\cache\` Ahead-of-Time (AOT) assemblies, and discovers your legally dumped disc or ROM files inside each game's `data\rom\` folder or suite directory tree.
 
 ## Key Features
 
-- **5-Backend `HostViewportGeometry` & GL Readback Sync (`reEngine.Host.dll`):** Ships native OpenGL 3.3+ (`opengl`), Vulkan 1.3+ (`vulkan`), DirectX 12 (`directx` / CLI `dx12`), deterministic 16px-band `parallelCpu`, and `software` presenters with centralized `HostViewportGeometry` aspect preservation (`nativePar`, `fourByThree`, `squareInteger`, `nativeFit`, `horPlus16By9`), bounded `overscanCropPx`, inverse normalized content pointer mapping, OpenGL `0x0` / `0x8CD5` FBO safety guards, owner-thread `IHostGraphicsContext` surface readback (`TryReadSurfaceRect`) and pre-QuickSave / teardown GPU sync (`FlushAndSyncForSnapshot`), `<dataDir>\hdpacks\` texture overrides, `wasapi` audio pinning, `--aspect-mode`, and live `F11` / `Alt+Enter` fullscreen transitions.
-- **4-Port SDL3 Gamepads, 3-Tier Input & Interactive `F1` Drawer:** Polls up to 4 hot-pluggable Xbox and open-standard HID SDL3 gamepads (`PadPorts[0..3]`), persists 3-tier input profiles (`Global 1:1`, `Game 1:1`, `Modern PC`) in `settings.controls.json` with collision and hidden-slot guards, isolates Menu `D-Pad` and `Left Stick` navigation, supports 3-slot `[1st, 2nd, 3rd]` simultaneous keyboard/mouse/wheel bindings, and enables interactive `F1` drawer controls (`AspectRatioMode`, `OverscanCrop`, `FastForward`, `CutsceneSkip`, `Controls`, 3-tier `Keybinds`, and `ExtraRows`), `F3` HUD telemetry, `F5`/`F9`/`F11`/`Alt+Enter` hotkeys, responsive SDL startup event pumping, and cross-platform touch overlay contracts (`IHostInputProvider`).
-- **Interactive `.decomp` Bring-Up UI & `.fds` Suite Media Discovery:** Opening `.decomp` files from Windows Explorer launches the **Bring-Up** shelf pre-loaded with the recipe, `D0..D5` stage picker, automatic root-tree media search (`SuiteMediaTreeWalker` with `.fds` Famicom Disk System parity alongside `.nes` and disc images), `MissingMediaPromptDialog` (defaulting to use-in-place with opt-in `.cue`/`.bin` staging into `data\rom\`), and canonical `D4_CleanSource` clean-room stage validation.
-- **3-Way Aliases, `hostProtocolVersion` Routing & `-hf.<n>` SemVer:** Resolves 3-way `reCart`/`reCartOne`/`reNes` aliases alongside `reSlate`/`reStation`, `reCart64`/`re64`, and `reBlast16`/`reGenesis`; ranks `-hf.<n>` hotfixes strictly above stable releases while preserving `.ready` enforcement on `0.3.0+`; forwards `hostProtocolVersion >= 0.3.0` CLI flags cleanly to pre-`0.3.0` engine versions (`--backend`, `--fullscreen`, `--audio-driver`, `--aspect-mode`); and supports bounded `<= 3s` `--wait` `WM_CLOSE` save flushing plus standalone `--verify-module`.
-- **Zero-Daemon Updates, Unified Settings & Dual-Binary Release Guard:** Separates fast `2s` feed checks from resumable HTTP `Range` `.part` downloads with SHA-256 verification and atomic `.ready` promotion, consolidates config at `<InstallRoot>\data\config\settings.json` with `.bak` recovery, and enforces fail-closed Release automation rejection (`ExitCode = 2`) across both the router and Setup EXE.
+- **5-Backend Presenters, Late-Latch VRR, `21:9` & 8 Live Filters (`reEngine.Host.dll`):** Ships native OpenGL 3.3+ (`opengl`), Vulkan 1.3+ (`vulkan`), DirectX 12 (`directx` / CLI `dx12`), deterministic 16px-band `parallelCpu`, and `software` presenters with `windowed`, `borderlessFullscreen`, and `exclusiveFullscreen` monitor routing, late-latch VRR pacing (`targetFps`, `backgroundFpsCap`, fast-forward `2.0..4.0`), `HostViewportGeometry` aspect modes (`nativePar`, `fourByThree`, `squareInteger`, `nativeFit`, `horPlus16By9`, `horPlus21By9` with auto-centered `4:3` FMVs and HUD anchoring), 24-bit color vs 15-bit RGB555 + 4x4 Bayer dithering, all 8 live presentation filters (`nearest`, `bilinear`, `sharpBilinear`, `scanlines`, `crtLite`/`crt-aperture`, `lcdGrid`, `xbrz`, `ntscComposite`), `<dataDir>\hdpacks\` texture overrides, and post-present `F12` capture (`cleanNative` vs `filteredComposite`) with multi-backend surface readback.
+- **Audio DSP Pipeline, Hot-Switched Devices, Sound Test & 6-Tab `F1` Drawer:** Adds a dedicated 6th `Audio` tab (`Video`, `Audio`, `Ctrl`, `Keys`, `Sys`, `Media`) featuring 2nd-order Butterworth LP/HP filters (`off`, `crtWarm`, `handheldSpeaker`), master/BGM/SFX/voice mixer gains, mute-preserving volume, 5ms focus-loss mute ramp, `0..200%` stereo width, `linear`/`sincCubic` resampling, fast-forward audio clamping, zero-restart SDL3 playback device switching, and Sound Test jukebox auditioning—alongside 4-port SDL3 gamepads, 3-tier `settings.controls.json` bindings, `F3` HUD badges, and `F5`/`F9`/`F11`/`F12`/`Alt+Enter` hotkeys.
+- **Execution Resilience, Safe Mode & Split-Domain Settings:** Protects launches with `<dataDir>\booting.sentinel` PID tracking (triggering in-memory Safe Mode after dirty crashes without overwriting saved disk video/audio config, cleared on frame 1 or `--safe-mode-reset`), physical-RAM headroom-gated media preloading (`--preload-media-to-ram`, `>= 512 MiB` free and `<= 75%` available with `[WARN]` streaming fallback), Fast Boot (`--fast-boot`), clean-room AOT tiers with CLI-only `interpreterOracle`, and atomic split configs (`settings.json` v2, `settings.video.json`, `settings.audio.json`, `settings.controls.json`) backed by `data\config_history\` and `data\quarantine\` recovery.
+- **Interactive `.decomp` Bring-Up, Suite Media Discovery & `0.6.0+` Routing:** Launches Explorer-opened `.decomp` files onto the **Bring-Up** shelf with root-tree media discovery (`.fds` parity alongside `.nes` and optical disc formats), use-in-place `MissingMediaPromptDialog`, 3-way `reCart`/`reCartOne`/`reNes` aliases, `-hf.<n>` hotfix ranking, protocol-gated CLI forwarding (`>= 0.3.0` and `>= 0.6.0`), bounded `<= 3s` `--wait` `WM_CLOSE` save flushing, and standalone `--verify-module`.
+- **Zero-Daemon Updates, Upgrade Preservation & Dual-Binary Release Guard:** Performs fast `2s` feed checks and resumable HTTP `Range` `.part` downloads with SHA-256 verification and atomic `.ready` promotion, preserves all 4 split domain configs and `schemaVersion >= 1` across Setup upgrades, and enforces fail-closed Release automation rejection (`ExitCode = 2`) across both the router and Setup EXE.
 
 ## Getting Started
 
@@ -39,14 +39,14 @@ Lightweight, zero-daemon package router, unified 5-backend SDL3 host runtime (`r
 
 Every release is published exclusively on [GitHub Releases](https://github.com/StreamItAllGit/reEngine/releases) in both formats:
 
-- **`reEngine-Setup-v0.5.0-win-x64.exe`** — Signed Setup Wizard & silent CLI installer (detects existing install directories and settings automatically on upgrade).
-- **`reEngine-v0.5.0-win-x64-Portable.zip`** — Standalone no-installer portable bundle containing `reEngine.exe`, `app\`, scripts, and sanitized release docs.
+- **`reEngine-Setup-v0.6.0-win-x64.exe`** — Signed Setup Wizard & silent CLI installer (detects existing install directories and split domain settings automatically on upgrade).
+- **`reEngine-v0.6.0-win-x64-Portable.zip`** — Standalone no-installer portable bundle containing `reEngine.exe`, `app\`, scripts, and sanitized release docs.
 
 ### Quick Try
 
 ```powershell
 # Install silently in Lightweight mode (or Full for the offline CLI decompilation toolchain)
-reEngine-Setup-v0.5.0-win-x64.exe --silent --no-launch --profile Lightweight
+reEngine-Setup-v0.6.0-win-x64.exe --silent --no-launch --profile Lightweight
 
 # Open the reEngine Suite Manager UI
 reEngine.exe --window
@@ -65,7 +65,11 @@ reEngine.exe decomp --module ".\SampleModule.decomp" --stage D4 --data-dir .\tmp
 <summary>Developer verification, CLI overrides, and diagnostic options</summary>
 
 ```powershell
-# Run all 21 isolated xUnit suites (117/117 tests passing in Release & Debug+Automation with 0 warnings)
+# Clone from GitHub
+git clone https://github.com/StreamItAllGit/reEngine.git
+cd reEngine
+
+# Run all 25 isolated xUnit suites (135/135 tests passing in Release & Debug+Automation with 0 warnings)
 $env:APP_ISOLATED_TEST = "1"
 dotnet test Dev\reEngine.slnx -c Release /warnaserror
 dotnet test Dev\reEngine.slnx -c Debug -p:ReEngineTestAutomation=true /warnaserror
@@ -75,7 +79,7 @@ reEngine.exe --check-updates --strict
 reEngine.exe --register-assoc --data-dir .\tmp-data --log-dir .\tmp-logs
 reEngine.exe --verify --data-dir .\tmp-data --config .\tmp-data\config\settings.json --log-dir .\tmp-logs
 reEngine.exe --verify-module ".\SampleModule.recomp" --json --require-media
-reEngine.exe --host-demo --backend opengl --require-backend --aspect-mode fourByThree --window --frames 120 --dump-screenshot .\tmp-logs\frame.png --dump-audio .\tmp-logs\audio.wav
+reEngine.exe --host-demo --backend opengl --require-backend --aspect-mode horPlus21By9 --video-filter crtLite --window --frames 120 --dump-screenshot .\tmp-logs\frame.png --dump-audio .\tmp-logs\audio.wav
 reEngine.exe --version
 ```
 
@@ -84,15 +88,22 @@ reEngine.exe --version
 | `--open <path>` / `<file.recomp>` | Validate a `.recomp` manifest, resolve a compatible engine or alias (`reCart`/`reCartOne`/`reNes`), isolate `<dataDir>\modules\<moduleId>\`, discover media (including `.fds`), and launch. |
 | `decomp --module <path>` | Load a `.decomp` package into the **Bring-Up** UI (or run headless via `--headless` with `--stage D0..D5`, `--media-path`, `--engine-dir`, `--toolchain-dir`, `--output-dir`). |
 | `--verify-module <pathOrEngineId>` | Validate a `.recomp`/`.decomp` package (`--json`, `--require-media`) or inspect installed tracks for a bare engine ID. |
-| `--host-demo` | Launch the standalone `reEngine.Host` SDL3 window with 5-backend + 5-aspect presentation, interactive `F1` 5-tab drawer, `F3` HUD, `F5`/`F9`/`F11`/`Alt+Enter`, and `--preload-media` preview. |
-| `--backend <id>` / `--aspect-mode <mode>` / `--scale <n>` | Select render backend (`opengl`, `vulkan`, `directx`/`dx12`, `parallelCpu`, `software`), aspect preset (`nativePar`, `fourByThree`, `squareInteger`, `nativeFit`, `horPlus16By9`), and scale (`1`, `2`, `4`, `8`). `--require-backend` fails with Exit `6` if unavailable. |
-| `--fullscreen` / `--hd-packs` / `--jit-bringup` | Start in fullscreen mode, enable `<dataDir>\hdpacks\` texture overrides, or enable live JIT fallback when no AOT cache is built. |
-| `--audio-driver <id>` | Pin `SDL_AUDIO_DRIVER` prior to audio init (`wasapi` default on Windows). |
+| `--host-demo` | Launch the standalone `reEngine.Host` SDL3 window with 5-backend + 6-aspect presentation, interactive `F1` 6-tab drawer, `F3` HUD, `F5`/`F9`/`F11`/`F12` hotkeys, Sound Test jukebox, and `--preload-media` preview. |
+| `--backend <id>` / `--aspect-mode <mode>` / `--scale <n>` | Select render backend (`opengl`, `vulkan`, `directx`/`dx12`, `parallelCpu`, `software`), aspect preset (`nativePar`, `fourByThree`, `squareInteger`, `nativeFit`, `horPlus16By9`, `horPlus21By9`), and scale (`1`, `2`, `4`, `8`). `--require-backend` fails with Exit `6` if unavailable. |
+| `--display-mode <mode>` / `--monitor <n>` / `--fullscreen` | Choose `windowed`, `borderlessFullscreen`, or `exclusiveFullscreen`, target display index (`>= 0`), or start fullscreen. |
+| `--target-fps <n>` / `--bg-fps-cap <n>` / `--vsync` (`--no-vsync`) | Configure VRR frame pacing (`0` = unlocked), unfocused FPS cap, and swapchain VSync. |
+| `--video-filter <mode>` / `--hud-anchor <mode>` | Select live filter (`nearest`, `bilinear`, `sharpBilinear`, `scanlines`, `crtLite`/`crt-aperture`, `lcdGrid`, `xbrz`, `ntscComposite`) and HUD anchor (`safeFourByThree`, `screenEdges`, `custom`). |
+| `--true-color` (`--no-true-color`) / `--dithering` (`--no-dithering`) / `--screenshot-mode <mode>` | Toggle 24-bit RGBA vs 15-bit RGB555 + 4x4 Bayer dithering and `F12` PNG capture (`cleanNative` vs `filteredComposite`). |
+| `--execution-tier <mode>` / `--jit-bringup` / `--safe-mode-reset` | Select execution tier (`staticAotOnly`, `aotWithJitFallback`, `aotWithThreadedIr`, `jitBringup`, CLI-only `interpreterOracle`), opt into JIT bring-up, or clear an uncleared crash sentinel. |
+| `--preload-media-to-ram` (`--no-preload-media-to-ram`) / `--fast-boot` (`--no-fast-boot`) / `--ff-multiplier <2.0..4.0>` | Control physical-RAM headroom-checked media preloading, optional splash skip, and fast-forward cadence multiplier. |
+| `--hd-packs` / `--audio-driver <id>` / `--audio-device <name>` | Enable `<dataDir>\hdpacks\` texture overrides, pin `SDL_AUDIO_DRIVER` (`wasapi` default on Windows), or select an explicit playback endpoint. |
+| `--master-volume`, `--bgm-volume`, `--sfx-volume`, `--voice-volume` | Set normalized `0.0..1.0` master and category gains. |
+| `--audio-muted` (`--no-audio-muted`) / `--mute-on-focus-loss` (`--no-mute-on-focus-loss`) | Toggle volume-preserving mute or 5ms anti-pop focus-loss muting. |
+| `--audio-lowpass-hz` / `--audio-highpass-hz` / `--stereo-width` / `--audio-resampling` / `--ff-audio-mode` | Configure 2nd-order Butterworth cutoffs, mid-side stereo width (`0..200%`), resampling (`linear`, `sincCubic`), and FF audio clamping (`attenuatedLowPass`, `muted`, `normal`). |
 | `--wait` / `--save-dir` / `--shutdown-timeout-ms` | Wait synchronously, redirect per-game saves, flush child processes via bounded `WM_CLOSE` (`3000` ms default), and propagate exit codes (`0, 1, 2, 3, 4, 6, 130`). |
-| `--register-assoc` | Register per-user `.recomp` and `.decomp` file associations under `HKCU\Software\Classes` (virtualized to `virtual_registry.json` in tests). |
-| `--profile <Lightweight\|Full>` / `--suite-dir` / `--reengine-dir` | Choose installer profile (`Lightweight` router vs. `Full` offline CLI toolchain) and custom installation directories. |
-| `--migrate-legacy` / `--check-updates` (`--strict`) | Opt-in legacy install migration preserving `data\rom\`, or poll engine update feeds (`2s` timeout; `--strict` returns Exit `4` if offline). |
-| `--data-dir` / `--config` / `--log-dir` | Redirect writable runtime storage (`data\config\settings.json` default), AOT cache, and diagnostic logs. |
+| `--register-assoc` / `--profile <Lightweight\|Full>` / `--suite-dir` / `--reengine-dir` | Register `.recomp`/`.decomp` file associations under `HKCU\Software\Classes` or configure installer profiles and directories. |
+| `--migrate-legacy` / `--check-updates` (`--strict`) | Opt-in legacy migration preserving split settings and `data\rom\`, or poll engine update feeds (`2s` timeout; `--strict` returns Exit `4` if offline). |
+| `--data-dir` / `--config` / `--log-dir` | Redirect writable runtime storage (`data\config\settings.json` + split `video`/`audio`/`controls` files), AOT cache, and diagnostic logs. |
 | `--verify` / `--doctor` / `--tray-only` / `--window` / `--browser` | Run non-UI diagnostics, force-open the manager window (`--window`, `--suite-tab <tab>`), or launch browser mode. |
 | `--frames`, `--fixture`, `--dump-screenshot`, `--dump-audio`, `--enable-logs` | Containment-checked capture and diagnostic flags forwarded to child engines (`--automation-port` fails closed with Exit `2` in Release builds of both router and Setup EXE). |
 
@@ -100,9 +111,9 @@ reEngine.exe --version
 
 ## Project Structure
 
-- `Dev/` — C# source code (`reEngine.Core`, `reEngine.Host`, `reEngine.App`, `reEngine.Launcher`, `reEngine.Installer`), `21` xUnit test suites (`117` tests), build/E2E scripts, and technical manuals
+- `Dev/` — C# source code (`reEngine.Core`, `reEngine.Host`, `reEngine.App`, `reEngine.Launcher`, `reEngine.Installer`), `25` xUnit test suites (`135` tests), build/E2E scripts, and technical manuals
 - `Builds/` — Local compiled portable staging builds
-- `Releases/` — Shareable 7-file versioned release bundles (`Releases\v0.5.0\`, `Releases\Latest\`, including the signed Setup EXE and `reEngine-v0.5.0-win-x64-Portable.zip`), SHA-256 checksums, and release notes
+- `Releases/` — Shareable 7-file versioned release bundles (`Releases\v0.6.0\`, `Releases\Latest\`, including the signed Setup EXE and `reEngine-v0.6.0-win-x64-Portable.zip`), SHA-256 checksums, and release notes
 - `Archive/` — Compressed source snapshots
 
 ## Documentation
@@ -110,6 +121,7 @@ reEngine.exe --version
 - [Features](FEATURES.md) — Current capabilities and source mapping
 - [Roadmap](ROADMAP.md) — Active progress, desktop milestones, and cross-platform goals
 - [Changelog](CHANGELOG.md) — Release history
+- [Contributing](CONTRIBUTING.md) — Clean-room rules, local test commands, and pull request checklist
 - [Security](SECURITY.md) — Security boundaries, clean-room guarantees, and vulnerability reporting
 - [User Guide](Dev/docs/USER_GUIDE.md) — Installation, UI walkthrough, CLI reference, overlays, and troubleshooting
 - [Architecture](Dev/docs/ARCHITECTURE.md) — System design, assembly graph, pipelines, file inventory, and data stores

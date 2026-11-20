@@ -5,10 +5,12 @@
 
 using System.Diagnostics;
 using Foundation.Core;
+using reEngine.Core.Execution;
 using reEngine.Core.Manifests;
 using reEngine.Core.Resolution;
 using reEngine.Core.Updates;
 using reEngine.Host.Contracts;
+using reEngine.Host.Settings;
 
 namespace reEngine.App;
 
@@ -82,11 +84,15 @@ internal sealed class RecompLaunchCoordinator
             AppEnvironment.AssertPathContained(fullPkgPath, containmentRoot);
         }
 
-        if (launchOptions?.SafeModeReset == true && settings.IsSafeModeActive)
+        if (launchOptions?.SafeModeReset == true)
         {
-            settings.IsSafeModeActive = false;
-            (_settingsStore ?? new AppFallbackSettingsStore(appEnv.DataDirectory, appEnv.ConfigFilePath)).SaveCore(settings);
-            _log("INFO", "Safe Mode cleared before module launch (--safe-mode-reset).");
+            _ = new BootCrashSentinel(appEnv.DataDirectory).Clear();
+            if (settings.IsSafeModeActive)
+            {
+                settings.IsSafeModeActive = false;
+                (_settingsStore ?? new HostSettingsStore(appEnv.DataDirectory, appEnv.ConfigFilePath)).SaveCore(settings);
+                _log("INFO", "Safe Mode cleared before module launch (--safe-mode-reset).");
+            }
         }
 
         RecompPackageLoadResult loaded = RecompPackageReader.Load(fullPkgPath);
@@ -150,7 +156,7 @@ internal sealed class RecompLaunchCoordinator
 
     private ReEngineSettingsBundle ResolveBundleForLegacyCaller(ReEngineSettings settings, AppEnvironment appEnv)
     {
-        IReEngineSettingsStore store = _settingsStore ?? new AppFallbackSettingsStore(appEnv.DataDirectory, appEnv.ConfigFilePath);
+        IReEngineSettingsStore store = _settingsStore ?? new HostSettingsStore(appEnv.DataDirectory, appEnv.ConfigFilePath);
         string videoPath = Path.Combine(store.ConfigDirectory, "settings.video.json");
         string audioPath = Path.Combine(store.ConfigDirectory, "settings.audio.json");
         if (File.Exists(videoPath) || File.Exists(audioPath))

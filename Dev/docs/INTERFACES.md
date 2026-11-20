@@ -1,7 +1,7 @@
 # reEngine — Interfaces & Contracts
 
-**Synced Version:** `0.5.0` (`2026-11-20`)  
-**Scope:** Package Manifests, `reEngine.Host` Viewport/GPU/4-Port Input/Automation Bridge Contracts, Update/Settings JSON Schemas & CLI/Verification Reference  
+**Synced Version:** `0.6.0` (`2026-11-20`)  
+**Scope:** Package Manifests, `reEngine.Host` Resilience/Display/VRR/Filter/Audio DSP Contracts, Standard 19 Split JSON Schemas & `>= 0.6.0` CLI Reference  
 **Schema Style:** Canonical `camelCase` JSON keys
 
 ---
@@ -67,21 +67,23 @@ Descriptor inside `engines\<engineId>\v<Ver>\engine.manifest.json` read by `Engi
 
 ---
 
-## 2. `reEngine.Host` Runtime Contracts (`SharedLibs\reEngine\v0.5.0\reEngine.Host.dll`)
+## 2. `reEngine.Host` Runtime Contracts (`SharedLibs\reEngine\v0.6.0\reEngine.Host.dll`)
 
-Child platform engines reuse `reEngine.Host.dll` built on `Foundation v0.5.2` (`PixelOverlayCanvas`, `HighResFramePacer`, `AudioRingBuffer`, `RgbaPngWriter`, `WavCaptureWriter`), `ppy.SDL3-CS`, and clean-room OS bindings.
+Child platform engines reuse `reEngine.Host.dll` built on `Foundation v0.5.2` (`PixelOverlayCanvas`, `HighResFramePacer`, `AudioRingBuffer`, `RgbaPngWriter`, `WavCaptureWriter`, `GranularSettingsManager`), `ppy.SDL3-CS`, and clean-room OS bindings.
 
-### 2.1 Viewport Geometry, Graphics, HD Packs, Audio & Automation Bridge (`reEngine.Host.Contracts`, `Rendering`, `Core`)
-- **`HostAspectRatioMode`, `HostOverscanCrop`, `HostViewportRect` & `HostViewportGeometry`:** Exposes `nativePar`, `fourByThree`, `squareInteger`, `nativeFit`, and `horPlus16By9`, source edge trimming (`overscanCropPx`), `Surface0` margin clearing across all 5 presenters (`OpenGl` `0x0`/`0x8CD5` guarded, `Vulkan`, `DirectX`, `ParallelCpu`, `Software`), and `TryMapWindowToContentNormalized` inverse pointer coordinates on `HostInputFrame`.
-- **`IHostGraphicsContext` Surface Sync & Readback:** Exposes optional `OwnerThreadId`, owner-thread-guarded `TryReadSurfaceRect(x, y, width, height, rgbaDestination)` (no Y-flip inversion), and `FlushAndSyncForSnapshot()` invoked before QuickSave (`F5`) and live presenter teardown (`Sdl3HostWindow.CloseWindowResources`).
-- **`IHostAutomationBridge` & `IHostSessionEventCallbacks`:** Decouples automation from `SharedLibs\reEngine\v0.5.0\reEngine.Host.dll` via `HostSessionOptions.AutomationBridgeFactory` (returning `ExitCode = 2` when `AutomationPort.HasValue` without an active Debug/Test bridge) and pushes live `F1`/`F5`/`F9`/`F11`/`FastForward`/`CutsceneSkip`/`ExtraRow` events back to child engines.
-- **`HostRenderBackendKind`:** `OpenGl = 0`, `Vulkan = 1`, `ParallelCpu = 2`, `Software = 3`, `DirectX = 4`, `Metal = 5`.
-- **`SemVer` Precedence (`EngineVersionResolver`):** Ecosystem ordering ranks `-hf.<n>` hotfix releases (`hf.10 > hf.3 > hf.2 > hf.1`) strictly above stable empty suffixes and other prereleases (`-alpha`, `-beta`, `-rc`, `-nightly`), while keeping `.ready` enforcement on `>= 0.3.0`.
+### 2.1 Display Modes, VRR Pacing, 8 Video Filters, `F12` Screenshots & Multi-Backend Readback
+- **`HostViewportGeometry` & `HostHudAnchorMode`:** Supports 6 aspect presets (`nativePar`, `fourByThree`, `squareInteger`, `nativeFit`, `horPlus16By9`, `horPlus21By9`), automatic `4:3` FMV centering (`isFmvActive`) inside ultrawide frames, `ComputeHudAnchorRect` (`safeFourByThree`, `screenEdges`, `custom`), bounded source overscan trimming (`overscanCropPx`), and inverse pointer normalization across all 5 presenters (`OpenGl`, `Vulkan`, `DirectX`, `ParallelCpu`, `Software`).
+- **`HostDisplayMode` & `HostFramePacingController`:** Supports `windowed`, `borderlessFullscreen`, and `exclusiveFullscreen` + `MonitorIndex` selection (`Sdl3HostWindow.GetMonitors()`), dynamic VRR target FPS (`targetFps`, `backgroundFpsCap`, clamped `2.0..4.0` fast-forward) resetting `HighResFramePacer` on cadence transitions, and `SDL_SetWindowVSync` / swapchain sync updates.
+- **`HostVideoFilterPipeline` (`HostRetroFilterPasses` + `HostEdgeScalerPasses`):** Applies zero-copy fast path (`nearest && 24-bit && !dither`), 24-bit vs 15-bit RGB555 + 4x4 Bayer dithering (`isTrueColor24BitEnabled`, `isDitheringEnabled`), and all 8 live video filters (`nearest`, `bilinear`, `sharpBilinear`, `scanlines`, `crtLite` [with `"crt-aperture"` alias], `lcdGrid`, `xbrz`, `ntscComposite`).
+- **`HostScreenshotService` & `IHostGraphicsContext` Readback:** Post-present `F12` capture supporting `cleanNative` vs `filteredComposite` (`RgbaPngWriter` into `<dataDir>\screenshots\<moduleId>\`), owner-thread `TryReadSurfaceRect` across OpenGL/Vulkan/D3D12/ParallelCpu/Software, and `FlushAndSyncForSnapshot()`.
+- **`IHostAutomationBridge` & `IHostSessionEventCallbacks`:** Decouples automation from `SharedLibs\reEngine\v0.6.0\reEngine.Host.dll` (`ExitCode = 2` on Release `--automation-port`) and dispatches live Display/Filter/Audio/SoundTest/SafeMode events.
 
-### 2.2 4-Port Gamepads, 3-Tier Input (`settings.controls.json`), Menu Isolation & Overlays (`Input`, `Ui`)
-- **`HostControlTierStore` & `HostMultiBindRegistry`:** Persists Standard 33 all-3-tier bindings (`globalController`, `perGameController`, `perGameModern`) in `settings.controls.json` with duplicate/hidden-slot validation, 3-slot KBM + mouse/wheel (`1001..1007`) + gamepad (`2001..2032`) bindings, and Menu D-Pad + Left-Stick isolation.
-- **`Sdl3GamepadProvider.PollAllPorts()`:** Polls up to `4` hot-pluggable SDL3 controllers into `HostInputFrame.PadPorts[4]`.
-- **`F1SettingsDrawerView` & `F3HudOverlayView`:** Interactive aspect ratio cycle, overscan crop, fullscreen, fast-forward, cutscene skip, 3-tier Keybinds tabs, interactive `ExtraRows`, and `F3` HUD telemetry pills.
+### 2.2 Dedicated Audio DSP, Hot-Switched Output Devices, Sound Test Jukebox & 6-Tab Drawer
+- **`HostBiquadFilter` & `HostAudioDspPipeline`:** Stereo 2nd-order Butterworth LP/HP filters (`off`, `crtWarm` [`4800`/`90 Hz`], `handheldSpeaker` [`5500`/`260 Hz`]), master/BGM/SFX/Voice category mix, `0..200%` mid-side stereo width, 5 ms focus-loss mute ramp (`shouldMuteOnFocusLoss`), `linear` vs `sincCubic` (4-tap Catmull-Rom) resampling, fast-forward audio clamping (`attenuatedLowPass`, `muted`, `normal`), and zero-restart hot-switchable SDL3 playback devices (`Sdl3AudioDeviceNative`).
+- **`HostSoundTestService` (`IHostSoundTestProvider`), 6th `Audio` Tab & `SystemTabView`:** Houses built-in / engine Sound Test playback inside `AudioTabView` (`HostDrawerTabId.Audio = 5`, drawer pill #2 `Tab_Audio`), pairs with extracted `SystemTabView`, and renders active filter/display/Safe Mode/Audio Mute badges on `F3HudOverlayView`.
+
+### 2.3 Clean-Room Execution Resilience (`reEngine.Core.Execution`)
+- **`BootCrashSentinel`, `MediaRamPreloader` & `ExecutionTierPolicy`:** Tracks `<dataDir>\booting.sentinel` PID liveness (triggering in-memory Safe Mode without mutating saved video/audio JSON, cleared on frame `1` or `--safe-mode-reset`), gates RAM preloading at `>= 512 MiB` headroom & `<= 75%` available physical RAM with `[WARN]` streaming fallback, enforces Clean-Room AOT defaults (`staticAotOnly`, `aotWithJitFallback`, `aotWithThreadedIr`, `jitBringup`), and restricts `interpreterOracle` strictly to `AllowCliOnly` invocations.
 
 ---
 
@@ -92,8 +94,12 @@ Child platform engines reuse `reEngine.Host.dll` built on `Foundation v0.5.2` (`
 - **`DecompD4StrictnessValidator`:** Enforces canonical 5-tier `CanonicalCorpusTiers` (`D1_Raw`, `D2_Structured`, `D3_Mapped`, `D4_CleanSource`, `D5_ByteExact`) and maps `LegacyCorpusTierAliases["D4_FunctionalRewrite"] -> "D4_CleanSource"` without double counting.
 - **`PackageVerificationService.Verify(...)`:** Validates `.recomp` / `.decomp` archives/manifests and emits Standard 18 camelCase `PackageVerificationReport` (`isPassed`, `generatedAtUtc`, `durationMs`, `exitCode`, `packageKind`, `packagePath`, `moduleId`, `engineId`, `resolvedEngine`, `hasMediaReady`, `primaryMediaPath`, `warnings`, `violations`); `hasMediaReady: false` is non-fatal (`ExitCode = 0`) unless `--require-media` is specified (`ExitCode = 1` / `3`).
 
-### 3.2 `ReEngineSettings` (`data\config\settings.json`) & `reEngine.Installer`
-- **Canonical Keys (`UpdateModels.cs`):** `schemaVersion`, `appId`, `updatedAtUtc`, `shouldCheckUpdates`, `shouldAutoStagePatches`, `lastUpdateFeedUrl`, `enginesDirectoryOverride`, `resolutionScale`, `backendId`, `aspectRatioMode`, `overscanCropPx`, `isFastForwardEnabled`, `isFullscreen`, `audioDriver`, `isHdTexturePackEnabled`, `shutdownTimeoutMs` (`3000` default), `pinnedEngineVersions`, `stagedUpdatePath`, `windowWidth`, `windowHeight` (`[JsonExtensionData]` preserves unknown keys; `LegacyMigrationHelper` writes `.bak` before updating).
+### 3.2 Standard 19 Split-Domain Settings (`SettingsDomainStore` & `reEngine.Installer`)
+- **`settings.json` (`v2`, `domain: "core"`):** `schemaVersion` (`2`), `appId`, `domain`, `updatedAtUtc`, `executionTierMode`, `isJitEnabled`, `shouldPreloadMediaToRam`, `isFastBootEnabled`, `isSafeModeActive`, `shouldFastLoadData`, `fastForwardMultiplier`, `shutdownTimeoutMs`, `shouldCheckUpdates`, `shouldAutoStagePatches`, `lastUpdateFeedUrl`, `enginesDirectoryOverride`, `pinnedEngineVersions`, `stagedUpdatePath`, `windowWidth`, `windowHeight`.
+- **`settings.video.json` (`domain: "video"`):** `backendId`, `resolutionScale`, `displayMode`, `monitorIndex`, `isFullscreen`, `isVsyncEnabled`, `targetFps`, `backgroundFpsCap`, `aspectRatioMode`, `overscanCropPx`, `isFastForwardEnabled`, `isHdTexturePackEnabled`, `hudAnchorMode`, `videoFilterMode`, `isTrueColor24BitEnabled`, `isDitheringEnabled`, `screenshotCaptureMode`.
+- **`settings.audio.json` (`domain: "audio"`):** `audioDriver`, `audioOutputDevice`, `masterVolume`, `isAudioMuted`, `bgmVolume`, `sfxVolume`, `voiceVolume`, `shouldMuteOnFocusLoss`, `audioLowPassHz`, `audioHighPassHz`, `audioStereoWidthPercent`, `audioResamplingMode`, `fastForwardAudioMode`.
+- **`settings.controls.json` (`HostControlTierStore`):** Standard 33 3-tier bindings (`globalController`, `perGameController`, `perGameModern`) with conflict/hidden-slot validation and 4-port `Sdl3GamepadProvider` support.
+- **Self-Healing & Upgrade Preservation:** `SettingsDomainStore` snapshots `v1 -> v2` conversions into `data\config_history\`, moves corrupt JSON into `data\quarantine\`, and recovers from `.bak` or snapshots; `LegacyMigrationHelper` preserves all 4 domain files and `Math.Max(existingSchemaVersion, 1)` across upgrades.
 
 ---
 
@@ -101,8 +107,8 @@ Child platform engines reuse `reEngine.Host.dll` built on `Foundation v0.5.2` (`
 
 ### 4.1 CLI Flags & Launcher Argument Rules
 - **Subcommands & Package Flags:** `decomp --module <file.decomp> [--stage D0..D5] [--media-path <path>] [--engine-dir <dir>] [--toolchain-dir <dir>] [--output-dir <dir>] [--headless]`, `--open <path>` (or positional `*.recomp`/`*.decomp`), `--wait`, `--fullscreen`, `--save-dir <dir>`, `--shutdown-timeout-ms <100..30000>`, `--register-assoc`.
-- **Verification, Host & Audio Flags (`v0.5.0`):** `--verify-module <pkgOrEngineId> [--json] [--require-media]`, `--host-demo`, `--backend <opengl|vulkan|directx|dx12|parallelCpu|software>`, `--aspect-mode <nativePar|fourByThree|squareInteger|nativeFit|horPlus16By9>`, `--scale <1|2|4|8>`, `--require-backend`, `--audio-driver <wasapi|pipewire|alsa|coreaudio|...>`, `--hd-packs`, `--jit-bringup`, `--preload-media`, `--verify`, `--doctor`, `--tray-only`, `--window`, `--automation-port <n>` *(fail-closed Exit `2` in Release on both Player and Setup)*, `--dry-run`, `--enable-logs`, `--frames <n>`, `--dump-screenshot <path>`, `--dump-audio <path>`, `--version` (`-v`), `--help` (`-h`, `/?`, `help`).
-- **`LauncherArgsHelper`:** Synchronously awaits `--verify-module`, `--headless`, `--json`, `--open`, `--wait`, `decomp`, `--host-demo`, and CLI flags; normalizes caller-CWD relative paths (`--verify-module` normalized only when path-like, leaving bare engine slugs verbatim).
+- **Verification, Host & v0.6.0 Flags (Gated `>= 0.6.0` by `RecompLaunchFlagRouter`):** `--verify-module <pkgOrEngineId> [--json] [--require-media]`, `--host-demo`, `--backend <opengl|vulkan|directx|dx12|parallelCpu|software>`, `--aspect-mode <nativePar|fourByThree|squareInteger|nativeFit|horPlus16By9|horPlus21By9>`, `--scale <1|2|4|8>`, `--require-backend`, `--display-mode <windowed|borderlessFullscreen|exclusiveFullscreen>`, `--monitor <n>`, `--target-fps <n>`, `--bg-fps-cap <n>`, `--vsync | --no-vsync`, `--video-filter <nearest|bilinear|sharpBilinear|scanlines|crtLite|crt-aperture|lcdGrid|xbrz|ntscComposite>`, `--true-color | --no-true-color`, `--dithering | --no-dithering`, `--hud-anchor <safeFourByThree|screenEdges|custom>`, `--screenshot-mode <cleanNative|filteredComposite>`, `--execution-tier <staticAotOnly|aotWithJitFallback|aotWithThreadedIr|jitBringup|interpreterOracle>`, `--jit-bringup`, `--preload-media`, `--preload-media-to-ram | --no-preload-media-to-ram`, `--fast-boot | --no-fast-boot`, `--safe-mode-reset`, `--ff-multiplier <2.0..4.0>`, `--audio-driver <wasapi|pipewire|alsa|coreaudio|...>`, `--audio-device <name>`, `--master-volume <0..1>`, `--bgm-volume <0..1>`, `--sfx-volume <0..1>`, `--voice-volume <0..1>`, `--audio-muted | --no-audio-muted`, `--mute-on-focus-loss | --no-mute-on-focus-loss`, `--audio-lowpass-hz <hz>`, `--audio-highpass-hz <hz>`, `--stereo-width <0..200>`, `--audio-resampling <linear|sincCubic>`, `--ff-audio-mode <attenuatedLowPass|muted|normal>`, `--verify`, `--doctor`, `--tray-only`, `--window`, `--automation-port <n>` *(fail-closed Exit `2` in Release on both Player and Setup)*, `--dry-run`, `--enable-logs`, `--frames <n>`, `--dump-screenshot <path>`, `--dump-audio <path>`, `--version` (`-v`), `--help` (`-h`, `/?`, `help`).
+- **`LauncherArgsHelper`:** Synchronously awaits `--verify-module`, `--headless`, `--json`, `--open`, `--wait`, `decomp`, `--host-demo`, and CLI flags; enforces 1:1 `ValueOptions` parity with `RecompLaunchOptions`; normalizes caller-CWD relative paths (`--verify-module` normalized only when path-like, leaving bare engine slugs verbatim).
 
 ### 4.2 Propagated Exit Codes (`reEngine.Launcher` <-> `reEngine.App` <-> `reEngine.Host`)
 

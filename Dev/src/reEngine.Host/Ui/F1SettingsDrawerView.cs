@@ -72,6 +72,27 @@ public sealed class F1SettingsDrawerView
     /// <summary>Gets or sets whether runtime fast-forward is enabled.</summary>
     public bool IsFastForwardEnabled { get; set; }
 
+    /// <summary>Gets or sets the active host window display mode.</summary>
+    public HostDisplayMode DisplayMode { get; set; } = HostDisplayMode.Windowed;
+
+    /// <summary>Gets or sets whether swapchain vertical sync is enabled.</summary>
+    public bool IsVsyncEnabled { get; set; }
+
+    /// <summary>Gets or sets the active Widescreen HUD anchor policy.</summary>
+    public HostHudAnchorMode HudAnchorMode { get; set; } = HostHudAnchorMode.SafeFourByThree;
+
+    /// <summary>Gets or sets the active live presentation filter preset.</summary>
+    public HostVideoFilterMode VideoFilterMode { get; set; } = HostVideoFilterMode.Nearest;
+
+    /// <summary>Gets or sets whether 24-bit internal RGBA color is enabled.</summary>
+    public bool IsTrueColor24BitEnabled { get; set; } = true;
+
+    /// <summary>Gets or sets whether 15-bit quantization + 4x4 Bayer dithering is enabled.</summary>
+    public bool IsDitheringEnabled { get; set; }
+
+    /// <summary>Gets or sets the <c>F12</c> screenshot capture source mode.</summary>
+    public HostScreenshotCaptureMode ScreenshotCaptureMode { get; set; } = HostScreenshotCaptureMode.CleanNative;
+
     /// <summary>Gets or sets the active audio DSP mixer settings displayed in the Audio tab.</summary>
     public HostAudioMixerSettings AudioSettings { get; set; } = new();
 

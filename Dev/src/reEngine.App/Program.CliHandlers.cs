@@ -7,10 +7,12 @@ using Foundation.Core;
 using reEngine.Core.Associations;
 using reEngine.Core.Bootstrap;
 using reEngine.Core.Decomp;
+using reEngine.Core.Execution;
 using reEngine.Core.Resolution;
 using reEngine.Core.Updates;
 using reEngine.Host.Contracts;
 using reEngine.Host.Core;
+using reEngine.Host.Settings;
 
 namespace reEngine.App;
 
@@ -187,17 +189,21 @@ internal static partial class Program
         ReEngineSettingsBundle? settingsBundle = null,
         IReEngineSettingsStore? settingsStore = null)
     {
-        IReEngineSettingsStore effectiveStore = settingsStore ?? new AppFallbackSettingsStore(appEnv.DataDirectory, appEnv.ConfigFilePath);
+        IReEngineSettingsStore effectiveStore = settingsStore ?? new HostSettingsStore(appEnv.DataDirectory, appEnv.ConfigFilePath);
         ReEngineSettingsBundle bundle = settingsBundle ?? effectiveStore.LoadOrMigrate();
         ReEngineSettings core = bundle.Core;
         ReEngineVideoSettings video = bundle.Video;
         ReEngineAudioSettings audio = bundle.Audio;
 
-        if (opts.SafeModeReset && core.IsSafeModeActive)
+        if (opts.SafeModeReset)
         {
-            core.IsSafeModeActive = false;
-            effectiveStore.SaveCore(core);
-            log("INFO", "Safe Mode cleared before host-demo launch (--safe-mode-reset).");
+            _ = new BootCrashSentinel(appEnv.DataDirectory).Clear();
+            if (core.IsSafeModeActive)
+            {
+                core.IsSafeModeActive = false;
+                effectiveStore.SaveCore(core);
+                log("INFO", "Safe Mode cleared before host-demo launch (--safe-mode-reset).");
+            }
         }
 
         string effectiveBackendId = !string.IsNullOrWhiteSpace(opts.BackendId) ? opts.BackendId : video.BackendId;

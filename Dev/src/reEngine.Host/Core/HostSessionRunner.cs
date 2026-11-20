@@ -6,6 +6,7 @@
 using System.Security.Cryptography;
 using Foundation.Core;
 using reEngine.Core.Resolution;
+using reEngine.Host.Audio;
 using reEngine.Host.Contracts;
 using reEngine.Host.Input;
 using reEngine.Host.Rendering;
@@ -71,6 +72,7 @@ public sealed class HostSessionRunner : IHostAutomationTarget
     {
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(callbacks);
+        HostSessionOptions effectiveOptions = options;
 
         using IHostAutomationBridge? automation = CreateAutomationBridge(options);
         if (options.AutomationPort.HasValue && automation is null)
@@ -86,44 +88,51 @@ public sealed class HostSessionRunner : IHostAutomationTarget
         if (touchOverlay is not null) _inputMapper.RegisterProvider(touchOverlay);
         _touchOverlay = touchOverlay;
 
-        HostBackendCapability probed = HostBackendProbe.Probe(options.PreferredBackend);
-        HostRenderBackendKind activeKind = options.PreferredBackend;
+        HostBackendCapability probed = HostBackendProbe.Probe(effectiveOptions.PreferredBackend);
+        HostRenderBackendKind activeKind = effectiveOptions.PreferredBackend;
         string activeBackendId = probed.BackendId;
         string? fallbackBanner = null;
         if (!probed.IsAvailable)
         {
-            if (options.RequireBackend) return BuildUnavailableResult(probed.BackendId, probed.Diagnostic);
+            if (effectiveOptions.RequireBackend) return BuildUnavailableResult(probed.BackendId, probed.Diagnostic);
             activeKind = HostRenderBackendKind.ParallelCpu;
             activeBackendId = HostRenderBackendIds.ParallelCpu;
             fallbackBanner = $"Fallback to {activeBackendId}: {probed.BackendId} unavailable ({probed.Diagnostic})";
         }
 
+        using var runtimeBridge = new HostSessionRuntimeBridge();
+        effectiveOptions = runtimeBridge.PrepareExecution(effectiveOptions, ref fallbackBanner);
+        activeKind = effectiveOptions.PreferredBackend;
+        activeBackendId = HostBackendProbe.GetCanonicalBackendId(activeKind);
+
         using var window = new Sdl3HostWindow();
-        bool useWindow = options.RequireVisibleWindow && !options.HeadlessFrameCount.HasValue;
-        HostDisplayMode initialMode = Sdl3HostWindow.ResolveDisplayMode(options);
+        bool useWindow = effectiveOptions.RequireVisibleWindow && !effectiveOptions.HeadlessFrameCount.HasValue;
+        HostDisplayMode initialMode = Sdl3HostWindow.ResolveDisplayMode(effectiveOptions);
         _activeDisplayMode = initialMode;
         string? failReason = null;
-        bool windowOpened = useWindow && window.TryOpenWithFallback(options, initialMode, ref activeKind, ref activeBackendId, ref fallbackBanner, out failReason);
-        if (useWindow && !windowOpened && options.RequireBackend)
+        bool windowOpened = useWindow && window.TryOpenWithFallback(effectiveOptions, initialMode, ref activeKind, ref activeBackendId, ref fallbackBanner, out failReason);
+        if (useWindow && !windowOpened && effectiveOptions.RequireBackend)
             return BuildUnavailableResult(activeBackendId, failReason ?? window.DiagnosticStatus);
 
         Sdl3HostWindow? activeWindow = windowOpened ? window : null;
-        ConfigureDrawerAndSurface(options, activeKind, fallbackBanner, window.GraphicsContext, activeWindow?.IsFullscreen ?? (initialMode != HostDisplayMode.Windowed));
-        using var audioPump = new Sdl3AudioPump(options.AudioFormat, options.DumpAudioPath, openNativeStream: windowOpened, audioDriverOverride: options.AudioDriverOverride);
+        ConfigureDrawerAndSurface(effectiveOptions, activeKind, fallbackBanner, window.GraphicsContext, activeWindow?.IsFullscreen ?? (initialMode != HostDisplayMode.Windowed));
+        using var audioPump = new Sdl3AudioPump(effectiveOptions.AudioFormat, effectiveOptions.DumpAudioPath, openNativeStream: windowOpened, audioDriverOverride: effectiveOptions.AudioDriverOverride, initialSettings: effectiveOptions.AudioSettings);
+        var soundTest = new HostSoundTestService(effectiveOptions.SoundTestProvider, effectiveOptions.AudioFormat.SampleRate);
+        runtimeBridge.ConfigureDrawer(_drawer, effectiveOptions, audioPump, soundTest);
         string activeAudioDriver = audioPump.ActiveDriver ?? audioPump.SelectedDriver;
-        using var pacer = new HighResFramePacer(options.TargetFps);
-        _ = _pacingController.SyncPacer(pacer, options.TargetFps, options.BackgroundFpsCap, options.FastForwardMultiplier, _drawer.IsFastForwardEnabled, activeWindow?.IsWindowFocused ?? true, options.IsVsyncEnabled);
+        using var pacer = new HighResFramePacer(effectiveOptions.TargetFps);
+        _ = _pacingController.SyncPacer(pacer, effectiveOptions.TargetFps, effectiveOptions.BackgroundFpsCap, effectiveOptions.FastForwardMultiplier, _drawer.IsFastForwardEnabled, activeWindow?.IsWindowFocused ?? true, _drawer.IsVsyncEnabled);
         var heartbeat = new HeartbeatLogger("reEngine HostSession", heartbeatSink);
         if (automation is not null)
         {
-            string token = !string.IsNullOrWhiteSpace(options.AutomationToken) ? options.AutomationToken!
+            string token = !string.IsNullOrWhiteSpace(effectiveOptions.AutomationToken) ? effectiveOptions.AutomationToken!
                 : (Environment.GetEnvironmentVariable("FOUNDATION_AUTOMATION_TOKEN") ?? Convert.ToHexString(RandomNumberGenerator.GetBytes(16)).ToLowerInvariant());
-            automation.Start(this, options.AutomationPort ?? 0, token, options.AllowedSnapshotRoot);
+            automation.Start(this, effectiveOptions.AutomationPort ?? 0, token, effectiveOptions.AllowedSnapshotRoot);
         }
 
-        int contentW = Math.Max(64, options.ContentWidth), contentH = Math.Max(64, options.ContentHeight);
+        int contentW = Math.Max(64, effectiveOptions.ContentWidth), contentH = Math.Max(64, effectiveOptions.ContentHeight);
         byte[] contentRgba = new byte[checked(contentW * contentH * 4)];
-        short[] audioBuffer = new short[Math.Max(512, (options.AudioFormat.SampleRate / 60) * options.AudioFormat.Channels * 2)];
+        short[] audioBuffer = new short[Math.Max(512, (effectiveOptions.AudioFormat.SampleRate / 60) * effectiveOptions.AudioFormat.Channels * 2)];
         long frameNumber = 0;
         string? lastScreenshotPath = null;
 
@@ -131,38 +140,43 @@ public sealed class HostSessionRunner : IHostAutomationTarget
         {
             while (!ct.IsCancellationRequested && !_stopRequested)
             {
-                if (options.HeadlessFrameCount is int limit && frameNumber >= limit) break;
+                if (effectiveOptions.HeadlessFrameCount is int limit && frameNumber >= limit) break;
                 if (!HostFramePacingController.PumpLateLatchBeforeTick(
                     () => activeWindow is null || PollMappedWindowEvents(activeWindow),
-                    () => PrepareLateLatchInput(activeWindow, automation, contentW, contentH, options),
+                    () => PrepareLateLatchInput(activeWindow, automation, contentW, contentH, effectiveOptions),
                     () => _inputMapper.BuildFrame(),
                     out HostInputFrame frameInput)) break;
 
                 CaptureGamepadInputIfPressed(frameInput.GamepadButtonsMask);
-                ApplyNonSnapshotHotkeys(frameInput, options, activeWindow);
+                ApplyNonSnapshotHotkeys(frameInput, effectiveOptions, activeWindow);
+                runtimeBridge.SyncWindowVsyncIfChanged(_drawer, activeWindow);
+                runtimeBridge.SyncSafeModeResetIfCleared(_drawer);
                 _inputMapper.SetMenuOpen(_drawer.IsOpen || _mediaGate.IsVisible);
                 _ = _pacingController.SyncPacer(
-                    pacer, options.TargetFps, options.BackgroundFpsCap, options.FastForwardMultiplier,
-                    _drawer.IsFastForwardEnabled || frameInput.IsFastForwardHeld, activeWindow?.IsWindowFocused ?? true, options.IsVsyncEnabled);
+                    pacer, effectiveOptions.TargetFps, effectiveOptions.BackgroundFpsCap, effectiveOptions.FastForwardMultiplier,
+                    _drawer.IsFastForwardEnabled || frameInput.IsFastForwardHeld, activeWindow?.IsWindowFocused ?? true, _drawer.IsVsyncEnabled);
 
                 _surface.BeginFrame(contentW, contentH);
                 await callbacks.OnFrameTickAsync(frameNumber, frameInput, contentRgba, contentW, contentH, ct);
                 ReadOnlySpan<byte> filteredRgba = PresentGameAndOverlays(
-                    options, contentW, contentH, contentRgba, frameInput, pacer, audioPump, activeWindow, frameNumber,
+                    effectiveOptions, contentW, contentH, contentRgba, frameInput, pacer, audioPump, runtimeBridge, activeWindow, frameNumber,
                     out int filteredW, out int filteredH);
-                HandlePostPresentActions(frameInput, options, contentRgba, contentW, contentH, filteredRgba, filteredW, filteredH, ref lastScreenshotPath);
+                if (frameNumber == 0) runtimeBridge.ClearSentinelOnFirstFrame();
+                HandlePostPresentActions(frameInput, effectiveOptions, contentRgba, contentW, contentH, filteredRgba, filteredW, filteredH, ref lastScreenshotPath);
 
-                int readSamples = callbacks.ReadAudioSamples(audioBuffer);
+                int readSamples = runtimeBridge.PumpFrameAudio(
+                    audioPump, soundTest, _drawer, effectiveOptions, activeWindow?.IsWindowFocused ?? true,
+                    _drawer.IsFastForwardEnabled || frameInput.IsFastForwardHeld, callbacks, audioBuffer);
                 if (readSamples > 0) _ = audioPump.EnqueueInterleaved(audioBuffer.AsSpan(0, Math.Min(readSamples, audioBuffer.Length)));
                 audioPump.PumpToDevice();
                 automation?.SyncWidgets(GetOverlayWidgets());
                 frameNumber++;
-                heartbeat.ReportProgress(frameNumber, options.HeadlessFrameCount ?? 0, window.DiagnosticStatus);
+                heartbeat.ReportProgress(frameNumber, effectiveOptions.HeadlessFrameCount ?? 0, window.DiagnosticStatus);
                 _ = _pacingController.WaitForNextFrame(pacer);
             }
 
-            string? savedPng = string.IsNullOrWhiteSpace(options.DumpFramePath) ? lastScreenshotPath : Path.GetFullPath(options.DumpFramePath);
-            if (!string.IsNullOrWhiteSpace(options.DumpFramePath)) _surface.SavePng(Path.GetFullPath(options.DumpFramePath));
+            string? savedPng = string.IsNullOrWhiteSpace(effectiveOptions.DumpFramePath) ? lastScreenshotPath : Path.GetFullPath(effectiveOptions.DumpFramePath);
+            if (!string.IsNullOrWhiteSpace(effectiveOptions.DumpFramePath)) _surface.SavePng(Path.GetFullPath(effectiveOptions.DumpFramePath));
             return new HostSessionResult(0, frameNumber, _drawer.IsOpen, _hud.IsVisible, _drawer.ActiveTab, savedPng, audioPump.CaptureFilePath, $"Completed {frameNumber} frame(s).", activeBackendId, activeAudioDriver, fallbackBanner);
         }
         finally
@@ -363,7 +377,7 @@ public sealed class HostSessionRunner : IHostAutomationTarget
         if ((input.HotkeyFlags & (uint)(HostHotkeyFlags.TakeScreenshot | HostHotkeyFlags.DumpFrame)) == 0) return;
 
         HostScreenshotResult shot = _screenshotService.Capture(
-            options.ScreenshotCaptureMode, cleanRgba, cleanW, cleanH, filteredRgba, filteredW, filteredH,
+            _drawer.ScreenshotCaptureMode, cleanRgba, cleanW, cleanH, filteredRgba, filteredW, filteredH,
             options.ScreenshotsDirectory, options.ExecutionResilience?.DataDirectory, options.ModuleId,
             options.DumpFramePath, options.AllowedSnapshotRoot);
         if (shot.Succeeded) lastScreenshotPath = shot.FilePath;
@@ -372,7 +386,7 @@ public sealed class HostSessionRunner : IHostAutomationTarget
 
     private ReadOnlySpan<byte> PresentGameAndOverlays(
         HostSessionOptions options, int contentW, int contentH, byte[] contentRgba,
-        HostInputFrame frameInput, HighResFramePacer pacer, Sdl3AudioPump audioPump, Sdl3HostWindow? window, long frameNumber,
+        HostInputFrame frameInput, HighResFramePacer pacer, Sdl3AudioPump audioPump, HostSessionRuntimeBridge runtimeBridge, Sdl3HostWindow? window, long frameNumber,
         out int filteredW, out int filteredH)
     {
         _surface.ScaleFactor = _drawer.ResolutionScale;
@@ -382,11 +396,11 @@ public sealed class HostSessionRunner : IHostAutomationTarget
         (HostViewportRect srcCrop, HostViewportRect contentDest) = ComputeContentRects(contentW, contentH, options);
 
         (int targetW, int targetH) = HostVideoFilterPipeline.ResolveTargetSize(
-            options.VideoFilterMode, options.IsTrueColor24BitEnabled, options.IsDitheringEnabled,
+            _drawer.VideoFilterMode, _drawer.IsTrueColor24BitEnabled, _drawer.IsDitheringEnabled,
             _drawer.ResolutionScale, contentW, contentH, contentDest);
         ReadOnlySpan<byte> filteredRgba = _filterPipeline.Process(
-            contentRgba, contentW, contentH, targetW, targetH, options.VideoFilterMode,
-            options.IsTrueColor24BitEnabled, options.IsDitheringEnabled, (int)frameNumber,
+            contentRgba, contentW, contentH, targetW, targetH, _drawer.VideoFilterMode,
+            _drawer.IsTrueColor24BitEnabled, _drawer.IsDitheringEnabled, (int)frameNumber,
             out filteredW, out filteredH);
         HostViewportRect filteredCrop = HostVideoFilterPipeline.ScaleSourceCrop(srcCrop, contentW, contentH, filteredW, filteredH);
         _surface.PresentRgba(filteredW, filteredH, filteredRgba, contentDest, filteredCrop, publishSnapshot: false);
@@ -398,8 +412,7 @@ public sealed class HostSessionRunner : IHostAutomationTarget
         if (_drawer.IsOpen) _drawer.Render(_surface.Canvas, options.DrawerDescriptor, _inputMapper.Bindings);
         if (_mediaGate.IsVisible) _mediaGate.Render(_surface.Canvas, options.DrawerDescriptor);
         if (_hud.IsVisible)
-            _hud.Render(_surface.Canvas, new F3HudTelemetry(pacer.CurrentFps, pacer.AverageFrameMs, _drawer.SelectedBackend.ToString(), _drawer.ResolutionScale, _drawer.ExecutionTierLabel, audioPump.FillRatio)
-            { AspectRatioLabel = HostAspectRatioModeCodec.ToDisplayLabel(_drawer.AspectRatioMode), IsFastForwardEnabled = _drawer.IsFastForwardEnabled, ConnectedPadCount = Math.Min(4, connectedPads) });
+            _hud.Render(_surface.Canvas, runtimeBridge.BuildHudTelemetry(pacer, audioPump, _drawer, _activeDisplayMode, connectedPads));
         _surface.PublishSnapshot();
         window?.PresentRgba(_surface.SurfaceWidth, _surface.SurfaceHeight, _surface.Canvas.Buffer, HostAspectRatioMode.NativeFit);
         return filteredRgba;

@@ -12,6 +12,7 @@ using reEngine.Core.Bootstrap;
 using reEngine.Core.Decomp;
 using reEngine.Core.Resolution;
 using reEngine.Core.Updates;
+using reEngine.Host.Settings;
 #if REENGINE_ENABLE_AUTOMATION
 using Foundation.Automation;
 #endif
@@ -118,7 +119,7 @@ internal static partial class Program
     private static async Task<int> RunAsync(string[] args, AppEnvironment appEnv, Action<string, string> log, CancellationToken ct)
     {
         bool isIsolatedTest = IsIsolatedTestEnv();
-        IReEngineSettingsStore settingsStore = new AppFallbackSettingsStore(appEnv.DataDirectory, appEnv.ConfigFilePath);
+        IReEngineSettingsStore settingsStore = new HostSettingsStore(appEnv.DataDirectory, appEnv.ConfigFilePath);
         (SettingsMigrationResult mig, ReEngineSettingsBundle settingsBundle) = SettingsMigrationHelper.MigrateAndLoadBundle(
             ReEngineAppStatusHelper.ResolveAppInstallRoot(), appEnv.DataDirectory, appEnv.ConfigFilePath, settingsStore, allowAppDataProbe: !isIsolatedTest);
         if (mig.Migrated) log("INFO", mig.Summary);

@@ -1,6 +1,6 @@
 # reEngine — System Architecture
 
-**Synced Version:** `0.5.0` (`2026-11-20`)  
+**Synced Version:** `0.6.0` (`2026-11-20`)  
 **Scope:** Runtime Topology, Assembly Boundaries, Execution Pipelines, File Inventory & Data Stores  
 **License:** Mozilla Public License Version 2.0 (`MPL-2.0`, root [`LICENSE`](../../LICENSE))
 
@@ -8,11 +8,11 @@
 
 ## 1. System Context & Runtime Model
 
-`reEngine` is a zero-daemon static recompilation package router, unified `reEngine.Host.dll` runtime host (native GPU contexts, SDL3 audio/input, touch/gamepad overlays), `.decomp` Bring-Up runner, `<dataDir>\cache\` AOT assembly manager, and side-by-side platform engine suite manager for clean-room static recompilation and decompilation (`D0`–`D5` pipeline stages).
+`reEngine` is a zero-daemon static recompilation package router, unified `reEngine.Host.dll` runtime host (native GPU contexts, live video filter pipeline, late-latch VRR pacing, SDL3 hot-switchable audio DSP & Sound Test, 4-port input, and interactive overlays), `.decomp` Bring-Up runner, `<dataDir>\cache\` AOT assembly manager, and side-by-side platform engine suite manager (`D0`–`D5` pipeline stages).
 
 - **Zero Background Footprint:** Exiting the suite manager UI or child engine leaves zero resident processes (`ReEnginePackagingConstants.AllowAutoStart = false`, `0 MB` idle background memory, zero Windows Startup entries).
-- **Peer User-Scope Suite Topology & Custom Auto-Sort:** Non-admin installation uses `%LOCALAPPDATA%\Programs\StreamItAll\reEngine\{reEngine,toolchain,engines,games}\` (`umbrellaSubpath = "StreamItAll\\reEngine\\reEngine"`). `LegacyMigrationHelper` preserves `v0.4.0` settings (`backendId: "directx"`, `isFullscreen`, `audioDriver`, `isHdTexturePackEnabled`) with `.bak` recovery across upgrades.
-- **Canonical Runtime Storage (`<InstallRoot>\data\config\settings.json` & `<InstallRoot>\logs\`):** `ProgramBootstrapHelper` anchors `--data-dir <InstallRoot>\data`, `--config <InstallRoot>\data\config\settings.json`, and `--log-dir <InstallRoot>\logs`, and `SettingsMigrationHelper` merges split legacy configs atomically newest-wins.
+- **Peer User-Scope Suite Topology & Custom Auto-Sort:** Non-admin installation uses `%LOCALAPPDATA%\Programs\StreamItAll\reEngine\{reEngine,toolchain,engines,games}\` (`umbrellaSubpath = "StreamItAll\\reEngine\\reEngine"`). `LegacyMigrationHelper` preserves all domain configs (`settings.json`, `settings.video.json`, `settings.audio.json`, `settings.controls.json`) and existing schema versions (`Math.Max(existingSchemaVersion, 1)`) with `.bak` recovery across upgrades.
+- **Canonical Standard 19 Split Storage (`<InstallRoot>\data\config\` & `<InstallRoot>\logs\`):** `ProgramBootstrapHelper` anchors `--data-dir <InstallRoot>\data`, `--config <InstallRoot>\data\config\settings.json`, and `--log-dir <InstallRoot>\logs`. `SettingsDomainStore` + `HostSettingsStore` separate runtime state across `settings.json` (v2 core/execution), `settings.video.json`, `settings.audio.json`, and `settings.controls.json` with automatic `v1 -> v2` migration (`data\config_history\`) and self-healing `data\quarantine\` recovery.
 - **Frontend Bridge, Bounded Shutdown & Interactive `.decomp` UI:**
   - Frontend game launchers (such as `uStation`) route `.recomp` launches synchronously to `reEngine.exe --open <pkg> --wait [--fullscreen] [--save-dir <dir>] [--shutdown-timeout-ms 3000]`.
   - During `--wait` cancellation, `GracefulProcessTreeShutdown` catches cancellation before `JobObjectGuard` disposal, posts `WM_CLOSE` across the child process tree so saves flush cleanly into `--save-dir` within `shutdownTimeoutMs`, and only force-terminates on timeout. Interactive detached launches (`ShouldWaitForExit = false`) remain unguarded so launcher stubs (`reStation.exe` -> `app\reStation.Player.exe`) keep child windows alive.
@@ -21,7 +21,7 @@
 ```mermaid
 flowchart LR
     User["User / Windows Shell\n(.recomp / .decomp)"] --> Launcher["reEngine.Launcher\n(reEngine.exe, single-file < 200 KB)"]
-    Installer["reEngine.Installer\n(Setup EXE + installer.manifest.json)"] -->|Deploys peer suite & preserves v0.4 settings| Suite["%LOCALAPPDATA%\\Programs\\StreamItAll\\reEngine\\"]
+    Installer["reEngine.Installer\n(Setup EXE + installer.manifest.json)"] -->|Deploys peer suite & preserves split settings| Suite["%LOCALAPPDATA%\\Programs\\StreamItAll\\reEngine\\"]
     Launcher -->|CWD path norm + sync-wait| App["reEngine.App\n(app\\reEngine.exe Dark Slate UI & CLI)"]
     App -->|Consumes| Core["reEngine.Core.dll\n(Walker, D4_CleanSource, Verify)"]
     App -->|Host Runtime & Presenters| Host["reEngine.Host.dll\n(GL3.3/VK1.3/DX12/ParallelCpu/SW + WASAPI + MultiBind)"]
@@ -38,7 +38,7 @@ flowchart LR
 
 ## 2. Assembly / `.dll` & Module Dependency Graph
 
-The solution [`Dev\reEngine.slnx`](../reEngine.slnx) inherits [`Dev\Directory.Build.props`](../Directory.Build.props) (`Version = 0.5.0`, `LangVersion = latest`, `Nullable = enable`, `TreatWarningsAsErrors = true`, `Deterministic = true`, `ContinuousIntegrationBuild = true` in `Release`, `<DebugType>none</DebugType>`, and `<PathMap>` workspace scrubbing) and consumes `Foundation v0.5.2` from `Dev\lib\`.
+The solution [`Dev\reEngine.slnx`](../reEngine.slnx) inherits [`Dev\Directory.Build.props`](../Directory.Build.props) (`Version = 0.6.0`, `LangVersion = latest`, `Nullable = enable`, `TreatWarningsAsErrors = true`, `Deterministic = true`, `ContinuousIntegrationBuild = true` in `Release`, `<DebugType>none</DebugType>`, and `<PathMap>` workspace scrubbing) and consumes `Foundation v0.5.2` from `Dev\lib\`.
 
 ```mermaid
 graph TD
@@ -48,12 +48,12 @@ graph TD
     FL["Dev/lib/Foundation.Launcher.dll v0.5.2 (RO)"]
     FA["Dev/lib/Foundation.Automation.dll v0.5.2 (RO, Debug/Test Only)"]
 
-    Core["reEngine.Core (net8.0)\nSDK -> SharedLibs/reEngine/v0.5.0/"]
-    Host["reEngine.Host (net8.0;net8.0-windows)\nViewportGeometry + 5 Presenters + 4-Port Input -> SharedLibs/reEngine/v0.5.0/"]
-    App["reEngine.App (net8.0-windows)\nWinForms Dark Slate UI, .decomp Bring-Up & CLI Router"]
+    Core["reEngine.Core (net8.0)\nSDK, Resilience, SettingsDomainStore -> SharedLibs/reEngine/v0.6.0/"]
+    Host["reEngine.Host (net8.0;net8.0-windows)\n5 Backends + Filters + VRR + Audio DSP -> SharedLibs/reEngine/v0.6.0/"]
+    App["reEngine.App (net8.0-windows)\nWinForms Dark Slate UI, >=0.6.0 Flag Router & .decomp Bring-Up"]
     Launcher["reEngine.Launcher (net8.0-windows)\nSingle-File Root Stub (< 2 MB)"]
     Setup["reEngine.Installer (net8.0-windows)\nSetup EXE (ExitCode=2 Release guard)"]
-    Tests["reEngine.Tests (net8.0-windows)\n21 xUnit Verification Suites (117 Tests)"]
+    Tests["reEngine.Tests (net8.0-windows)\n25 xUnit Verification Suites (135 Tests)"]
 
     Core --> FC
     Core --> FR
@@ -80,7 +80,7 @@ graph TD
 | `reEngine.Host` | `net8.0` / `net8.0-windows` | `reEngine.Core`, `Foundation.Core`, `Foundation.Retro`, `ppy.SDL3-CS`, OS native GPU libs (`opengl32`/`vulkan-1`/`d3d12`/`dxgi`) (`Foundation.Automation` on `Debug \| ReEngineTestAutomation=true` only) | Release `net8.0` & `net8.0-windows` contain **0** `Foundation.Automation` or `System.Windows.Forms` refs; direct clean-room P/Invoke/COM without GPL/heavy third-party SDKs |
 | `reEngine.App` | `net8.0-windows` | `reEngine.Core`, `reEngine.Host`, `Foundation.Core`, WinForms | Never modifies read-only external directories; Fail-Closed `ExitCode = 2` if `--automation-port` in Release; `ExitCode = 6` on `BackendUnavailableException` |
 | `reEngine.Launcher` | `net8.0-windows` | Embedded `Foundation.Launcher.dll` | **Zero** `reEngine.Core` or `reEngine.Host` ref (keeps single-file stub `< 2 MB`) |
-| `reEngine.Installer` | `net8.0-windows` | `reEngine.Core`, gzipped `Foundation.{Core,Installer,Retro}`, `installer.manifest.json` | `AllowAutoStart = false`; preserves `v0.4.0` keys in `data\config\settings.json`; zero unconfirmed `%LOCALAPPDATA%` writes in test mode |
+| `reEngine.Installer` | `net8.0-windows` | `reEngine.Core`, gzipped `Foundation.{Core,Installer,Retro}`, `installer.manifest.json` | `AllowAutoStart = false`; preserves split `settings[.{video,audio,controls}].json` & `schemaVersion >= 1`; zero unconfirmed `%LOCALAPPDATA%` writes in test mode |
 | `reEngine.Tests` | `net8.0-windows` | `Core`, `Host`, `Installer` + linked `Launcher`/`App` files + xUnit + `Foundation.Automation` | Isolated `APP_ISOLATED_TEST=1` temp roots only; Stage 2 visible-window sandbox E2E |
 
 ---
@@ -93,10 +93,10 @@ graph TD
 3. [`RecompLaunchPlanBuilder`](../src/reEngine.App/RecompLaunchPlanBuilder.cs) normalizes backend aliases (`dx12`/`d3d12` -> `directx`, `metal`), throws `BackendUnavailableException` (`ExitCode = 6`) when `--require-backend` rejects an unavailable backend, falls back cleanly through `SuiteMediaTreeWalker` when module `data\rom\` is empty, and forwards `--fullscreen`, `--save-dir`, and `--audio-driver` to `>= 0.3.0` engines.
 4. On synchronous `--wait` cancellation, [`GracefulProcessTreeShutdown`](../src/reEngine.App/GracefulProcessTreeShutdown.cs) enumerates descendant PIDs and posts `WM_CLOSE` for up to `shutdownTimeoutMs` (`3000ms` default) BEFORE `JobObjectGuard.Dispose()`, flushing saves before termination.
 
-### 3.2 `reEngine.Host` Viewport Precision, 5-Backend GPU Contexts, 4-Port Input & Interactive Overlays
-1. [`NativeAudioDriverSelector`](../src/reEngine.Host/Core/NativeAudioDriverSelector.cs) applies `SDL_SetHint("SDL_AUDIO_DRIVER", driver)` (`wasapi` on Windows, `pipewire`/`alsa` on Linux, `coreaudio` on Apple, `aaudio` on Android, `emscripten` on WASM) BEFORE `SDL_InitSubSystem(InitAudio)` and isolates audio failures from video/gamepad initialization.
-2. [`HostViewportGeometry`](../src/reEngine.Host/Core/HostViewportGeometry.cs) computes bounded source overscan cropping (`HostOverscanCrop`), aspect-locked destination rects across all 5 `HostAspectRatioMode` modes (`nativePar`, `fourByThree`, `squareInteger`, `nativeFit`, `horPlus16By9`), and inverse window-to-content pointer normalization (`TryMapWindowToContentNormalized`), eliminating stretch across [`Sdl3HostWindow`](../src/reEngine.Host/Core/Sdl3HostWindow.cs), [`ParallelCpuPresenter`](../src/reEngine.Host/Rendering/ParallelCpuPresenter.cs), [`Gl33Presenter`](../src/reEngine.Host/Rendering/Gl33Presenter.cs) (guarded on `0x0` windows, `glCheckFramebufferStatus == 0x8CD5`, owner-thread `TryReadSurfaceRect`, and `FlushAndSyncForSnapshot` prior to QuickSave/teardown), [`VulkanPresenter`](../src/reEngine.Host/Rendering/VulkanPresenter.cs), and [`D3d12Presenter`](../src/reEngine.Host/Rendering/D3d12Presenter.cs), with live `SDL_SetWindowFullscreen` transitions and decoupled `IHostAutomationBridge` (`AutomationBridgeFactory`).
-3. [`HostInputMapper`](../src/reEngine.Host/Input/HostInputMapper.cs) + [`HostControlTierStore`](../src/reEngine.Host/Input/HostControlTierStore.cs) + [`Sdl3GamepadProvider`](../src/reEngine.Host/Input/Sdl3GamepadProvider.cs) poll 4 hot-pluggable SDL3 gamepad ports (`PadPorts[0..3]`), persist Standard 33 3-tier bindings (`globalController`, `perGameController`, `perGameModern` in `settings.controls.json`) with hidden-slot conflict checks, enforce Menu D-Pad + Left-Stick isolation, and dispatch interactive `F1`/`F3` callbacks (`IHostSessionEventCallbacks`) plus `F5`/`F9`/`F11`/`Alt+Enter`/Fast-Forward/Cutscene-Skip hotkeys. [`EngineVersionResolver`](../src/reEngine.Core/Resolution/EngineVersionResolver.cs) ranks `-hf.<n>` hotfixes strictly above stable releases (`-hf.<n> > stable > prerelease`) while enforcing `.ready` markers across all `0.3.0+` leaves.
+### 3.2 `reEngine.Host` Execution Resilience, Display/Filter Pipeline, VRR Pacing, Audio DSP & Overlays
+1. **Execution Resilience (`reEngine.Core.Execution` + `HostSessionRuntimeBridge`):** [`BootCrashSentinel`](../src/reEngine.Core/Execution/BootCrashSentinel.cs) writes `<dataDir>\booting.sentinel` on boot, checks dead PIDs to trigger in-memory Safe Mode (`HostSettingsStore.ApplyInMemorySafeMode` disables HD packs and falls back Vulkan/DX12 to OpenGL without touching saved disk video/audio config), and clears on frame `1` (`ClearOnFirstFrame`). [`MediaRamPreloader`](../src/reEngine.Core/Execution/MediaRamPreloader.cs) enforces physical headroom (`>= 512 MiB` free and `<= 75%` available) before buffering contained BYO media, falling back to `[WARN]` streaming if low. [`ExecutionTierPolicy`](../src/reEngine.Core/Execution/ExecutionTierPolicy.cs) enforces Clean-Room AOT defaults and keeps `interpreterOracle` strictly quarantined to explicit `AllowCliOnly` invocations.
+2. **Display Modes, VRR Pacing, Color Quantization & 8 Live Video Filters:** [`HostFramePacingController`](../src/reEngine.Host/Core/HostFramePacingController.cs) computes effective FPS across `targetFps`, `backgroundFpsCap`, and fast-forward multipliers, calling `HighResFramePacer.Reset()` on cadence transitions. [`HostViewportGeometry`](../src/reEngine.Host/Core/HostViewportGeometry.cs) adds `21:9 Hor+` (`horPlus21By9`), automatic `4:3` FMV centering, and HUD anchor zones (`safeFourByThree`, `screenEdges`, `custom`). [`HostVideoFilterPipeline`](../src/reEngine.Host/Rendering/HostVideoFilterPipeline.cs) + [`HostRetroFilterPasses`](../src/reEngine.Host/Rendering/HostRetroFilterPasses.cs) + [`HostEdgeScalerPasses`](../src/reEngine.Host/Rendering/HostEdgeScalerPasses.cs) provide 24-bit vs 15-bit + 4x4 Bayer dithering and all 8 live filters (`nearest`, `bilinear`, `sharpBilinear`, `scanlines`, `crtLite` [`crt-aperture`], `lcdGrid`, `xbrz`, `ntscComposite`), followed by post-present `F12` [`HostScreenshotService`](../src/reEngine.Host/Core/HostScreenshotService.cs) capture (`cleanNative` vs `filteredComposite`) and multi-backend `TryReadSurfaceRect` / `FlushAndSyncForSnapshot` across `Gl33Presenter`, `VulkanPresenter`, `D3d12Presenter`, `ParallelCpuPresenter`, and `Sdl3HostWindow`.
+3. **Audio DSP, Hot-Switched SDL3 Devices & 6-Tab `F1` Drawer:** [`HostBiquadFilter`](../src/reEngine.Host/Audio/HostBiquadFilter.cs) + [`HostAudioDspPipeline`](../src/reEngine.Host/Audio/HostAudioDspPipeline.cs) + [`Sdl3AudioPump`](../src/reEngine.Host/Core/Sdl3AudioPump.cs) run master/BGM/SFX/Voice mix, 5 ms focus-loss ramp, `0..200%` mid-side stereo width, 2nd-order Butterworth LP/HP presets, `linear`/`sincCubic` resampling, FF audio clamping, hot-switchable SDL3 playback devices, and [`HostSoundTestService`](../src/reEngine.Host/Audio/HostSoundTestService.cs) exposed on the 6th [`AudioTabView`](../src/reEngine.Host/Ui/AudioTabView.cs) drawer tab alongside [`SystemTabView`](../src/reEngine.Host/Ui/SystemTabView.cs), [`F3HudOverlayView`](../src/reEngine.Host/Ui/F3HudOverlayView.cs), 4-port gamepads, and Standard 33 3-tier bindings.
 
 ### 3.3 `.decomp`, Root-Tree Media Discovery, `D4_CleanSource` & `--verify-module` Pipeline
 1. [`SuiteMediaTreeWalker`](../src/reEngine.Core/Decomp/SuiteMediaTreeWalker.cs) performs depth-capped (`<= 5`), reparse-safe, containment-checked media searches across module-local and `<SuiteRoot>` (`games\*\data\rom\`, `gamedata\`, `data\rom\`), flags multi-game ambiguities cleanly, and supports opt-in `StageMediaIntoRomDirectoryAsync` copying `.cue` + contained `.bin` tracks (plus `.fds` parity alongside `.nes`).
@@ -105,19 +105,21 @@ graph TD
 
 ---
 
-## 4. Architecture Notes & SLOC Discipline (`<= 250 / 400`)
+## 4. Architecture Notes & SLOC Discipline (`<= 250 / 400 / 600`)
 
-All `v0.5.0` modules (`Dev/src/**/*.cs` and `Dev/tests/**/*.cs`) maintain modular splits with new files under `250` code-only SLOC (`HostViewportGeometry`, `HostSessionExtensionsContracts`, `HostControlTierStore`, `HostInputEvaluationHelper`, `HostMultiBindHelpers`, `F1DrawerTabRenderers`, `InstallerCliAndAutomation`) and every file across `Dev\src` strictly `<= 320` code-only SLOC.
+All `v0.6.0` modules (`Dev/src/**/*.cs` and `Dev/tests/**/*.cs`) maintain modular splits with every new file under `250` code-only SLOC (`BootCrashSentinel`, `MediaRamPreloader`, `ExecutionTierPolicy`, `SettingsDomainStore`, `HostSettingsStore`, `HostSessionRuntimeBridge`, `HostFramePacingController`, `HostScreenshotService`, `HostVideoFilterPipeline`, `HostRetroFilterPasses`, `HostEdgeScalerPasses`, `HostBiquadFilter`, `HostAudioDspPipeline`, `HostSoundTestService`, `AudioTabView`, `SystemTabView`, `RecompLaunchOptionParser`, `RecompLaunchFlagRouter`, `LibraryDisplayAudioPanel`).
 
 ---
 
 ## 5. Settings, Manifest & State Store Ownership Map
 
-`reEngine` uses zero SQLite databases; all runtime state persists in atomic JSON stores with `.bak` recovery:
+`reEngine` uses zero SQLite databases; all runtime state persists in Standard 19 split atomic JSON domains with `.bak`, `config_history\`, and `quarantine\` recovery:
 
 | File Store (under `<dataDir>\`) | Owner Type | Canonical Keys | Backup / Locking Mechanism |
 | :--- | :--- | :--- | :--- |
-| `config\settings.json` (template: [`Dev\settings.example.json`](../settings.example.json)) | `UpdateCoordinator` / `SettingsMigrationHelper` / `LegacyMigrationHelper` | `schemaVersion`, `appId`, `updatedAtUtc`, `installProfile`, `backendId`, `aspectRatioMode`, `overscanCropPx`, `isFastForwardEnabled`, `resolutionScale`, `isFullscreen`, `audioDriver`, `isHdTexturePackEnabled`, `shutdownTimeoutMs`, `shouldCheckUpdates`, `shouldAutoStagePatches`, `pinnedEngineVersions`, `stagedUpdatePath`, `reEngineInstallDir`, `suiteInstallDir`, `umbrellaSubpath`, `decompSchemaVersion`, `goalDecompTier`, `targetDecompTier` | `GranularSettingsManager` / `.tmp` atomic rename + `.bak` recovery + `config_history\`; `[JsonExtensionData]` preserves unknown keys |
+| `config\settings.json` (template: [`Dev\settings.example.json`](../settings.example.json)) | `SettingsDomainStore` / `HostSettingsStore` / `LegacyMigrationHelper` | `schemaVersion: 2`, `domain: "core"`, `appId`, `updatedAtUtc`, `installProfile`, `executionTierMode`, `isJitEnabled`, `shouldPreloadMediaToRam`, `isFastBootEnabled`, `isSafeModeActive`, `shouldFastLoadData`, `fastForwardMultiplier`, `shutdownTimeoutMs`, `shouldCheckUpdates`, `shouldAutoStagePatches`, `pinnedEngineVersions`, `stagedUpdatePath`, `reEngineInstallDir`, `suiteInstallDir`, `umbrellaSubpath`, `decompSchemaVersion`, `goalDecompTier`, `targetDecompTier` | `GranularSettingsManager` `.tmp` atomic rename + `.bak` + `config_history\` + `quarantine\`; `[JsonExtensionData]` preserves unknown keys |
+| `config\settings.video.json` | `SettingsDomainStore` / `HostSettingsStore` | `schemaVersion: 2`, `domain: "video"`, `backendId`, `resolutionScale`, `displayMode`, `monitorIndex`, `isFullscreen`, `isVsyncEnabled`, `targetFps`, `backgroundFpsCap`, `aspectRatioMode`, `overscanCropPx`, `isFastForwardEnabled`, `isHdTexturePackEnabled`, `hudAnchorMode`, `videoFilterMode`, `isTrueColor24BitEnabled`, `isDitheringEnabled`, `screenshotCaptureMode` | Atomic `.tmp` + `.bak` + `quarantine\` recovery |
+| `config\settings.audio.json` | `SettingsDomainStore` / `HostSettingsStore` | `schemaVersion: 2`, `domain: "audio"`, `audioDriver`, `audioOutputDevice`, `masterVolume`, `isAudioMuted`, `bgmVolume`, `sfxVolume`, `voiceVolume`, `shouldMuteOnFocusLoss`, `audioLowPassHz`, `audioHighPassHz`, `audioStereoWidthPercent`, `audioResamplingMode`, `fastForwardAudioMode` | Atomic `.tmp` + `.bak` + `quarantine\` recovery |
 | `config\settings.controls.json` | `HostControlTierStore` | `schemaVersion`, `inputProfileMode` (`globalController`/`perGameController`/`perGameModern`), `activeSchema`, `globalController`, `perGameController`, `perGameModern` | `.tmp` atomic replace with duplicate/hidden-slot validation |
 | `cache\aot-index.json` | `AotCacheManager` | `schemaVersion`, `entries[]` (`moduleId`, `romSha256`, `engineId`, `engineVersion`, `moduleVersion`, `fileSizeBytes`, `sha256Hex`) | `.aot-index.lock` cross-process mutex + `.bak` rotation + `.tmp.<guid>` atomic rename |
 | `virtual_registry.json` | `VirtualRegistryAssociationStore` | `.recomp` (`reEngine.RecompModule`), `.decomp` (`reEngine.DecompModule`), `commandTemplate` | `.tmp` atomic replace strictly under `APP_ISOLATED_TEST=1` |
@@ -128,7 +130,7 @@ All `v0.5.0` modules (`Dev/src/**/*.cs` and `Dev/tests/**/*.cs`) maintain modula
 
 ## 6. Failure Modes & Resilience
 
-- **Dual-Binary Release Fail-Closed Automation Gate:** `reEngine.Host` (`#if !REENGINE_ENABLE_AUTOMATION` or null `AutomationBridgeFactory`), `reEngine.App`, AND `reEngine.Installer` ALL fail closed (`ExitCode = 2`) when `--automation-port` is supplied on a `Release` build; `Foundation.Automation.dll` is omitted completely from `Release` publish outputs and `SharedLibs\reEngine\v0.5.0\`.
+- **Dual-Binary Release Fail-Closed Automation Gate:** `reEngine.Host` (`#if !REENGINE_ENABLE_AUTOMATION` or null `AutomationBridgeFactory`), `reEngine.App`, AND `reEngine.Installer` ALL fail closed (`ExitCode = 2`) when `--automation-port` is supplied on a `Release` build; `Foundation.Automation.dll` and `System.Windows.Forms` / `Foundation.UI` are omitted completely from `Release` `SharedLibs\reEngine\v0.6.0\`.
 - **Zip-Slip / Traversal & SSRF Guards:** Both `RecompPackageReader.Load`, `DecompPipelineCoordinator.ParseManifest`, `SuiteMediaTreeWalker`, `HdPackResolver`, and `UpdatePackageApplier.ExtractArchiveSafely` reject rooted, symlink/reparse, or `..`-escaping paths and entries; `UpdatePackageApplier.AssertSafeRemoteUrl` blocks `file://`, loopback, RFC 1918, and link-local/metadata IP ranges at rest and runtime.
 - **Missing Engine or Backend Availability:**
   - `.recomp`: throws `InvalidOperationException` -> Exit `1` (`No compatible engine`); engines declaring `hostProtocolVersion >= 0.3.0` / `minSuiteVersion >= 0.3.0` / `>= 0.3` tracks receive full CLI flags & `.ready` gating even when the engine itself is pre-`0.3.0` (`reCart v0.1.0`).
@@ -149,7 +151,7 @@ All `v0.5.0` modules (`Dev/src/**/*.cs` and `Dev/tests/**/*.cs`) maintain modula
 
 ---
 
-## 8. Testing Strategy Map (21 Suites, 117 Unit/Contract Tests + 7-Step Stage 2 Visible E2E)
+## 8. Testing Strategy Map (25 Suites, 135 Unit/Contract Tests + 8-Step Stage 2 Visible E2E)
 
 Run isolated zero-warning unit & contract tests:
 ```powershell
@@ -157,9 +159,9 @@ $env:APP_ISOLATED_TEST = "1"
 dotnet test Dev\reEngine.slnx -c Release /warnaserror
 dotnet test Dev\reEngine.slnx -c Debug -p:ReEngineTestAutomation=true /warnaserror
 ```
-Run full 7-step Stage 2 visible-window sandbox E2E (12-point Installer + 5-backend WinForms Library + interactive Explorer `.decomp` Bring-Up + `--verify-module --json` + synchronous `--open --wait --fullscreen --save-dir` WM_CLOSE flush + visible SDL3 OpenGL Host + Dual-Binary Release ExitCode=2):
+Run full 8-step Stage 2 visible-window sandbox E2E (12-point Installer + 5-backend WinForms Library + interactive Explorer `.decomp` Bring-Up + `--verify-module --json` + synchronous `--open --wait --fullscreen --save-dir` WM_CLOSE flush + visible SDL3 OpenGL Host + `Stage2V060Probes` [split config, 4-backend filters/`21:9`, 6th Audio tab Sound Test WAV, dead-PID Safe Mode] + Dual-Binary Release ExitCode=2):
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File Dev\scripts\run_stage2_sandbox_e2e.ps1 -Version 0.5.0
+powershell -NoProfile -ExecutionPolicy Bypass -File Dev\scripts\run_stage2_sandbox_e2e.ps1 -Version 0.6.0
 ```
 
 | Test Class (`Dev\tests\reEngine.Tests\`) | Covered Components | Key Verified Contracts |
@@ -185,6 +187,10 @@ powershell -NoProfile -ExecutionPolicy Bypass -File Dev\scripts\run_stage2_sandb
 | [`HostViewportGeometryAndPresentersTests.cs`](../tests/reEngine.Tests/HostViewportGeometryAndPresentersTests.cs) | `HostViewportGeometry`, `HostRgbaSurfaceBackend`, `ParallelCpuPresenter`, `Gl33Presenter`, `VulkanNative`, `D3d12Native`, `HostSessionRunner` | 5 aspect modes, overscan crop, inverse pointer map, Surface0 border fill, GL `0x0`/FBO guards, `TryReadSurfaceRect` & pre-QuickSave `FlushAndSyncForSnapshot` sync, Release `ExitCode = 2` automation block |
 | [`HostMultiPortInputAndHotkeysTests.cs`](../tests/reEngine.Tests/HostMultiPortInputAndHotkeysTests.cs) | `Sdl3GamepadProvider`, `HostControlTierStore`, `HostInputMapper`, `F1SettingsDrawerView` | 4-port gamepad snapshots, Standard 33 3-tier `settings.controls.json` + collision block, Menu D-Pad + Left-Stick isolation, `F5`/`F9`/`F11`/FF/Cutscene-Skip & interactive `F1` callbacks |
 | [`EngineRoutingAndMediaDiscoveryTests.cs`](../tests/reEngine.Tests/EngineRoutingAndMediaDiscoveryTests.cs) | `EngineAliasCatalog`, `EngineVersionResolver`, `RecompLaunchPlanBuilder`, `SuiteMediaTreeWalker`, `LauncherArgsHelper`, `reEngine.Installer` | 3-way `reCart`/`reCartOne`/`reNes`, `-hf.<n>` SemVer precedence + `.ready` gate, `hostProtocolVersion` >= `0.3.0` CLI forwarding, `.fds` discovery/clean-room rejection, `--aspect-mode` passthrough, Installer `ExitCode = 2` |
+| [`HostExecutionResilienceAndSettingsSplitTests.cs`](../tests/reEngine.Tests/HostExecutionResilienceAndSettingsSplitTests.cs) | `BootCrashSentinel`, `MediaRamPreloader`, `ExecutionTierPolicy`, `SettingsDomainStore`, `HostSettingsStore` | Dead-PID Safe Mode sentinel + `--safe-mode-reset`, `>= 512 MiB` / `<= 75%` RAM preload + containment, `interpreterOracle` CLI quarantine, `v1 -> v2` split config + quarantine recovery |
+| [`HostDisplayVrrFiltersAndCaptureTests.cs`](../tests/reEngine.Tests/HostDisplayVrrFiltersAndCaptureTests.cs) | `HostFramePacingController`, `HostViewportGeometry`, `HostVideoFilterPipeline`, `HostScreenshotService`, `ParallelCpuPresenter` | VRR `HighResFramePacer.Reset()` cadence transitions, `21:9` + `4:3` FMV + HUD anchor zones, 15-bit Bayer dithering & all 8 live video filters, `F12` clean/filtered PNG capture |
+| [`HostAudioDspAndJukeboxTests.cs`](../tests/reEngine.Tests/HostAudioDspAndJukeboxTests.cs) | `HostBiquadFilter`, `HostAudioDspPipeline`, `HostSoundTestService`, `F1SettingsDrawerView`, `AudioTabView` | Butterworth LP/HP stop-band attenuation, mix/mid-side stereo width/SincCubic resampling/FF clamp/5ms focus ramp, Sound Test jukebox PCM, 6th Audio tab toggles |
+| [`AppV060RoutingAndUiTests.cs`](../tests/reEngine.Tests/AppV060RoutingAndUiTests.cs) | `LauncherArgsHelper`, `RecompLaunchOptions`, `RecompLaunchOptionParser`, `RecompLaunchFlagRouter`, `LibraryDisplayAudioPanel`, `DetailsRightDrawer` | Launcher/App `ValueOptions` parity, v0.6.0 CLI flag parsing/validation, `>= 0.6.0` child routing gate, WinForms STA split-domain settings roundtrip & Safe Mode reset |
 
 ---
 
@@ -200,12 +206,13 @@ powershell -NoProfile -ExecutionPolicy Bypass -File Dev\scripts\run_stage2_sandb
 - **ADR-008 · `2026-11-18` · `v0.3.0` — Bidirectional Aliasing, Canonical `data\config\settings.json` & Detached Interactive Child Survival:** Added symmetric alias resolution (`reSlate` <-> `reStation`, etc.), `.ready` atomic update markers, unified `ProviderLoadContext`, single-root `data\config\settings.json` bootstrap + migration, and detached child-process handoff without kill-on-close `JobObjectGuard` unless `--wait` is requested.
 - **ADR-009 · `2026-11-19` · `v0.4.0` — Unified `reEngine.Host` Native GPU/Input/Audio Stack, `.decomp` Interactive Bring-Up & Bounded `--wait` Shutdown:** Added clean-room native OpenGL 3.3+, Vulkan 1.3+, and DirectX 12 presenters + `ParallelCpu` 16px bands + `<dataDir>\hdpacks\` + native OS audio pinning (`SDL_AUDIO_DRIVER=wasapi` set before `InitAudio`), 3-slot multi-bind + Xbox/HID SDL3 gamepads + `HostTouchOverlayView` + live Keybinds capture, `D4_CleanSource`, containment-safe `SuiteMediaTreeWalker` + `MissingMediaPromptDialog` (use-in-place default), dual-mode `--verify-module`, and bounded `<= 3s` `WM_CLOSE` process-tree teardown before `JobObjectGuard` kill on `--wait` cancel.
 - **ADR-010 · `2026-11-20` · `v0.5.0` — `HostViewportGeometry`, 4-Port / 3-Tier Input, Decoupled `IHostAutomationBridge`, 3-Way `reCart` Alias & `hostProtocolVersion` Routing:** Eliminated window-resize stretch across all 5 presenters with bounded overscan crop and normalized content pointer mapping, guarded GL `0x0`/`0x8CD5` FBOs, upgraded to 4-port SDL3 gamepads + Standard 33 3-tier persistence (`settings.controls.json`) + Menu D-Pad/Left-Stick isolation, decoupled `IHostAutomationBridge` from `SharedLibs\reEngine\v0.5.0\reEngine.Host.dll`, added 3-way `reCart`/`reCartOne`/`reNes`, SemVer `hostProtocolVersion >= 0.3.0` routing, `.fds` discovery, `--aspect-mode`, `Foundation v0.5.2` `"suiteId": "reEngine"`, and Dual-Binary Release `ExitCode = 2`.
+- **ADR-011 · `2026-11-20` · `v0.6.0` — Host Resilience (`BootCrashSentinel` / `MediaRamPreloader` / `ExecutionTierPolicy`), Standard 19 Split Config, 8 Video Filters, Late-Latch VRR, Audio DSP/Jukebox & `>= 0.6.0` Flag Routing:** Split JSON state into `settings.json` (`v2`), `settings.video.json`, `settings.audio.json`, and `settings.controls.json` with `data\quarantine\` and `config_history\` self-healing; added dead-PID Safe Mode sentinel + `--safe-mode-reset`, RAM preloading with `>= 512 MiB` / `<= 75%` headroom fallback, `interpreterOracle` CLI quarantine, 3 display modes + monitor selector, late-latch VRR pacer resets, `21:9` + `4:3` FMV + HUD anchor zones, 15-bit Bayer dithering + 8 live filters, post-present `F12` capture + multi-backend GPU readback, biquad Audio DSP + hot-switchable SDL3 playback devices + Sound Test jukebox on the 6th `Audio` drawer tab, `>= 0.6.0` CLI gating, and `SingleSetup7` releases.
 
 ---
 
 ## 10. Zero-Touch Extension Playbooks
 
-1. **Adding a New Platform Engine (`reCart`/`reCartOne`/`reNes`, `reCart64`/`re64`, `reBlast16`/`reGenesis`, `reCube`):** Consume `<SHARED_LIBS>\reEngine\v0.5.0\reEngine.Core.dll` and `reEngine.Host.dll` (+ `Foundation v0.5.2`), implement `IHostSessionCallbacks` + `IHostSessionEventCallbacks`, optionally inject Debug-only `IHostAutomationBridge` via `HostSessionOptions.AutomationBridgeFactory`, declare `schemaVersion: 2`, `hostProtocolVersion: "0.5.0"`, and `legacyEngineIds` in `engine.manifest.json`, and install with `.ready` under `<SuiteRoot>\engines\<engineId>\v<Ver>\`.
+1. **Adding a New Platform Engine (`reCart`/`reCartOne`/`reNes`, `reCart64`/`re64`, `reBlast16`/`reGenesis`, `reCube`):** Consume `<SHARED_LIBS>\reEngine\v0.6.0\reEngine.Core.dll` and `reEngine.Host.dll` (+ `Foundation v0.5.2`), implement `IHostSessionCallbacks`, `IHostSessionEventCallbacks`, and optional `IHostSoundTestProvider`, optionally inject Debug-only `IHostAutomationBridge` via `HostSessionOptions.AutomationBridgeFactory`, declare `schemaVersion: 2`, `hostProtocolVersion: "0.6.0"`, and `legacyEngineIds` in `engine.manifest.json`, and install with `.ready` under `<SuiteRoot>\engines\<engineId>\v<Ver>\`.
 2. **Adding a Game `.recomp` / `.decomp` Module:** Ship `module.recomp.json` / `module.decomp.json` (`MyGame.recomp`, `SampleModule.decomp`), declaring `engineId`, `supportedEngineTracks`, `backendId`, and `executionTierMode`, while keeping user `data\rom\` media untracked locally.
 3. **Adding a New Persisted Settings Field:** Add a nullable camelCase property or read via `ReEngineSettings.ExtensionData`, document it in `INTERFACES.md` + `Dev\settings.example.json`, and preserve `.bak` recovery.
 4. **Adding a CLI Subcommand/Flag:** Add option parsing in `RecompLaunchOptions` (or `Program.CliHandlers.cs`), register sync/value tokens in `LauncherArgsHelper`, and add containment assertions for filesystem path options.

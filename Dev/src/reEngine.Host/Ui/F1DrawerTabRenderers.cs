@@ -84,7 +84,43 @@ internal static class F1DrawerTabRenderers
         AddToggle(canvas, new(body.X, body.Y + 256, body.Width, 22), "Video_Toggle_HdPacks", "HD Packs", view.IsHdTexturePackEnabled, HostOverlayPalette.AccentSuccess, controls, _ =>
             view.IsHdTexturePackEnabled = !view.IsHdTexturePackEnabled);
 
-        int nextY = body.Y + 284;
+        string filterLabel = $"Filter: {HostVideoFilterModeCodec.ToDisplayLabel(view.VideoFilterMode)}";
+        var filterRect = new Rectangle(body.X, body.Y + 282, body.Width, 22);
+        HostOverlayLayoutHelpers.DrawPillButton(canvas, filterRect, filterLabel, view.VideoFilterMode != HostVideoFilterMode.Nearest, HostOverlayPalette.AccentCyan);
+        controls.Add(new("Video_FilterMode", "Button", filterLabel, filterRect, _ =>
+        {
+            view.VideoFilterMode = HostVideoFilterModeCodec.CycleNext(view.VideoFilterMode);
+            view.EventCallbacks?.OnVideoFilterChanged(view.VideoFilterMode);
+        }));
+
+        AddToggle(canvas, new(body.X, body.Y + 308, colW2, 22), "Video_Toggle_TrueColor", "24-Bit", view.IsTrueColor24BitEnabled, HostOverlayPalette.AccentCyan, controls, _ =>
+        {
+            view.IsTrueColor24BitEnabled = !view.IsTrueColor24BitEnabled;
+            view.EventCallbacks?.OnTrueColorChanged(view.IsTrueColor24BitEnabled);
+        });
+        AddToggle(canvas, new(body.X + colW2 + gap, body.Y + 308, body.Width - colW2 - gap, 22), "Video_Toggle_Dither", "Dither", view.IsDitheringEnabled, HostOverlayPalette.AccentCyan, controls, _ =>
+        {
+            view.IsDitheringEnabled = !view.IsDitheringEnabled;
+            view.EventCallbacks?.OnDitheringChanged(view.IsDitheringEnabled);
+        });
+
+        AddToggle(canvas, new(body.X, body.Y + 334, colW2, 22), "Video_Toggle_Vsync", "VSync", view.IsVsyncEnabled, HostOverlayPalette.AccentCyan, controls, _ =>
+        {
+            view.IsVsyncEnabled = !view.IsVsyncEnabled;
+            view.EventCallbacks?.OnVsyncChanged(view.IsVsyncEnabled);
+        });
+        string shotLabel = view.ScreenshotCaptureMode == HostScreenshotCaptureMode.FilteredComposite ? "F12: Filtered" : "F12: Clean";
+        var shotRect = new Rectangle(body.X + colW2 + gap, body.Y + 334, body.Width - colW2 - gap, 22);
+        HostOverlayLayoutHelpers.DrawPillButton(canvas, shotRect, shotLabel, view.ScreenshotCaptureMode == HostScreenshotCaptureMode.FilteredComposite, HostOverlayPalette.AccentCyan);
+        controls.Add(new("Video_ShotMode", "Button", shotLabel, shotRect, _ =>
+        {
+            view.ScreenshotCaptureMode = view.ScreenshotCaptureMode == HostScreenshotCaptureMode.CleanNative
+                ? HostScreenshotCaptureMode.FilteredComposite
+                : HostScreenshotCaptureMode.CleanNative;
+            view.EventCallbacks?.OnScreenshotModeChanged(view.ScreenshotCaptureMode);
+        }));
+
+        int nextY = body.Y + 362;
         if (!string.IsNullOrWhiteSpace(view.FallbackBanner) && nextY + 24 <= body.Bottom)
         {
             var bannerRect = new Rectangle(body.X, nextY, body.Width, 24);

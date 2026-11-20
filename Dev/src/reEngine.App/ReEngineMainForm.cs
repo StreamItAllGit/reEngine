@@ -12,8 +12,10 @@ using Foundation.Core;
 using reEngine.App.Ui;
 using reEngine.Core.Associations;
 using reEngine.Core.Bootstrap;
+using reEngine.Core.Execution;
 using reEngine.Core.Resolution;
 using reEngine.Core.Updates;
+using reEngine.Host.Settings;
 
 namespace reEngine.App;
 
@@ -55,7 +57,7 @@ internal sealed partial class ReEngineMainForm : Form
         _assocStore = assocStore ?? throw new ArgumentNullException(nameof(assocStore));
         _log = log ?? throw new ArgumentNullException(nameof(log));
         _containmentRoot = containmentRoot;
-        _settingsStore = settingsStore ?? new AppFallbackSettingsStore(_appEnv.DataDirectory, _appEnv.ConfigFilePath);
+        _settingsStore = settingsStore ?? new HostSettingsStore(_appEnv.DataDirectory, _appEnv.ConfigFilePath);
         _settingsBundle = _settingsStore.LoadOrMigrate();
         _settings = _settingsBundle.Core;
 
@@ -170,6 +172,7 @@ internal sealed partial class ReEngineMainForm : Form
 
     private void OnResetSafeModeRequested()
     {
+        _ = new BootCrashSentinel(_appEnv.DataDirectory).Clear();
         _settingsBundle.Core.IsSafeModeActive = false;
         _settingsStore.SaveCore(_settingsBundle.Core);
         _libraryShelf.ApplySettings(_settingsBundle);

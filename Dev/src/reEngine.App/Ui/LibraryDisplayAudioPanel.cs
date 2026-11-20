@@ -203,24 +203,24 @@ internal sealed class LibraryDisplayAudioPanel : Panel
         int maxRight = Math.Max(300, ClientSize.Width - 10);
         int y = 8;
         y = PlaceGroups(10, y, maxRight,
-            [(PreloadMediaToRamCheckBox, 162, 0)],
-            [(FastBootCheckBox, 88, 0)],
-            [(SafeModeBadgeLabel, 126, 22)],
-            [(ResetSafeModeButton, 124, 24)]);
+            [(PreloadMediaToRamCheckBox, 168, 0)],
+            [(FastBootCheckBox, 94, 0)],
+            [(SafeModeBadgeLabel, 128, 22)],
+            [(ResetSafeModeButton, 126, 24)]);
         y = PlaceGroups(10, y, maxRight,
-            [(_lblDisplay, 50, 0), (DisplayModeCombo, 134, 24)],
-            [(_lblAspect, 46, 0), (AspectRatioCombo, 110, 24)],
-            [(_lblFilter, 40, 0), (VideoFilterCombo, 114, 24)]);
+            [(_lblDisplay, 56, 0), (DisplayModeCombo, 134, 24)],
+            [(_lblAspect, 56, 0), (AspectRatioCombo, 112, 24)],
+            [(_lblFilter, 46, 0), (VideoFilterCombo, 114, 24)]);
         y = PlaceGroups(10, y, maxRight,
-            [(VsyncCheckBox, 64, 0)],
-            [(TrueColorCheckBox, 102, 0)],
-            [(DitheringCheckBox, 84, 0)],
-            [(_lblShot, 54, 0), (ScreenshotModeCombo, 126, 24)]);
+            [(VsyncCheckBox, 68, 0)],
+            [(TrueColorCheckBox, 108, 0)],
+            [(DitheringCheckBox, 90, 0)],
+            [(_lblShot, 64, 0), (ScreenshotModeCombo, 128, 24)]);
         _ = PlaceGroups(10, y, maxRight,
-            [(_lblDriver, 44, 0), (AudioDriverCombo, 94, 24)],
-            [(AudioMutedCheckBox, 94, 0)],
-            [(MuteOnFocusLossCheckBox, 136, 0)],
-            [(_lblAudioFilter, 74, 0), (AudioFilterPresetCombo, 118, 24)]);
+            [(_lblDriver, 50, 0), (AudioDriverCombo, 94, 24)],
+            [(AudioMutedCheckBox, 106, 0)],
+            [(MuteOnFocusLossCheckBox, 158, 0)],
+            [(_lblAudioFilter, 88, 0), (AudioFilterPresetCombo, 122, 24)]);
     }
 
     private static int PlaceGroups(int left, int startY, int maxRight, params (Control Ctrl, int Width, int Height)[][] groups)

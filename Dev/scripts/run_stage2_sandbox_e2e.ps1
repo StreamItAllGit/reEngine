@@ -11,6 +11,7 @@ $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
 . (Join-Path $PSScriptRoot "Stage2SandboxHelpers.ps1")
+. (Join-Path $PSScriptRoot "Stage2V060Probes.ps1")
 Initialize-Stage2Win32Types
 
 $root = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
@@ -111,7 +112,7 @@ try {
     try {
         $null = Wait-AutomationHealth -Port $p1 -Token $t1
         Show-WindowOnTop -Proc $winProc
-        $stream1 = Start-ExeboxStreamForPort -Port $p1 -Token $t1 -SandboxDir $sandboxRoot
+        $stream1 = Start-ExeboxStreamForPort -Port $p1 -Token $t1 -SandboxDir $sandboxRoot -TargetPid $winProc.Id
         Start-Sleep -Milliseconds 600
         $tree1 = Wait-TreeControl -Port $p1 -Token $t1 -ControlId "Chk_Fullscreen"
         if ($null -eq (Find-TreeNode -Node $tree1.data -ControlId "Btn_VerifyPackage")) { throw "Missing Btn_VerifyPackage" }
@@ -137,7 +138,7 @@ try {
     try {
         $null = Wait-AutomationHealth -Port $pDecomp -Token $tDecomp
         Show-WindowOnTop -Proc $decompProc
-        $streamDecomp = Start-ExeboxStreamForPort -Port $pDecomp -Token $tDecomp -SandboxDir $sandboxRoot
+        $streamDecomp = Start-ExeboxStreamForPort -Port $pDecomp -Token $tDecomp -SandboxDir $sandboxRoot -TargetPid $decompProc.Id
         $null = Wait-TreeControl -Port $pDecomp -Token $tDecomp -ControlId "Btn_RunStage"
         $null = Invoke-LoopbackJson -Port $pDecomp -Token $tDecomp -Method "POST" -Route "/v1/pointer" -Body @{ action = "click"; targetId = "Btn_VerifyDecomp" }
         Start-Sleep -Milliseconds 450
@@ -188,7 +189,7 @@ try {
     try {
         $null = Wait-AutomationHealth -Port $p2 -Token $t2
         Show-WindowOnTop -Proc $sdlProc
-        $streamSdl = Start-ExeboxStreamForPort -Port $p2 -Token $t2 -SandboxDir $sandboxRoot
+        $streamSdl = Start-ExeboxStreamForPort -Port $p2 -Token $t2 -SandboxDir $sandboxRoot -TargetPid $sdlProc.Id
         $null = Wait-TreeControl -Port $p2 -Token $t2 -ControlId "MediaGate_DemoBypassButton"
         $null = Invoke-LoopbackJson -Port $p2 -Token $t2 -Method "POST" -Route "/v1/pointer" -Body @{ action = "click"; targetId = "MediaGate_DemoBypassButton" }
         Start-Sleep -Milliseconds 400
@@ -216,7 +217,9 @@ try {
     )
     if ($metalRes.ExitCode -ne 6) { throw "Expected --backend metal --require-backend ExitCode 6, got $($metalRes.ExitCode)" }
 
-    Write-Host "[7/7] Verifying Dual-Binary Release fail-closed automation gate (ExitCode = 2)..."
+    Invoke-Stage2V060Probes -DebugExe $debugExe -SandboxRoot $sandboxRoot -EnginesDir $enginesDir -ArtifactDir $ArtifactDir
+
+    Write-Host "[8/8] Verifying Dual-Binary Release fail-closed automation gate (ExitCode = 2)..."
     $relRes = Invoke-CliBounded -ExePath $releaseExe -WorkDir $root -CliArgs @(
         "--automation-port", "5199", "--data-dir", $dataDir, "--config", $cfgPath, "--log-dir", $logDir
     )

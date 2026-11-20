@@ -205,6 +205,34 @@ public sealed class InstallerAndAppStatusTests : IDisposable
     }
 
     [Fact]
+    public void LegacyMigrationHelper_PreservesV2SchemaVersionAndCopiesSplitDomainConfigs()
+    {
+        string isolatedDir = Path.Combine(_tempRoot, "isolated_v2");
+        string legacyConfigDir = Path.Combine(isolatedDir, "legacy-programs", "reEngine", "data", "config");
+        string targetInstallDir = Path.Combine(isolatedDir, "installed-reEngine");
+        Directory.CreateDirectory(legacyConfigDir);
+
+        File.WriteAllText(Path.Combine(legacyConfigDir, "settings.json"), """{ "schemaVersion": 2, "domain": "core", "shouldCheckUpdates": false }""");
+        File.WriteAllText(Path.Combine(legacyConfigDir, "settings.video.json"), """{ "schemaVersion": 2, "domain": "video", "videoFilterMode": "crtLite" }""");
+        File.WriteAllText(Path.Combine(legacyConfigDir, "settings.audio.json"), """{ "schemaVersion": 2, "domain": "audio", "masterVolume": 0.65 }""");
+        File.WriteAllText(Path.Combine(legacyConfigDir, "settings.controls.json"), """{ "schemaVersion": 1, "domain": "controls", "inputProfileMode": "perGameModern" }""");
+
+        LegacyMigrationResult migrated = LegacyMigrationHelper.TryMigrateLegacyInstall(
+            targetInstallDir, isolatedTest: true, isolatedDataDir: isolatedDir, silent: true, dryRun: false, confirmCleanupFlag: false);
+        Assert.True(migrated.MigratedSettings);
+
+        string targetConfigDir = Path.Combine(targetInstallDir, "data", "config");
+        Assert.True(File.Exists(Path.Combine(targetConfigDir, "settings.video.json")));
+        Assert.True(File.Exists(Path.Combine(targetConfigDir, "settings.audio.json")));
+        Assert.True(File.Exists(Path.Combine(targetConfigDir, "settings.controls.json")));
+
+        LegacyMigrationHelper.PersistInstallProfileSettings(targetInstallDir, "Full", isolatedDir, targetInstallDir);
+        using JsonDocument doc = JsonDocument.Parse(File.ReadAllText(Path.Combine(targetConfigDir, "settings.json")));
+        Assert.Equal(2, doc.RootElement.GetProperty("schemaVersion").GetInt32());
+        Assert.Equal("full", doc.RootElement.GetProperty("installProfile").GetString());
+    }
+
+    [Fact]
     public void ReEngineAppStatusHelper_TracksInstallProfileAotCacheAndDecompReadiness()
     {
         var settings = new ReEngineSettings

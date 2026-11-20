@@ -234,21 +234,26 @@ internal static class MockReStationEngine
 }
 
 function Start-ExeboxStreamForPort {
-    param([Parameter(Mandatory)][int]$Port, [Parameter(Mandatory)][string]$Token, [string]$SandboxDir = "")
-    if ([Win32WindowTop]::GetCurrentDesktopName() -notlike "exebox-*") { return $null }
+    param([Parameter(Mandatory)][int]$Port, [Parameter(Mandatory)][string]$Token, [string]$SandboxDir = "", [int]$TargetPid = 0)
+    $sharedHelpers = Join-Path (Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $PSScriptRoot))) "Foundation\Dev\tools\ExeboxStreamHelpers.ps1"
+    if (Test-Path -LiteralPath $sharedHelpers) {
+        . $sharedHelpers
+        $snapDir = if (-not [string]::IsNullOrWhiteSpace($SandboxDir)) { Join-Path $SandboxDir "stream_tmp" } else { "" }
+        return Start-ExeboxLiveVlcStream -AutomationPort $Port -AutomationToken $Token -TargetPid $TargetPid -SnapshotDir $snapDir -UdpPort 5004 -Fps 20
+    }
     $streamScript = Join-Path $env:USERPROFILE ".gemini\config\skills\exebox-stream\scripts\start_exebox_vlc_stream.ps1"
-    if (-not (Test-Path $streamScript)) { return $null }
-    if (-not (Get-NetUDPEndpoint -LocalPort 5004 -ErrorAction SilentlyContinue)) { return $null }
-    $psi = [System.Diagnostics.ProcessStartInfo]::new("powershell.exe")
-    $psi.Arguments = "-NoProfile -ExecutionPolicy Bypass -File `"$streamScript`" -UdpHost 127.0.0.1 -UdpPort 5004 -Fps 20 -AutomationPort $Port -AutomationToken `"$Token`""
-    $psi.UseShellExecute = $false
-    $psi.CreateNoWindow = $true
+    if (-not (Test-Path -LiteralPath $streamScript)) { return $null }
+    $argStr = "-NoProfile -ExecutionPolicy Bypass -File `"$streamScript`" -UdpHost 127.0.0.1 -UdpPort 5004 -Fps 20 -AutomationPort $Port -AutomationToken `"$Token`""
+    if ($TargetPid -gt 0) { $argStr += " -TargetPid $TargetPid" }
     if (-not [string]::IsNullOrWhiteSpace($SandboxDir)) {
         $streamTmp = Join-Path $SandboxDir "stream_tmp"
         $null = New-Item -ItemType Directory -Force -Path $streamTmp
-        $psi.EnvironmentVariables["TEMP"] = $streamTmp
-        $psi.EnvironmentVariables["TMP"] = $streamTmp
+        $argStr += " -SnapshotDir `"$streamTmp`""
     }
+    $psi = [System.Diagnostics.ProcessStartInfo]::new("powershell.exe")
+    $psi.Arguments = $argStr
+    $psi.UseShellExecute = $false
+    $psi.CreateNoWindow = $true
     return [System.Diagnostics.Process]::Start($psi)
 }
 
@@ -257,8 +262,9 @@ function Stop-ExeboxStream {
     if ($null -eq $StreamProcess) { return }
     try {
         if (-not $StreamProcess.HasExited) {
-            $StreamProcess.Kill()
+            & cmd.exe /c ("taskkill /T /F /PID " + $StreamProcess.Id + " >nul 2>&1")
             $null = $StreamProcess.WaitForExit(2000)
         }
     } catch {}
+    try { $StreamProcess.Dispose() } catch {}
 }

@@ -8,16 +8,16 @@
   "ecosystemTier": "Tier1_Infrastructure",
   "appArchetype": "ENGINE",
   "version": "0.6.0",
-  "activeMilestone": "0.6.0",
+  "activeMilestone": "0.7.0",
   "goalMajorVersion": "1.0.0",
   "stateChangedDate": "2026-11-20",
   "lastVersionDate": "2026-11-20",
   "productionSubpath": null,
   "supersededBy": null,
   "tasklistDetailLevel": 3,
-  "openTaskCount": 23,
-  "completedTaskCount": 48,
-  "openReportCount": 0,
+  "openTaskCount": 15,
+  "completedTaskCount": 56,
+  "openReportCount": 1,
   "isPublicRepo": true,
   "requireHumanReviewBeforePush": false,
   "discordPost": {
@@ -33,10 +33,10 @@
   "gates": {
     "isGate0ScopePassed": true,
     "isGate1PlanPassed": true,
-    "isGate2BuildPassed": false,
-    "isInspecterVerified": false,
-    "isTessaSynced": false
+    "isGate2BuildPassed": true,
+    "isInspecterVerified": true,
+    "isTessaSynced": true
   },
-  "notes": "Executing v0.6.0 (T0-T7 via Phase 2 Swarm: Host execution resilience, Standard 19 settings.video/audio split, late-latch VRR, 21:9 + HUD anchoring, 8 live filters incl. xBRZ/NTSC, multi-backend F12 capture, Audio DSP + 6th Audio tab). Plan: Dev\\docs\\plans\\0.6.0.2026-11-20.md.",
-  "updatedAtUtc": "2026-11-20T08:46:00.000Z"
+  "notes": "Shipped v0.6.0 (Host execution resilience, Standard 19 split settings.video/audio.json, late-latch VRR, 21:9 + HUD anchoring, Bayer dithering + 8 live filters, post-present F12 capture, Audio DSP + Sound Test + 6th Audio tab, >=0.6.0 CLI routing, full WinForms LibraryDisplayAudioPanel). Next milestone: v0.7.0 (Dynamic Prompts, Accessibility, 10-Rail Two-Column Menu & Early reEngine.App SDL3 Cutover).",
+  "updatedAtUtc": "2026-11-20T09:47:00.000Z"
 }
