@@ -35,6 +35,23 @@ public static unsafe class HostBackendProbe
         _ => HostRenderBackendIds.Software
     };
 
+    /// <summary>Attempts to parse a canonical or alias backend identifier into <see cref="HostRenderBackendKind"/>.</summary>
+    public static bool TryParseBackendKind(string? backendId, out HostRenderBackendKind kind)
+    {
+        kind = HostRenderBackendKind.OpenGl;
+        if (string.IsNullOrWhiteSpace(backendId)) return false;
+        switch (backendId.Trim().ToLowerInvariant())
+        {
+            case "opengl" or "gl" or "gl33" or "opengl33": kind = HostRenderBackendKind.OpenGl; return true;
+            case "vulkan" or "vk": kind = HostRenderBackendKind.Vulkan; return true;
+            case "directx" or "dx12" or "d3d12": kind = HostRenderBackendKind.DirectX; return true;
+            case "parallelcpu" or "parallel": kind = HostRenderBackendKind.ParallelCpu; return true;
+            case "software" or "cpu": kind = HostRenderBackendKind.Software; return true;
+            case "metal": kind = HostRenderBackendKind.Metal; return true;
+            default: return false;
+        }
+    }
+
     public static HostBackendCapability Probe(HostRenderBackendKind kind) => kind switch
     {
         HostRenderBackendKind.OpenGl => ProbeOpenGl(),

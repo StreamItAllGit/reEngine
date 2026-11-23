@@ -1,6 +1,6 @@
 {
-  "moduleId": "sample-n64-decomp",
-  "title": "Sample Nintendo 64 Clean-Room Decomp Module",
+  "moduleId": "sample-64-decomp",
+  "title": "Sample 64-Bit Clean-Room Decomp Module",
   "platformId": "n64",
   "engineId": "re64",
   "engineVersion": "0.1.0",

@@ -250,6 +250,13 @@ public sealed record HostSessionOptions
     public Func<string?>? OnBrowseModuleRequested { get; init; }
     public Func<string, string?>? OnFileDropped { get; init; }
     public Action? OnDemoCartRequested { get; init; }
+    public HostAotCompileState? InitialAotCompileState { get; init; }
+    public string? InitialMediaGateError { get; init; }
+    public string? SettingsDataDirectory { get; init; }
+    public string? SettingsConfigPathOverride { get; init; }
+    public bool PreferExplicitBackend { get; init; }
+    public bool PreferExplicitScale { get; init; }
+    public bool PreferExplicitAspectRatio { get; init; }
 }
 
 /// <summary>

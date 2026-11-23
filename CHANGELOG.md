@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.2] - 2026-11-23
+
+### Added
+- **Thread-Safe Host Overlay Controls & `HostSettingsStore` Persistence Hooks (`reEngine.Host`):** Added `SetAotCompileState`, `SetMediaGateState`, and `UpdateDrawerDescriptor` on `HostSessionRunner` backed by `HostSessionOverlayAndSettingsHelper`, added `InitialAotCompileState`, `InitialMediaGateError`, `SettingsDataDirectory`, and explicit-flag precedence properties to `HostSessionOptions`, and wired live dirty-save persistence for `settings.json`, `settings.video.json`, and `settings.audio.json` alongside startup hydration.
+
+### Fixed
+- **Jitter-Free F3 Telemetry HUD, Synthetic Non-Hotkey Tap Auto-Release & Media Gate Browse Error Banners:** Fixed `F3HudOverlayView` dynamic column widths and invariant pill measurement (`0 px` horizontal jitter on fluctuating FPS/ms/Audio metrics), deferred release of synthetic non-hotkey keyboard taps in `HostInputMapper` so multi-press game menus advance cleanly, and routed `FirstRunMediaGateView` Browse/Module/DropZone selections through `OnFileDropped` so validation failures remain visible in the warning banner.
+
+### Changed
+- **Workspace Hygiene (/clean -- 2026-11-20)**: purged 23.26 MB of disposable caches; pruned 1 stale Patch archives (>10 releases back per Std 34 §2.2).
+
 ## [0.6.1] - 2026-11-20
 
 ### Added

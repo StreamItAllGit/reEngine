@@ -40,8 +40,8 @@ public sealed class DecompAndToolchainTests : IDisposable
 
         DecompPackageManifest manifest = DecompPipelineCoordinator.ParseManifest(fixturePath);
 
-        Assert.Equal("sample-n64-decomp", manifest.ModuleId);
-        Assert.Equal("Sample Nintendo 64 Clean-Room Decomp Module", manifest.Title);
+        Assert.Equal("sample-64-decomp", manifest.ModuleId);
+        Assert.Equal("Sample 64-Bit Clean-Room Decomp Module", manifest.Title);
         Assert.Equal("n64", manifest.PlatformId);
         Assert.Equal("re64", manifest.EngineId);
         Assert.Equal("0.1.0", manifest.EngineVersion);
@@ -68,8 +68,8 @@ public sealed class DecompAndToolchainTests : IDisposable
             using var writer = new StreamWriter(entry.Open());
             writer.Write("""
                 {
-                  "moduleId": "kf-decomp",
-                  "title": "King's Field Clean-Room Decomp",
+                  "moduleId": "sample-cart-decomp",
+                  "title": "CrownDepths Clean-Room Decomp",
                   "platformId": "psx",
                   "engineId": "reStation",
                   "engineVersion": "0.2.0",
@@ -82,7 +82,7 @@ public sealed class DecompAndToolchainTests : IDisposable
         }
 
         DecompPackageManifest parsed = DecompPipelineCoordinator.ParseManifest(validDecomp);
-        Assert.Equal("kf-decomp", parsed.ModuleId);
+        Assert.Equal("sample-cart-decomp", parsed.ModuleId);
         Assert.Equal("psx", parsed.PlatformId);
         Assert.Equal("reStation", parsed.EngineId);
         Assert.Equal("D4", parsed.GoalDecompTier);

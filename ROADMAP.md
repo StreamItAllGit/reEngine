@@ -1,9 +1,9 @@
 # reEngine — Roadmap & Milestones
 
-**Current Shipped Version:** `0.6.1`  
+**Current Shipped Version:** `0.6.2`  
 **Next Planned Milestone:** `0.7.0`  
 **Lifecycle State:** `active.state`  
-**Last Updated:** 2026-11-20
+**Last Updated:** 2026-11-23
 
 ---
 
@@ -18,7 +18,7 @@ Provide a lightweight, **zero-daemon `.recomp` / `.decomp` package router, share
 ---
 
 ## 2. Active In-Dev Milestone
-- **Shipped Baseline (`v0.6.1` — `2026-11-20`):** Completed Single-Host UI & input parity, engine resolution/fallback & unified CLI/Launcher alignment atop `v0.6.0` (`Foundation v0.5.3` SDK sync): added `HostOverlayTextRenderer` (`1.45x` scaled crisp text + `uiTextScale` `0.75x–2.0x`), full clear `F1` tabs (`Video`, `Audio`, `Controls`, `Keybinds`, `System`, `Media`) with scrolling, `8x` scale, `Framerate` (`Original`/`Enhanced`), `Target FPS` (`30..240`/`Max`), right-click defaults resets, expressive profile titles (zero `"Schema A/B/C"` UI strings), `Modern WASD + Mouse` + `HostRelativeMouseController` + sensitivity stepper, customizable `menuControllerChord` (`L3 + R3`, `Select + Start`, `Guide`, `None`), 8 rebindable `hostActionBindings` (`HostActionBindingSet`) + unbound-`Tab` fast-forward hold, 4-step non-quitting `Esc` + `System -> Quit Game`, full-screen Deep Slate Glass `FirstRunMediaGateView` (`HostNativeFileDialog` + quiet `--demo-cart`, zero `"Continue Session"` bypass), responsive `HostAotCompileOverlayView`, `F3` `[ORIG]`/`[ENH]`/`[MAX]` + `[FF <N>x]` badges + `Clean-Capture Mode`, `100%` gamepad focus nav (`HostDrawerControllerNav`), `EngineCompatibilityEvaluator` (`incompatibleEngineVersions`) + `pinnedEngineVersions` precedence + prompt-first crash fallback + `SessionRecoveryLocator`, wait-only `LauncherJobObjectGuard`, `>= 0.6.1` CLI superset (`--rom`, `--disc`, `--demo-cart`, `--window`, `--overscan`, `--fps-mode`, `--open-settings`, `--show-fps`, `--force-zero-rwx`, `--fast-forward`, `--ui-text-scale`, optional `--require-backend [<id>]`), idle `settings.controls.json` write suppression, `28` xUnit suites (`148/148` tests, `0` warnings), and full Stage 2 E2E (`Stage2V061ParityProbes`).
+- **Shipped Baseline (`v0.6.2` — `2026-11-23`):** Hardened `reEngine.Host` (`HostSessionOverlayAndSettingsHelper`) atop `v0.6.1` / `v0.6.0` (`Foundation v0.5.3` SDK sync): added thread-safe `HostSessionRunner.SetAotCompileState` / `SetMediaGateState` / `UpdateDrawerDescriptor`, `HostSessionOptions` startup/persistence fields (`InitialAotCompileState`, `InitialMediaGateError`, `SettingsDataDirectory`, `SettingsConfigPathOverride`, `PreferExplicitBackend`/`PreferExplicitScale`/`PreferExplicitAspectRatio`), automatic `HostSettingsStore` startup hydration + live `F1` dirty-save persistence across `settings.json`, `settings.video.json`, and `settings.audio.json` (skipped cleanly in Safe Mode), `FirstRunMediaGateView.AcceptPickedPath` Browse error banner propagation through `OnFileDropped`, fixed-width padded & invariant-template `F3HudOverlayView` (`0 px` horizontal jitter), and 2-frame deferred non-hotkey synthetic key auto-release in `HostInputMapper` (`_syntheticTapFramesRemaining` + `AdvanceSyntheticTapAutoRelease`), verified by `HostV062PrelaunchParityTests` (`29` suites, `152/152` tests, `0` warnings; `audit_installer.ps1` `0` findings).
 - **Next Target (`v0.7.0` — Dynamic Prompts, Accessibility, 10-Rail Two-Column Menu & Early `reEngine.App` SDL3 Cutover):** Deliver focus/controller split (`shouldPauseOnFocusLoss` vs `allowBackgroundControllerInput`), extended input contracts (Hold/Toggle, deadzones, response curves, `isLookYInverted`, stick swap, Turbo, 3D Gyro Aim), `IHostPromptGlyphProvider` (`promptGlyphMode`), extended accessibility filters (`isFastTextEnabled`, `isFlashReductionEnabled`, `colorblindMode`) building on `v0.6.1`'s `uiTextScale`, the full **10-Rail Two-Column Deep Slate Overlay Menu + `Quit Game`**, and the early `reEngine.App` migration off WinForms onto `reEngine.Host` SDL3 + `IHostDialogService`.
 
 ---
@@ -27,7 +27,7 @@ Provide a lightweight, **zero-daemon `.recomp` / `.decomp` package router, share
 
 ```mermaid
 flowchart LR
-    V06["v0.6.1 (Shipped)\nHost UI/Input Parity, Engine Fallback & CLI"] --> V07["v0.7.0 (Next)\nPrompts, Access, 10-Rail Menu & SDL3 App Cutover"]
+    V06["v0.6.2 (Shipped)\nHost UI/Settings Persistence & Zero-Jitter HUD"] --> V07["v0.7.0 (Next)\nPrompts, Access, 10-Rail Menu & SDL3 App Cutover"]
     V07 --> V08["v0.8.0\nProfiles, Vaults, Undo, Multi-Disc & Dual-Installer"]
     V08 --> V09["v0.9.0\nManual Viewer, Tracker, Catalog & .re* Hot-Reload"]
     V09 --> V10A["v0.10.0\nAsset Dumper, HD/Sub Recipes & Modder Docs"]
@@ -122,6 +122,7 @@ flowchart LR
 ---
 
 ## 4. Completed Milestones
+- `0.6.2` *(2026-11-23)*: Pre-launch host resilience & UX parity (`29` test suites, `152/152` Release tests, `0` warnings; `audit_installer.ps1` `0` findings): extracted `HostSessionOverlayAndSettingsHelper`, added thread-safe `HostSessionRunner.SetAotCompileState` / `SetMediaGateState` / `UpdateDrawerDescriptor` + `HostSessionOptions` startup/persistence fields (`InitialAotCompileState`, `InitialMediaGateError`, `SettingsDataDirectory`, `SettingsConfigPathOverride`, `PreferExplicitBackend`/`PreferExplicitScale`/`PreferExplicitAspectRatio`), wired `HostSettingsStore` startup hydration + live `F1` dirty-save persistence (`settings.json`, `settings.video.json`, `settings.audio.json`, skipped during Safe Mode), propagated `FirstRunMediaGateView.AcceptPickedPath` Browse validation error banners through `OnFileDropped`, eliminated `F3HudOverlayView` horizontal jitter via fixed-width padded telemetry & worst-case template sizing (`0 px` delta), and added 2-frame deferred non-hotkey synthetic key auto-release in `HostInputMapper`.
 - `0.6.1` *(2026-11-20)*: Delivered Single-Host UI & input parity, engine resolution/fallback & unified CLI/Launcher alignment atop `Foundation v0.5.3` (`28` test suites, `148/148` passing tests, `0` warnings, full Stage 2 E2E via `Stage2V061ParityProbes`).
   - [x] **Scaled Crisp Overlays, Full Drawer Tabs & `0.x` Drawer Completeness:** Added `HostOverlayTextRenderer` (`1.45x` base scale * live `uiTextScale` `0.75x–2.0x`), full clear tab names (`Video`, `Audio`, `Controls`, `Keybinds`, `System`, `Media`) with dynamic sizing and per-tab scrolling, `8x` internal scale (host + WinForms), `Framerate` (`Original`/`Enhanced`) + `Target FPS` (`30..240`/`Max`), right-click defaults resets, `System` `Quick Save/Load`, `Fast-Forward` + `FF Speed: 2x/3x/4x`, `Skip Cutscene`, `Runtime Logging` (`shouldEnableRuntimeLogs`), `Clean-Capture Mode` (`isCleanCaptureModeEnabled`), `Quit Game`, and `Media` Win32 pickers (`Change Media...`, `Load .recomp...`).
   - [x] **Expressive Controls, Rebindable Host Actions, Relative Mouse, Media Gate, AOT Screen & Controller Nav:** Replaced raw `"Schema A/B/C"` UI strings with expressive titles, added `Modern WASD + Mouse` + `HostRelativeMouseController` + sensitivity stepper, customizable `menuControllerChord` (`L3 + R3`, `Select + Start`, `Guide`, `None`), `HostActionBindingSet` (`hostActionBindings` 8 actions in 5-column matrix with cross-conflict blocking), unbound-`Tab` fast-forward hold, 4-step non-quitting `Esc` precedence + explicit `Quit Game`, full-screen Glass `FirstRunMediaGateView` (`Launch Demo / Test Cart`, quiet `--demo-cart`, zero `"Continue Session"` bypass), responsive `HostAotCompileOverlayView`, `F3` `[ORIG]`/`[ENH]`/`[MAX]` + `[FF <N>x]` badges, `HostDrawerControllerNav`, live backend switch, and `SDL_EVENT_DROP_FILE` drag-and-drop.

@@ -33,8 +33,10 @@ public sealed class HostSessionRunner : IHostAutomationTarget
     private readonly HostDrawerControllerNav _controllerNav = new();
     private readonly HostAotCompileOverlayView _aotOverlay = new();
     private readonly HostRelativeMouseController _relativeMouse;
+    private readonly HostSessionOverlayAndSettingsHelper _overlayAndSettings = new();
     private readonly object _commandSync = new();
     private readonly Queue<(int X, int Y, string? TargetId, bool IsRightClick)> _pendingClicks = new();
+    private HostDrawerDescriptor _activeDescriptor = HostDrawerDescriptor.CreateDefault();
     private HostTouchOverlayView? _touchOverlay;
     private HostDisplayMode _activeDisplayMode = HostDisplayMode.Windowed;
     private HostRenderBackendKind _activeBackendKind;
@@ -59,6 +61,7 @@ public sealed class HostSessionRunner : IHostAutomationTarget
     public HostSessionRunner(int surfaceWidth = 1280, int surfaceHeight = 720, HostDrawerDescriptor? descriptor = null)
     {
         HostDrawerDescriptor desc = descriptor ?? HostDrawerDescriptor.CreateDefault();
+        _activeDescriptor = desc;
         _surface = new HostRgbaSurfaceBackend(surfaceWidth, surfaceHeight, desc.ResolutionScale, desc.BackendLabel);
         _relativeMouse = new HostRelativeMouseController(enabled => _activeWindow?.SetRelativeMouseMode(enabled));
         _drawer.ResolutionScale = desc.ResolutionScale;
@@ -81,7 +84,8 @@ public sealed class HostSessionRunner : IHostAutomationTarget
     {
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(callbacks);
-        HostSessionOptions effectiveOptions = options;
+        HostSessionOptions effectiveOptions = _overlayAndSettings.HydrateInitialState(options, _drawer, _surface);
+        _activeDescriptor = effectiveOptions.DrawerDescriptor;
 
         using IHostAutomationBridge? automation = CreateAutomationBridge(options);
         if (options.AutomationPort.HasValue && automation is null)
@@ -129,6 +133,9 @@ public sealed class HostSessionRunner : IHostAutomationTarget
         using var audioPump = new Sdl3AudioPump(effectiveOptions.AudioFormat, effectiveOptions.DumpAudioPath, openNativeStream: windowOpened, audioDriverOverride: effectiveOptions.AudioDriverOverride, initialSettings: effectiveOptions.AudioSettings);
         var soundTest = new HostSoundTestService(effectiveOptions.SoundTestProvider, effectiveOptions.AudioFormat.SampleRate);
         runtimeBridge.ConfigureDrawer(_drawer, effectiveOptions, audioPump, soundTest);
+        HostSessionOverlayAndSettingsHelper.ApplyInitialMediaGateError(effectiveOptions, _mediaGate);
+        _overlayAndSettings.ApplyPendingOverlays(_aotOverlay, _mediaGate, ref _activeDescriptor);
+        _overlayAndSettings.CaptureBaseline(_drawer, _activeDisplayMode, _activeBackendKind);
         string activeAudioDriver = audioPump.ActiveDriver ?? audioPump.SelectedDriver;
         using var pacer = new HighResFramePacer(effectiveOptions.TargetFps);
         _ = _pacingController.SyncPacer(pacer, effectiveOptions.TargetFps, effectiveOptions.BackgroundFpsCap, effectiveOptions.FastForwardMultiplier, _drawer.IsFastForwardEnabled, activeWindow?.IsWindowFocused ?? true, _drawer.IsVsyncEnabled);
@@ -167,6 +174,8 @@ public sealed class HostSessionRunner : IHostAutomationTarget
                 activeBackendId = HostBackendProbe.GetCanonicalBackendId(_activeBackendKind);
                 runtimeBridge.SyncWindowVsyncIfChanged(_drawer, activeWindow);
                 runtimeBridge.SyncSafeModeResetIfCleared(_drawer);
+                _overlayAndSettings.ApplyPendingOverlays(_aotOverlay, _mediaGate, ref _activeDescriptor);
+                _overlayAndSettings.PersistIfDirty(_drawer, _activeDisplayMode, _activeBackendKind, runtimeBridge.IsSafeModeActive);
                 _inputMapper.SetMenuOpen(_drawer.IsOpen || _mediaGate.IsVisible);
                 _ = _pacingController.SyncPacer(pacer, HostSessionParityHelper.ResolveEffectiveBaseFps(_drawer), effectiveOptions.BackgroundFpsCap, _drawer.FastForwardMultiplier, _drawer.IsFastForwardEnabled || frameInput.IsFastForwardHeld, activeWindow?.IsWindowFocused ?? true, _drawer.IsVsyncEnabled);
 
@@ -195,6 +204,7 @@ public sealed class HostSessionRunner : IHostAutomationTarget
         }
         finally
         {
+            _overlayAndSettings.PersistIfDirty(_drawer, _activeDisplayMode, _activeBackendKind, runtimeBridge.IsSafeModeActive);
             _ = _relativeMouse.ReleaseOnOverlayOpen();
             _activeWindow = null;
             if (defaultGamepad is not null) _inputMapper.UnregisterProvider(defaultGamepad);
@@ -227,6 +237,16 @@ public sealed class HostSessionRunner : IHostAutomationTarget
     /// <param name="targetId">Optional explicit control identifier.</param>
     /// <param name="isRightClick"><c>true</c> for secondary button click; otherwise primary click.</param>
     public void EnqueuePointerClick(int x, int y, string? targetId, bool isRightClick) { lock (_commandSync) _pendingClicks.Enqueue((x, y, targetId, isRightClick)); }
+
+    /// <summary>Updates the active AOT compile progress overlay safely from any background thread.</summary>
+    public void SetAotCompileState(HostAotCompileState state) => _overlayAndSettings.QueueAotCompileState(state);
+
+    /// <summary>Updates the Media Gate visibility, expected checksum, status, and error banner safely across threads.</summary>
+    public void SetMediaGateState(bool isVisible, string? expectedSha256 = null, string? statusMessage = null, string? errorMessage = null) =>
+        _overlayAndSettings.QueueMediaGateState(isVisible, expectedSha256, statusMessage, errorMessage);
+
+    /// <summary>Updates the active <see cref="HostDrawerDescriptor"/> safely across threads.</summary>
+    public void UpdateDrawerDescriptor(HostDrawerDescriptor descriptor) => _overlayAndSettings.QueueDrawerDescriptor(descriptor);
 
     /// <inheritdoc />
     public void EnqueueKeyPress(string key, IReadOnlyList<string>? modifiers = null) => _inputMapper.InjectSyntheticKey(key, modifiers);
@@ -438,9 +458,9 @@ public sealed class HostSessionRunner : IHostAutomationTarget
         _touchOverlay?.Render(_surface.Canvas);
         if (_hud.IsVisible)
             _hud.Render(_surface.Canvas, HostSessionParityHelper.EnrichHudTelemetry(runtimeBridge.BuildHudTelemetry(pacer, audioPump, _drawer, _activeDisplayMode, connectedPads), _drawer));
-        if (_drawer.IsOpen) _drawer.Render(_surface.Canvas, options.DrawerDescriptor, _inputMapper.Bindings);
-        if (_mediaGate.IsVisible) _mediaGate.Render(_surface.Canvas, options.DrawerDescriptor);
-        if (_aotOverlay.State.IsCompiling) _aotOverlay.Render(_surface.Canvas, options.DrawerDescriptor);
+        if (_drawer.IsOpen) _drawer.Render(_surface.Canvas, _activeDescriptor, _inputMapper.Bindings);
+        if (_mediaGate.IsVisible) _mediaGate.Render(_surface.Canvas, _activeDescriptor);
+        if (_aotOverlay.State.IsCompiling) _aotOverlay.Render(_surface.Canvas, _activeDescriptor);
         _surface.PublishSnapshot();
         window?.PresentRgba(_surface.SurfaceWidth, _surface.SurfaceHeight, _surface.Canvas.Buffer, HostAspectRatioMode.NativeFit);
         return filteredRgba;

@@ -56,6 +56,8 @@ public sealed class HostInputMapper
     private readonly HashSet<int> _heldScancodes = new();
     private readonly HashSet<int> _altSuppressedScancodes = new();
     private readonly HashSet<int> _latchedCodes = new();
+    private readonly Dictionary<int, int> _syntheticTapFramesRemaining = new();
+    private readonly List<int> _expiredSyntheticScratch = new();
     private readonly List<IHostInputProvider> _providers = new();
     private readonly HostControlTierStore _controlTiers = new(HostInputSchemaKind.SchemaB);
     private HostInputSchemaKind _activeSchema = HostInputSchemaKind.SchemaB;
@@ -136,7 +138,13 @@ public sealed class HostInputMapper
     public void SetScancodeState(int scancode, bool isPressed, bool isRepeat)
     {
         if (isRepeat) return;
-        if (!isPressed) { _heldScancodes.Remove(scancode); _altSuppressedScancodes.Remove(scancode); return; }
+        if (!isPressed)
+        {
+            _heldScancodes.Remove(scancode);
+            _altSuppressedScancodes.Remove(scancode);
+            _syntheticTapFramesRemaining.Remove(scancode);
+            return;
+        }
         if (!_heldScancodes.Add(scancode)) return;
 
         bool altHeld = _heldScancodes.Contains(HostScancodes.LAlt) || _heldScancodes.Contains(HostScancodes.RAlt);
@@ -177,11 +185,20 @@ public sealed class HostInputMapper
             }
             else
             {
+                if (_syntheticTapFramesRemaining.Remove(scancode))
+                {
+                    _heldScancodes.Remove(scancode);
+                    _altSuppressedScancodes.Remove(scancode);
+                }
                 SetScancodeState(scancode, true, isRepeat: false);
                 if (IsInstantHotkeyScancode(scancode) || HostActions.IsCodeBound(scancode) || (hasAlt && scancode == HostScancodes.Return))
                 {
                     _heldScancodes.Remove(scancode);
                     _altSuppressedScancodes.Remove(scancode);
+                }
+                else
+                {
+                    _syntheticTapFramesRemaining[scancode] = 2;
                 }
             }
         }
@@ -274,6 +291,7 @@ public sealed class HostInputMapper
         float mdx = _pendingMouseDx * sens, mdy = _pendingMouseDy * sens;
         _pendingHotkeys = 0; _pendingMouseDx = 0f; _pendingMouseDy = 0f; _pendingWheelDelta = 0f;
         _latchedCodes.Clear();
+        AdvanceSyntheticTapAutoRelease();
 
         return new HostInputFrame(
             ++_frameSequence, digital, Math.Clamp(lx, -1f, 1f), Math.Clamp(ly, -1f, 1f), Math.Clamp(rx, -1f, 1f), Math.Clamp(ry, -1f, 1f),
@@ -297,4 +315,22 @@ public sealed class HostInputMapper
         HostScancodes.F1 or HostScancodes.F3 or HostScancodes.F5 or HostScancodes.F6 or
         HostScancodes.F7 or HostScancodes.F9 or HostScancodes.F11 or HostScancodes.F12 or
         HostScancodes.Escape or HostScancodes.Grave;
+
+    private void AdvanceSyntheticTapAutoRelease()
+    {
+        if (_syntheticTapFramesRemaining.Count == 0) return;
+        _expiredSyntheticScratch.Clear();
+        foreach (KeyValuePair<int, int> pair in _syntheticTapFramesRemaining)
+        {
+            int next = pair.Value - 1;
+            if (next <= 0) _expiredSyntheticScratch.Add(pair.Key);
+            else _syntheticTapFramesRemaining[pair.Key] = next;
+        }
+        foreach (int expired in _expiredSyntheticScratch)
+        {
+            _syntheticTapFramesRemaining.Remove(expired);
+            _heldScancodes.Remove(expired);
+            _altSuppressedScancodes.Remove(expired);
+        }
+    }
 }

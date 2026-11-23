@@ -35,16 +35,16 @@ public sealed class ManifestAndResolverTests : IDisposable
     [Fact]
     public void ParseRecompJsonManifest_ReadsStandard18CamelCaseFieldsAndDefaults()
     {
-        string moduleDir = Path.Combine(_tempRoot, "kings-field");
+        string moduleDir = Path.Combine(_tempRoot, "sample-module");
         Directory.CreateDirectory(moduleDir);
         string manifestPath = Path.Combine(moduleDir, "module.recomp.json");
         File.WriteAllText(manifestPath, """
             {
               "schemaVersion": 1,
-              "moduleId": "kings-field-slus-00158",
-              "title": "King's Field",
+              "moduleId": "crowndepths-slateone-02",
+              "title": "CrownDepths",
               "version": "0.1.3",
-              "engineId": "reStation",
+              "engineId": "reSlate",
               "engineVersion": "0.1.0",
               "compatibleEngineTrack": "0.1.x"
             }
@@ -53,10 +53,10 @@ public sealed class ManifestAndResolverTests : IDisposable
         RecompPackageLoadResult loaded = RecompPackageReader.Load(manifestPath);
 
         Assert.Equal(1, loaded.Manifest.SchemaVersion);
-        Assert.Equal("kings-field-slus-00158", loaded.Manifest.ModuleId);
-        Assert.Equal("King's Field", loaded.Manifest.Title);
+        Assert.Equal("crowndepths-slateone-02", loaded.Manifest.ModuleId);
+        Assert.Equal("CrownDepths", loaded.Manifest.Title);
         Assert.Equal("0.1.3", loaded.Manifest.Version);
-        Assert.Equal("reStation", loaded.Manifest.EngineId);
+        Assert.Equal("reSlate", loaded.Manifest.EngineId);
         Assert.Equal("0.1.0", loaded.Manifest.EngineVersion);
         Assert.Equal("0.1.x", loaded.Manifest.CompatibleEngineTrack);
         Assert.Equal("data/rom", loaded.Manifest.PreloadRomDir);
@@ -104,7 +104,7 @@ public sealed class ManifestAndResolverTests : IDisposable
     [Fact]
     public void DiscoverPreloadMedia_AutoDetectsFilesInDataRomAndPrioritizesDiscImages()
     {
-        string moduleDir = Path.Combine(_tempRoot, "kf-preload");
+        string moduleDir = Path.Combine(_tempRoot, "sample-preload");
         string romDir = Path.Combine(moduleDir, "data", "rom");
         Directory.CreateDirectory(romDir);
         string binPath = Path.Combine(romDir, "disc_track1.bin");
@@ -116,10 +116,10 @@ public sealed class ManifestAndResolverTests : IDisposable
         File.WriteAllText(manifestPath, """
             {
               "schemaVersion": 1,
-              "moduleId": "kings-field-slus-00158",
-              "title": "King's Field",
+              "moduleId": "crowndepths-slateone-02",
+              "title": "CrownDepths",
               "version": "0.1.3",
-              "engineId": "reStation",
+              "engineId": "reSlate",
               "engineVersion": "0.1.0",
               "compatibleEngineTrack": "0.1.x"
             }
@@ -200,7 +200,7 @@ public sealed class ManifestAndResolverTests : IDisposable
     [Fact]
     public void ParseRecompArchiveInAppFolder_ResolvesParentModuleRootAndStrictDataRomPreload()
     {
-        string installRoot = Path.Combine(_tempRoot, "KingsField-Recomp");
+        string installRoot = Path.Combine(_tempRoot, "CrownDepths-Recomp");
         string appDir = Path.Combine(installRoot, "app");
         string romDir = Path.Combine(installRoot, "data", "rom");
         string gameDataDir = Path.Combine(installRoot, "data", "gamedata");
@@ -208,12 +208,12 @@ public sealed class ManifestAndResolverTests : IDisposable
         Directory.CreateDirectory(romDir);
         Directory.CreateDirectory(gameDataDir);
 
-        string expectedChd = Path.Combine(romDir, "KingsField.chd");
+        string expectedChd = Path.Combine(romDir, "CrownDepths.chd");
         string ignoredBin = Path.Combine(gameDataDir, "GAME.BIN");
         File.WriteAllBytes(expectedChd, [0x4D, 0x43, 0x6F, 0x6D]);
         File.WriteAllBytes(ignoredBin, [0x01, 0x02]);
 
-        string cartridgePath = Path.Combine(appDir, "KingsFieldRecomp.recomp");
+        string cartridgePath = Path.Combine(appDir, "CrownDepthsRecomp.recomp");
         using (FileStream fs = File.Create(cartridgePath))
         using (var zip = new ZipArchive(fs, ZipArchiveMode.Create))
         {
@@ -222,10 +222,10 @@ public sealed class ManifestAndResolverTests : IDisposable
             writer.Write("""
                 {
                   "schemaVersion": 1,
-                  "moduleId": "kings-field-slus-00158",
-                  "title": "King's Field",
+                  "moduleId": "crowndepths-slateone-02",
+                  "title": "CrownDepths",
                   "version": "0.1.4",
-                  "engineId": "reStation",
+                  "engineId": "reSlate",
                   "engineVersion": "0.1.2",
                   "compatibleEngineTrack": "0.1.x",
                   "preloadRomDir": "data/rom"

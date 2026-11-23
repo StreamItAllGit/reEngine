@@ -208,29 +208,13 @@ public sealed class FirstRunMediaGateView
         if (!IsVisible) return false;
         if (Match(x, y, targetId, "MediaGate_BrowseButton", _browseRect))
         {
-            string? picked = OnBrowseRequested?.Invoke();
-            if (!string.IsNullOrWhiteSpace(picked))
-            {
-                VerifiedMediaPath = picked;
-                ErrorMessage = null;
-                StatusMessage = $"Verified: {Path.GetFileName(picked)}";
-                IsDemoCartSelected = false;
-                IsVisible = false;
-            }
+            AcceptPickedPath(OnBrowseRequested?.Invoke(), isModule: false);
             return true;
         }
 
         if (Match(x, y, targetId, "MediaGate_SelectModuleButton", _selectModuleRect))
         {
-            string? picked = OnBrowseModuleRequested?.Invoke();
-            if (!string.IsNullOrWhiteSpace(picked))
-            {
-                SelectedModulePath = picked;
-                ErrorMessage = null;
-                StatusMessage = $"Loaded module: {Path.GetFileName(picked)}";
-                IsDemoCartSelected = false;
-                IsVisible = false;
-            }
+            AcceptPickedPath(OnBrowseModuleRequested?.Invoke(), isModule: true);
             return true;
         }
 
@@ -246,19 +230,35 @@ public sealed class FirstRunMediaGateView
 
         if (Match(x, y, targetId, "MediaGate_DropZone", _dropZoneRect))
         {
-            string? picked = OnBrowseRequested?.Invoke();
-            if (!string.IsNullOrWhiteSpace(picked))
-            {
-                VerifiedMediaPath = picked;
-                ErrorMessage = null;
-                StatusMessage = $"Verified: {Path.GetFileName(picked)}";
-                IsDemoCartSelected = false;
-                IsVisible = false;
-            }
+            AcceptPickedPath(OnBrowseRequested?.Invoke(), isModule: false);
             return true;
         }
 
         return false;
+    }
+
+    private void AcceptPickedPath(string? picked, bool isModule)
+    {
+        if (string.IsNullOrWhiteSpace(picked)) return;
+        if (OnFileDropped is not null)
+        {
+            _ = HandleDroppedFile(picked);
+            return;
+        }
+
+        ErrorMessage = null;
+        IsDemoCartSelected = false;
+        if (isModule)
+        {
+            SelectedModulePath = picked;
+            StatusMessage = $"Loaded module: {Path.GetFileName(picked)}";
+        }
+        else
+        {
+            VerifiedMediaPath = picked;
+            StatusMessage = $"Verified: {Path.GetFileName(picked)}";
+        }
+        IsVisible = false;
     }
 
     private bool IsFocused(string id) =>

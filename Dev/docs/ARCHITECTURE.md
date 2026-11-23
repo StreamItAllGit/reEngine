@@ -1,6 +1,6 @@
 # reEngine — System Architecture
 
-**Synced Version:** `0.6.1` (`2026-11-20`)  
+**Synced Version:** `0.6.2` (`2026-11-23`)  
 **Scope:** Runtime Topology, Assembly Boundaries, Execution Pipelines, File Inventory & Data Stores  
 **License:** Mozilla Public License Version 2.0 (`MPL-2.0`, root [`LICENSE`](../../LICENSE))
 
@@ -38,7 +38,7 @@ flowchart LR
 
 ## 2. Assembly / `.dll` & Module Dependency Graph
 
-The solution [`Dev\reEngine.slnx`](../reEngine.slnx) inherits [`Dev\Directory.Build.props`](../Directory.Build.props) (`Version = 0.6.1`, `LangVersion = latest`, `Nullable = enable`, `TreatWarningsAsErrors = true`, `Deterministic = true`, `ContinuousIntegrationBuild = true` in `Release`, `<DebugType>none</DebugType>`, and `<PathMap>` workspace scrubbing) and consumes `Foundation v0.5.3` (`GET /v1/snapshot.png` + `ExeboxStreamHelpers`) from `Dev\lib\`.
+The solution [`Dev\reEngine.slnx`](../reEngine.slnx) inherits [`Dev\Directory.Build.props`](../Directory.Build.props) (`Version = 0.6.2`, `LangVersion = latest`, `Nullable = enable`, `TreatWarningsAsErrors = true`, `Deterministic = true`, `ContinuousIntegrationBuild = true` in `Release`, `<DebugType>none</DebugType>`, and `<PathMap>` workspace scrubbing) and consumes `Foundation v0.5.3` (`GET /v1/snapshot.png` + `ExeboxStreamHelpers`) from `Dev\lib\`.
 
 ```mermaid
 graph TD
@@ -48,12 +48,12 @@ graph TD
     FL["Dev/lib/Foundation.Launcher.dll v0.5.3 (RO)"]
     FA["Dev/lib/Foundation.Automation.dll v0.5.3 (RO, Debug/Test Only)"]
 
-    Core["reEngine.Core (net8.0)\nSDK, Compatibility, Recovery, SettingsDomainStore -> SharedLibs/reEngine/v0.6.1/"]
-    Host["reEngine.Host (net8.0;net8.0-windows)\n5 Backends, Scaled UI, HostActions, ControllerNav -> SharedLibs/reEngine/v0.6.1/"]
+    Core["reEngine.Core (net8.0)\nSDK, Compatibility, Recovery, SettingsDomainStore -> SharedLibs/reEngine/v0.6.2/"]
+    Host["reEngine.Host (net8.0;net8.0-windows)\n5 Backends, Scaled UI, HostActions, ControllerNav -> SharedLibs/reEngine/v0.6.2/"]
     App["reEngine.App (net8.0-windows)\nWinForms Dark Slate UI, >=0.6.1 Flag Router, Fallback & .decomp Bring-Up"]
     Launcher["reEngine.Launcher (net8.0-windows)\nSingle-File Root Stub (< 2 MB, LauncherJobObjectGuard)"]
     Setup["reEngine.Installer (net8.0-windows)\nSetup EXE (ExitCode=2 Release guard)"]
-    Tests["reEngine.Tests (net8.0-windows)\n28 xUnit Verification Suites (148 Tests)"]
+    Tests["reEngine.Tests (net8.0-windows)\n29 xUnit Verification Suites (152 Tests)"]
 
     Core --> FC
     Core --> FR
@@ -97,7 +97,7 @@ graph TD
 ### 3.2 `reEngine.Host` Execution Resilience, Display/Filter Pipeline, Audio DSP, Action Keybinds & Scaled Overlays
 1. **Execution Resilience (`reEngine.Core.Execution` + `HostSessionRuntimeBridge`):** [`BootCrashSentinel`](../src/reEngine.Core/Execution/BootCrashSentinel.cs) writes `<dataDir>\booting.sentinel` on boot, checks dead PIDs to trigger in-memory Safe Mode (`HostSettingsStore.ApplyInMemorySafeMode` disables HD packs and falls back Vulkan/DirectX 12 to OpenGL without touching saved disk config), and clears on frame `1`. [`MediaRamPreloader`](../src/reEngine.Core/Execution/MediaRamPreloader.cs) enforces physical headroom (`>= 512 MiB` free and `<= 75%` available) before buffering contained BYO media, and [`ExecutionTierPolicy`](../src/reEngine.Core/Execution/ExecutionTierPolicy.cs) quarantines `interpreterOracle` strictly to CLI invocations (`--force-zero-rwx` maps to `aotWithThreadedIr`).
 2. **Display Modes, VRR Pacing, Color Quantization & 8 Live Video Filters:** [`HostFramePacingController`](../src/reEngine.Host/Core/HostFramePacingController.cs) tracks `Framerate` (`Original`/`Enhanced`), `Target FPS` (`30..240`/Max `0`), `backgroundFpsCap`, and fast-forward `2.0..4.0`, calling `HighResFramePacer.Reset()` on cadence transitions. [`HostViewportGeometry`](../src/reEngine.Host/Core/HostViewportGeometry.cs) supports `21:9 Hor+`, automatic `4:3` FMV centering, and HUD anchors; [`HostVideoFilterPipeline`](../src/reEngine.Host/Rendering/HostVideoFilterPipeline.cs) runs 24-bit vs 15-bit + 4x4 Bayer dithering and all 8 live filters (`nearest`, `bilinear`, `sharpBilinear`, `scanlines`, `crtLite`/`crt-aperture`, `lcdGrid`, `xbrz`, `ntscComposite`); post-present `F12` [`HostScreenshotService`](../src/reEngine.Host/Core/HostScreenshotService.cs) reads back from `Gl33Presenter`, `VulkanPresenter`, `D3d12Presenter`, `ParallelCpuPresenter`, and `Sdl3HostWindow` (`TrySwitchBackend` live switching).
-3. **Audio DSP, Scaled Overlays, Host Action Keybinds, Media Gate & Controller Nav:** [`HostOverlayTextRenderer`](../src/reEngine.Host/Ui/HostOverlayTextRenderer.cs) scales coverage-sampled 5x7 bitmap text (`1.45x` default * live `uiTextScale` `0.75x–2.0x`) across full-title tabs (`Video`, `Audio`, `Controls`, `Keybinds`, `System`, `Media`) with dynamic drawer sizing (`430–780px`), scrolling, `AudioTabView` (`HostBiquadFilter` + `HostAudioDspPipeline` + `HostSoundTestService`), `ControlsTabView` (`Modern PC (Per-Action)` / `Game 1:1` / `Global 1:1` zero raw `"Schema A/B/C"`, `Modern WASD + Mouse`, sensitivity stepper, `menuControllerChord`), `KeybindsTabView` + [`HostActionBindingSet`](../src/reEngine.Host/Input/HostActionBindingSet.cs) (8 rebindable host actions with cross-tier collision guard + unbound-`Tab` FF hold), `SystemTabView` (`Quick Save/Load`, `Fast-Forward` + `2x/3x/4x`, `Skip Cutscene`, `Runtime Logging`, `Clean-Capture Mode`, `Quit Game`), [`FirstRunMediaGateView`](../src/reEngine.Host/Ui/FirstRunMediaGateView.cs) (full-screen Deep Slate Glass drop zone + Win32 [`HostNativeFileDialog`](../src/reEngine.Host/Core/HostNativeFileDialog.cs) + quiet `Launch Demo / Test Cart`), [`HostAotCompileOverlayView`](../src/reEngine.Host/Ui/HostAotCompileOverlayView.cs) (`~60 Hz`), [`F3HudOverlayView`](../src/reEngine.Host/Ui/F3HudOverlayView.cs) (`[ORIG]`/`[ENH]`/`[MAX]` + `[FF <N>x]` + Clean-Capture hide), [`HostRelativeMouseController`](../src/reEngine.Host/Core/HostRelativeMouseController.cs) (`SDL_SetWindowRelativeMouseMode`), [`HostDrawerControllerNav`](../src/reEngine.Host/Ui/HostDrawerControllerNav.cs), and [`HostSessionParityHelper`](../src/reEngine.Host/Core/HostSessionParityHelper.cs) (4-step non-quitting `Esc` precedence + idle `settings.controls.json` write suppression + `SDL_EVENT_DROP_FILE`).
+3. **Audio DSP, Scaled Overlays, Host Action Keybinds, Media Gate & Controller Nav:** [`HostOverlayTextRenderer`](../src/reEngine.Host/Ui/HostOverlayTextRenderer.cs) scales coverage-sampled 5x7 bitmap text (`1.45x` default * live `uiTextScale` `0.75x–2.0x`) across full-title tabs (`Video`, `Audio`, `Controls`, `Keybinds`, `System`, `Media`) with dynamic drawer sizing (`430–780px`), scrolling, `AudioTabView` (`HostBiquadFilter` + `HostAudioDspPipeline` + `HostSoundTestService`), `ControlsTabView` (`Modern PC (Per-Action)` / `Game 1:1` / `Global 1:1` zero raw `"Schema A/B/C"`, `Modern WASD + Mouse`, sensitivity stepper, `menuControllerChord`), `KeybindsTabView` + [`HostActionBindingSet`](../src/reEngine.Host/Input/HostActionBindingSet.cs) (8 rebindable host actions with cross-tier collision guard + unbound-`Tab` FF hold), `SystemTabView` (`Quick Save/Load`, `Fast-Forward` + `2x/3x/4x`, `Skip Cutscene`, `Runtime Logging`, `Clean-Capture Mode`, `Quit Game`), [`FirstRunMediaGateView`](../src/reEngine.Host/Ui/FirstRunMediaGateView.cs) (full-screen Deep Slate Glass drop zone + Win32 [`HostNativeFileDialog`](../src/reEngine.Host/Core/HostNativeFileDialog.cs) + `AcceptPickedPath` routing Browse/Module validation through `OnFileDropped` to retain warning banners + quiet `Launch Demo / Test Cart`), [`HostAotCompileOverlayView`](../src/reEngine.Host/Ui/HostAotCompileOverlayView.cs) (`~60 Hz`), [`F3HudOverlayView`](../src/reEngine.Host/Ui/F3HudOverlayView.cs) (`[ORIG]`/`[ENH]`/`[MAX]` + `[FF <N>x]` + fixed-width padded telemetry + invariant worst-case pill width `0 px` jitter + Clean-Capture hide), [`HostInputMapper`](../src/reEngine.Host/Input/HostInputMapper.cs) (2-frame deferred non-hotkey synthetic tap auto-release via `_syntheticTapFramesRemaining` + `AdvanceSyntheticTapAutoRelease`), [`HostRelativeMouseController`](../src/reEngine.Host/Core/HostRelativeMouseController.cs) (`SDL_SetWindowRelativeMouseMode`), [`HostDrawerControllerNav`](../src/reEngine.Host/Ui/HostDrawerControllerNav.cs), [`HostSessionOverlayAndSettingsHelper`](../src/reEngine.Host/Core/HostSessionOverlayAndSettingsHelper.cs) (`HostSessionRunner.SetAotCompileState` / `SetMediaGateState` / `UpdateDrawerDescriptor` thread-safe queues + `HostSettingsStore` startup hydration honoring `PreferExplicitBackend`/`PreferExplicitScale`/`PreferExplicitAspectRatio` + live `F1` dirty-save persistence to `settings.json`, `settings.video.json`, and `settings.audio.json`, skipped during Safe Mode), and [`HostSessionParityHelper`](../src/reEngine.Host/Core/HostSessionParityHelper.cs) (4-step non-quitting `Esc` precedence + idle `settings.controls.json` write suppression + `SDL_EVENT_DROP_FILE`).
 
 ### 3.3 `.decomp`, Root-Tree Media Discovery, `D4_CleanSource` & `--verify-module` Pipeline
 1. [`SuiteMediaTreeWalker`](../src/reEngine.Core/Decomp/SuiteMediaTreeWalker.cs) performs depth-capped (`<= 5`), reparse-safe, containment-checked media searches across module-local and `<SuiteRoot>` (`games\*\data\rom\`, `gamedata\`, `data\rom\`), flags multi-game ambiguities cleanly, and supports opt-in `StageMediaIntoRomDirectoryAsync` copying `.cue` + contained `.bin` tracks (plus `.fds` parity alongside `.nes`).
@@ -108,7 +108,7 @@ graph TD
 
 ## 4. Architecture Notes & SLOC Discipline (`<= 250 / 400 / 600`)
 
-All `v0.6.1` modules (`Dev/src/**/*.cs` and `Dev/tests/**/*.cs`) stay well below the `400` code-only SLOC soft ceiling via cohesive helper extractions (`EngineCompatibilityEvaluator`, `SessionRecoveryLocator`, `LauncherJobObjectGuard`, `HostActionBindingSet`, `HostNativeFileDialog`, `HostRelativeMouseController`, `HostOverlayTextRenderer`, `HostDrawerControllerNav`, `HostAotCompileOverlayView`, `HostSessionParityHelper`, `DemoCartSessionHelper`, and extracted 3-suite test files).
+All `v0.6.2` modules (`Dev/src/**/*.cs` and `Dev/tests/**/*.cs`) stay well below the `400` code-only SLOC soft ceiling via cohesive helper extractions (`HostSessionOverlayAndSettingsHelper` [`222` SLOC, keeping `HostSessionRunner.cs` at `386` SLOC], `EngineCompatibilityEvaluator`, `SessionRecoveryLocator`, `LauncherJobObjectGuard`, `HostActionBindingSet`, `HostNativeFileDialog`, `HostRelativeMouseController`, `HostOverlayTextRenderer`, `HostDrawerControllerNav`, `HostAotCompileOverlayView`, `HostSessionParityHelper`, `DemoCartSessionHelper`, and extracted modular test suites).
 
 ---
 
@@ -131,7 +131,7 @@ All `v0.6.1` modules (`Dev/src/**/*.cs` and `Dev/tests/**/*.cs`) stay well below
 
 ## 6. Failure Modes & Resilience
 
-- **Dual-Binary Release Fail-Closed Automation Gate:** `reEngine.Host` (`#if !REENGINE_ENABLE_AUTOMATION` or null `AutomationBridgeFactory`), `reEngine.App`, AND `reEngine.Installer` ALL fail closed (`ExitCode = 2`) when `--automation-port` is supplied on a `Release` build; `Foundation.Automation.dll` and `System.Windows.Forms` / `Foundation.UI` are omitted completely from `Release` `SharedLibs\reEngine\v0.6.1\`.
+- **Dual-Binary Release Fail-Closed Automation Gate:** `reEngine.Host` (`#if !REENGINE_ENABLE_AUTOMATION` or null `AutomationBridgeFactory`), `reEngine.App`, AND `reEngine.Installer` ALL fail closed (`ExitCode = 2`) when `--automation-port` is supplied on a `Release` build; `Foundation.Automation.dll` and `System.Windows.Forms` / `Foundation.UI` are omitted completely from `Release` `SharedLibs\reEngine\v0.6.2\`.
 - **Zip-Slip / Traversal & SSRF Guards:** Both `RecompPackageReader.Load`, `DecompPipelineCoordinator.ParseManifest`, `SuiteMediaTreeWalker`, `HdPackResolver`, `SessionRecoveryLocator`, and `UpdatePackageApplier.ExtractArchiveSafely` reject rooted, symlink/reparse, or `..`-escaping paths and entries; `UpdatePackageApplier.AssertSafeRemoteUrl` blocks `file://`, loopback, RFC 1918, and link-local/metadata IP ranges at rest and runtime.
 - **Missing Engine, Crash Fallback & Backend Availability:**
   - `.recomp`: throws `InvalidOperationException` -> Exit `1` (`No compatible engine`); `EngineCompatibilityEvaluator` excludes `incompatibleEngineVersions`; abnormal engine exit triggers prompt-first fallback relaunch (`TryCrashFallbackRelaunchAsync`) + `SessionRecoveryLocator` artifact discovery (prompt suppressed cleanly in headless/test runs).
@@ -152,7 +152,7 @@ All `v0.6.1` modules (`Dev/src/**/*.cs` and `Dev/tests/**/*.cs`) stay well below
 
 ---
 
-## 8. Testing Strategy Map (28 Suites, 148 Unit/Contract Tests + Stage 2 Visible E2E)
+## 8. Testing Strategy Map (29 Suites, 152 Unit/Contract Tests + Stage 2 Visible E2E)
 
 Run isolated zero-warning unit & contract tests:
 ```powershell
@@ -162,7 +162,7 @@ dotnet test Dev\reEngine.slnx -c Debug -p:ReEngineTestAutomation=true /warnaserr
 ```
 Run full Stage 2 visible-window sandbox E2E (12-point Installer + 5-backend WinForms Library + interactive Explorer `.decomp` Bring-Up + `--verify-module --json` + synchronous `--open --wait --fullscreen --save-dir` WM_CLOSE flush + visible SDL3 OpenGL Host + `Stage2V060Probes` + `Stage2V061ParityProbes` [quiet `--demo-cart`, Glass Media Gate, scaled UI, expressive Controls, host Keybinds, `F3` badges + Clean-Capture, non-quitting `Esc`, `System_QuitGame`] + Dual-Binary Release ExitCode=2):
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File Dev\scripts\run_stage2_sandbox_e2e.ps1 -Version 0.6.1
+powershell -NoProfile -ExecutionPolicy Bypass -File Dev\scripts\run_stage2_sandbox_e2e.ps1 -Version 0.6.2
 ```
 
 | Test Class (`Dev\tests\reEngine.Tests\`) | Covered Components | Key Verified Contracts |
@@ -195,10 +195,13 @@ powershell -NoProfile -ExecutionPolicy Bypass -File Dev\scripts\run_stage2_sandb
 | [`EngineResolutionV061AndCrashFallbackTests.cs`](../tests/reEngine.Tests/EngineResolutionV061AndCrashFallbackTests.cs) | `EngineCompatibilityEvaluator`, `EngineVersionResolver`, `SessionRecoveryLocator`, `RecompLaunchCoordinator`, `RecompLaunchOptionParser`, `LauncherArgsHelper` | `incompatibleEngineVersions` rules, `pinnedEngineVersions` (`moduleId` > `engineId`) + latest `.ready` selection, prompt-first crash fallback + closest checkpoint/save discovery, `>= 0.6.1` CLI parity & optional `--require-backend` |
 | [`HostParityUiScaleMediaGateAndControllerNavTests.cs`](../tests/reEngine.Tests/HostParityUiScaleMediaGateAndControllerNavTests.cs) | `HostOverlayTextRenderer`, `F1SettingsDrawerView`, `ControlsTabView`, `FirstRunMediaGateView`, `HostAotCompileOverlayView`, `F3HudOverlayView`, `HostDrawerControllerNav`, `DemoCartSessionHelper` | `1.45x * uiTextScale` bounds, full tab titles + scroll + `8x`, expressive Controls (zero `"Schema A/B/C"`), full-screen Media Gate + quiet `--demo-cart`, responsive AOT pump, `F3` `[ORIG]`/`[ENH]`/`[MAX]`/`[FF]` + Clean-Capture hide, 100% controller nav |
 | [`HostNonQuittingEscMouseCaptureAndHotkeysTests.cs`](../tests/reEngine.Tests/HostNonQuittingEscMouseCaptureAndHotkeysTests.cs) | `HostActionBindingSet`, `HostControlTierStore`, `HostInputMapper`, `HostRelativeMouseController`, `HostSessionParityHelper`, `HostNativeFileDialog`, `KeybindsTabView` | 8 rebindable host actions + cross-conflict blocking, `menuControllerChord`, unbound-`Tab` FF hold, relative mouse capture/release lifecycle, 4-step non-quitting `Esc` + `Quit Game`, idle `settings.controls.json` write suppression, `OFN_NOCHANGEDIR` |
+| [`HostV062PrelaunchParityTests.cs`](../tests/reEngine.Tests/HostV062PrelaunchParityTests.cs) | `F3HudOverlayView`, `HostInputMapper`, `FirstRunMediaGateView`, `HostSessionRunner`, `HostSessionOverlayAndSettingsHelper`, `HostSettingsStore` | Invariant `0 px` F3 pill width, 2-frame deferred non-hotkey synthetic tap release, Browse error banner retention, live AOT/MediaGate state queuing, `HostSettingsStore` round-trip hydration & dirty-save persistence |
 
 ---
 
 ## 9. Design Decisions Log (ADR)
+
+- **ADR-013 · `2026-11-23` · `v0.6.2` — Thread-Safe Live Overlay Controls, `HostSettingsStore` Hydration/Dirty-Save, `0 px` Jitter `F3` HUD & Deferred Synthetic Tap Release:** Extracted `HostSessionOverlayAndSettingsHelper` (`222` SLOC) out of `HostSessionRunner` (`386` SLOC) to queue thread-safe `SetAotCompileState` / `SetMediaGateState` / `UpdateDrawerDescriptor` updates; wired `HostSessionOptions` startup/persistence fields (`InitialAotCompileState`, `InitialMediaGateError`, `SettingsDataDirectory`, `SettingsConfigPathOverride`, `PreferExplicitBackend`/`PreferExplicitScale`/`PreferExplicitAspectRatio`) and live `F1` dirty-save persistence across `settings.json`, `settings.video.json`, and `settings.audio.json` (skipped cleanly in Safe Mode); routed `FirstRunMediaGateView.AcceptPickedPath` Browse validation through `OnFileDropped`; padded `F3HudOverlayView` telemetry columns with worst-case template measurement (`0 px` jitter); and deferred synthetic non-hotkey keyboard tap auto-release by 2 frames in `HostInputMapper`.
 
 - **ADR-001 · `2026-11-13` · `v0.1.0` — Zero-Daemon Launcher Architecture (`AllowAutoStart = false`):** Keep `reEngine.Launcher` free of `reEngine.Core` (embedding only `Foundation.Launcher.dll`) and exit every process when work completes. Consequence: `0 MB` idle footprint and `< 2 MB` stub EXE.
 - **ADR-002 · `2026-11-14` · `v0.1.2` — Parent-Root `app\*.recomp` Cartridge Resolution:** Resolve `<GameRoot>\app\<Module>.recomp` back to `<GameRoot>\` so `data\rom\` media remains isolated across binary upgrades.
@@ -217,7 +220,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File Dev\scripts\run_stage2_sandb
 
 ## 10. Zero-Touch Extension Playbooks
 
-1. **Adding a New Platform Engine (`reCart`/`reCartOne`/`reNes`, `reCart64`/`re64`, `reBlast16`/`reGenesis`, `reCube`):** Consume `<SHARED_LIBS>\reEngine\v0.6.1\reEngine.Core.dll` and `reEngine.Host.dll` (+ `Foundation v0.5.3`), implement `IHostSessionCallbacks`, `IHostSessionEventCallbacks`, and optional `IHostSoundTestProvider`, optionally inject Debug-only `IHostAutomationBridge` via `HostSessionOptions.AutomationBridgeFactory`, declare `schemaVersion: 2`, `hostProtocolVersion: "0.6.1"`, and `legacyEngineIds` in `engine.manifest.json`, and install with `.ready` under `<SuiteRoot>\engines\<engineId>\v<Ver>\`.
+1. **Adding a New Platform Engine (`reCart`/`reCartOne`/`reNes`, `reCart64`/`re64`, `reBlast16`/`reGenesis`, `reCube`):** Consume `<SHARED_LIBS>\reEngine\v0.6.2\reEngine.Core.dll` and `reEngine.Host.dll` (+ `Foundation v0.5.3`), implement `IHostSessionCallbacks`, `IHostSessionEventCallbacks`, and optional `IHostSoundTestProvider`, optionally inject Debug-only `IHostAutomationBridge` via `HostSessionOptions.AutomationBridgeFactory`, declare `schemaVersion: 2`, `hostProtocolVersion: "0.6.2"`, and `legacyEngineIds` in `engine.manifest.json`, and install with `.ready` under `<SuiteRoot>\engines\<engineId>\v<Ver>\`.
 2. **Adding a Game `.recomp` / `.decomp` Module:** Ship `module.recomp.json` / `module.decomp.json` (`MyGame.recomp`, `SampleModule.decomp`), declaring `engineId`, `supportedEngineTracks`, optional `incompatibleEngineVersions` / `defaultFramerateMode`, `backendId`, and `executionTierMode`, while keeping user `data\rom\` media untracked locally.
 3. **Adding a New Persisted Settings Field:** Add a nullable camelCase property or read via `ReEngineSettings.ExtensionData`, document it in `INTERFACES.md` + `Dev\settings.example.json`, and preserve `.bak` recovery.
 4. **Adding a CLI Subcommand/Flag:** Add option parsing in `RecompLaunchOptions` (or `Program.CliHandlers.cs`), register sync/value tokens in `LauncherArgsHelper` (keeping optional flags like `--require-backend [<id>]` explicitly handled), route in `RecompLaunchFlagRouter`, and add containment assertions for filesystem path options.

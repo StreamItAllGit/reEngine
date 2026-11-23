@@ -147,15 +147,15 @@ public sealed class AotCacheManagerTests : IDisposable
         using (FileStream fs = File.Create(dirtyZip))
         using (var zip = new ZipArchive(fs, ZipArchiveMode.Create))
         {
-            WriteZipEntry(zip, "module.recomp.json", """{ "moduleId": "kf" }""");
-            WriteZipEntry(zip, "bin/KingsField.Generated.dll", "binary");
+            WriteZipEntry(zip, "module.recomp.json", """{ "moduleId": "sample-cart" }""");
+            WriteZipEntry(zip, "bin/SampleCart.Generated.dll", "binary");
             WriteZipEntry(zip, "lifted/Main.g.cs", "// lifted");
         }
 
         CleanRoomRecompCheckResult dirtyZipResult = manager.ValidateCleanRoomRecompPackage(dirtyZip);
         Assert.False(dirtyZipResult.IsClean);
         Assert.Equal(2, dirtyZipResult.UnexpectedGeneratedAssemblies.Count);
-        Assert.Contains("bin/KingsField.Generated.dll", dirtyZipResult.UnexpectedGeneratedAssemblies);
+        Assert.Contains("bin/SampleCart.Generated.dll", dirtyZipResult.UnexpectedGeneratedAssemblies);
         Assert.Contains("lifted/Main.g.cs", dirtyZipResult.UnexpectedGeneratedAssemblies);
 
         string dirtyDir = Path.Combine(_tempRoot, "dirty_dir_pkg");

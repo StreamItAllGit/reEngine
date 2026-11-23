@@ -6,9 +6,9 @@
 
 Lightweight, zero-daemon package router, unified 5-backend SDL3 host runtime (`reEngine.Host`), clean-room decompilation coordinator, and engine version manager for static recompilation modules.
 
-![Version](https://img.shields.io/badge/version-0.6.1--beta-blue?style=flat) ![License](https://img.shields.io/badge/license-MPL--2.0-green?style=flat) ![Runtime](https://img.shields.io/badge/.NET-8.0-512BD4?style=flat) ![Platform](https://img.shields.io/badge/platform-Windows-lightgrey?style=flat)
+![Version](https://img.shields.io/badge/version-0.6.2--beta-blue?style=flat) ![License](https://img.shields.io/badge/license-MPL--2.0-green?style=flat) ![Runtime](https://img.shields.io/badge/.NET-8.0-512BD4?style=flat) ![Platform](https://img.shields.io/badge/platform-Windows-lightgrey?style=flat)
 
-**Milestone Progress:** `▓▓▓▓▓░░░░░` **50% toward v1.0.0** (6/12 milestones) — `v0.6.1` is now shipped, completing Single-Host UI & input parity on top of `v0.6.0`: crisp `~1.45x` default scaled text with live `uiTextScale` (`0.75x–2.0x`), full clear `F1` tabs (`Video`, `Audio`, `Controls`, `Keybinds`, `System`, `Media`) with `8x` scale, `Framerate Mode` & `Target FPS` (`30..240`/`Max`), expressive control profiles without opaque internal schema names, `Modern WASD + Mouse` relative mouse capture, 8 rebindable host hotkeys + customizable controller menu chord, unbound-`Tab` fast-forward hold, non-quitting 4-step `Esc` + `System -> Quit Game`, full-screen Deep Slate Glass Media Gate + responsive AOT compile overlay + quiet `--demo-cart`, `100%` controller navigation, `F3` cadence/FF badges & `Clean-Capture Mode`, engine incompatibility & pinned precedence rules, prompt-first crash fallback + pre-crash save recovery, wait-only launcher safety, and unified CLI parity. Next milestone: `v0.7.0`.
+**Milestone Progress:** `▓▓▓▓▓░░░░░` **50% toward v1.0.0** (6/12 milestones) — `v0.6.2` is now shipped atop `v0.6.1`, adding pre-launch host resilience and UX parity: thread-safe live AOT compile / Media Gate / drawer controls (`SetAotCompileState`, `SetMediaGateState`, `UpdateDrawerDescriptor`) via `HostSessionOverlayAndSettingsHelper`, automatic `HostSettingsStore` startup hydration & live `F1` dirty-save persistence (`settings.json`, `settings.video.json`, `settings.audio.json`, skipped during in-memory Safe Mode) with explicit CLI flag precedence (`PreferExplicitBackend`/`Scale`/`AspectRatio`), `FirstRunMediaGateView.AcceptPickedPath` Browse error banner retention, zero-jitter (`0 px`) invariant-width `F3` telemetry HUD, and 2-frame deferred synthetic non-hotkey tap release in `HostInputMapper` (`152/152` tests across `29` suites). Next milestone: `v0.7.0`.
 
 </div>
 
@@ -16,7 +16,7 @@ Lightweight, zero-daemon package router, unified 5-backend SDL3 host runtime (`r
 
 ## About
 
-> **Beta (Pre-1.0):** `reEngine` (`v0.6.1`) is an active pre-1.0 beta release targeting `v1.0.0` desktop stability and `v2.0.0` cross-platform support.
+> **Beta (Pre-1.0):** `reEngine` (`v0.6.2`) is an active pre-1.0 beta release targeting `v1.0.0` desktop stability and `v2.0.0` cross-platform support.
 
 `reEngine` routes `.recomp` and `.decomp` packages to compatible platform static recompilation engines (`reSlate` / `reStation`, `reCart` / `reCartOne` / `reNes`, `reCart64` / `re64`, `reBlast16` / `reGenesis`, `reSlateTwo` / `rePS2`, `reCartTwo` / `reSnes`, `reDotCart` / `reBoy`, `reCube`, `reAdvance`) while leaving **0 MB** resident in memory when closed and adding **zero** Windows Startup entries. Built strictly for native static recompilation rather than legacy console simulation or bundled retail data, `reEngine` provides a clean-room `reEngine.Host.dll` video/audio/input runtime, isolates per-game settings and logs under `<dataDir>\modules\<moduleId>\`, manages local `<dataDir>\cache\` Ahead-of-Time (AOT) assemblies, and discovers your legally dumped disc or ROM files inside each game's `data\rom\` folder or suite directory tree.
 
@@ -39,14 +39,14 @@ Lightweight, zero-daemon package router, unified 5-backend SDL3 host runtime (`r
 
 Every release is published exclusively on [GitHub Releases](https://github.com/StreamItAllGit/reEngine/releases) in both formats:
 
-- **`reEngine-Setup-v0.6.1-win-x64.exe`** — Signed Setup Wizard & silent CLI installer (detects existing install directories and split domain settings automatically on upgrade).
-- **`reEngine-v0.6.1-win-x64-Portable.zip`** — Standalone no-installer portable bundle containing `reEngine.exe`, `app\`, scripts, and sanitized release docs.
+- **`reEngine-Setup-v0.6.2-win-x64.exe`** — Signed Setup Wizard & silent CLI installer (detects existing install directories and split domain settings automatically on upgrade).
+- **`reEngine-v0.6.2-win-x64-Portable.zip`** — Standalone no-installer portable bundle containing `reEngine.exe`, `app\`, scripts, and sanitized release docs.
 
 ### Quick Try
 
 ```powershell
 # Install silently in Lightweight mode (or Full for the offline CLI decompilation toolchain)
-reEngine-Setup-v0.6.1-win-x64.exe --silent --no-launch --profile Lightweight
+reEngine-Setup-v0.6.2-win-x64.exe --silent --no-launch --profile Lightweight
 
 # Open the reEngine Suite Manager UI
 reEngine.exe --window
@@ -69,7 +69,7 @@ reEngine.exe decomp --module ".\SampleModule.decomp" --stage D4 --data-dir .\tmp
 git clone https://github.com/StreamItAllGit/reEngine.git
 cd reEngine
 
-# Run all 28 isolated xUnit suites (148/148 tests passing in Release & Debug+Automation with 0 warnings)
+# Run all 29 isolated xUnit suites (152/152 tests passing in Release & Debug+Automation with 0 warnings)
 $env:APP_ISOLATED_TEST = "1"
 dotnet test Dev\reEngine.slnx -c Release /warnaserror
 dotnet test Dev\reEngine.slnx -c Debug -p:ReEngineTestAutomation=true /warnaserror
@@ -113,9 +113,9 @@ reEngine.exe --version
 
 ## Project Structure
 
-- `Dev/` — C# source code (`reEngine.Core`, `reEngine.Host`, `reEngine.App`, `reEngine.Launcher`, `reEngine.Installer`), `28` xUnit test suites (`148` tests), build/E2E scripts, and technical manuals
+- `Dev/` — C# source code (`reEngine.Core`, `reEngine.Host`, `reEngine.App`, `reEngine.Launcher`, `reEngine.Installer`), `29` xUnit test suites (`152` tests), build/E2E scripts, and technical manuals
 - `Builds/` — Local compiled portable staging builds
-- `Releases/` — Shareable 7-file versioned release bundles (`Releases\v0.6.1\`, `Releases\Latest\`, including the signed Setup EXE and `reEngine-v0.6.1-win-x64-Portable.zip`), SHA-256 checksums, and release notes
+- `Releases/` — Shareable 7-file versioned release bundles (`Releases\v0.6.2\`, `Releases\Latest\`, including the signed Setup EXE and `reEngine-v0.6.2-win-x64-Portable.zip`), SHA-256 checksums, and release notes
 - `Archive/` — Compressed source snapshots
 
 ## Documentation

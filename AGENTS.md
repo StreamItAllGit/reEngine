@@ -1,6 +1,6 @@
 # Project Context: reEngine
 
-- **Role:** Zero-daemon `.decomp` / `.recomp` suite router & UI (`v0.6.1`, Tier A, `MPL-2.0`).
+- **Role:** Zero-daemon `.decomp` / `.recomp` suite router & UI (`v0.6.2`, Tier A, `MPL-2.0`).
 - **Boundaries:** `Foundation\`, `_DevBible\` & `<WORKSPACE_ROOT>\Research\*` (no `Corpus\` copy) RO; `SharedLibs\reEngine\v<Ver>\`; isolated test runs via `APP_ISOLATED_TEST=1`.
 
 ## 1. Root Quartet & State

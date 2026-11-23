@@ -84,20 +84,25 @@ public sealed class F3HudOverlayView
 
         string modeBadge = string.IsNullOrWhiteSpace(telemetry.FrameRateModeBadge)
             ? string.Empty
-            : telemetry.FrameRateModeBadge.Trim() + " ";
+            : telemetry.FrameRateModeBadge.Trim().PadRight(6) + " ";
         double ffMult = Math.Clamp(double.IsFinite(telemetry.FastForwardMultiplier) ? telemetry.FastForwardMultiplier : 2.0, 2.0, 4.0);
         string ffTag = telemetry.IsFastForwardEnabled
             ? string.Create(CultureInfo.InvariantCulture, $"[FF {ffMult:0.#}x] ")
             : string.Empty;
         string padTag = telemetry.ConnectedPadCount > 0 ? $" | Pads:{telemetry.ConnectedPadCount}" : string.Empty;
 
+        double dispFps = Math.Clamp(double.IsFinite(telemetry.CurrentFps) ? telemetry.CurrentFps : 0.0, 0.0, 999.9);
+        double dispMs = Math.Clamp(double.IsFinite(telemetry.AverageFrameMs) ? telemetry.AverageFrameMs : 0.0, 0.0, 999.99);
         string line1 = string.Create(
             CultureInfo.InvariantCulture,
-            $"{modeBadge}{ffTag}FPS: {telemetry.CurrentFps:F1} | Frame: {telemetry.AverageFrameMs:F2}ms{padTag}");
+            $"{modeBadge}{ffTag}FPS: {dispFps,5:F1} | Frame: {dispMs,6:F2}ms{padTag}");
 
         string aspectTag = !string.IsNullOrWhiteSpace(telemetry.AspectRatioLabel) ? $" {telemetry.AspectRatioLabel.Trim()}" : string.Empty;
-        string audioText = telemetry.IsAudioMuted ? "MUTED" : $"{telemetry.AudioFillRatio * 100.0:F0}%";
-        var line2Parts = new List<string>(4)
+        double dispAudioPct = Math.Clamp(double.IsFinite(telemetry.AudioFillRatio) ? telemetry.AudioFillRatio * 100.0 : 0.0, 0.0, 999.0);
+        string audioText = telemetry.IsAudioMuted
+            ? "MUTED"
+            : string.Create(CultureInfo.InvariantCulture, $"{dispAudioPct:F0}%").PadLeft(5);
+        var line2Parts = new List<string>(6)
         {
             $"{telemetry.BackendLabel} {telemetry.ResolutionScale}x{aspectTag}",
             telemetry.ExecutionTier,
@@ -108,8 +113,12 @@ public sealed class F3HudOverlayView
         if (telemetry.IsSafeModeActive) line2Parts.Add("SAFE MODE");
         string line2 = string.Join(" | ", line2Parts);
 
-        int w1 = HostOverlayTextRenderer.MeasureText(line1, scale).Width;
-        int w2 = HostOverlayTextRenderer.MeasureText(line2, scale).Width;
+        string templateLine1 = $"{modeBadge}{ffTag}FPS: 888.8 | Frame: 888.88ms{padTag}";
+        line2Parts[2] = "Audio MUTED";
+        string templateLine2 = string.Join(" | ", line2Parts);
+
+        int w1 = Math.Max(HostOverlayTextRenderer.MeasureText(line1, scale).Width, HostOverlayTextRenderer.MeasureText(templateLine1, scale).Width);
+        int w2 = Math.Max(HostOverlayTextRenderer.MeasureText(line2, scale).Width, HostOverlayTextRenderer.MeasureText(templateLine2, scale).Width);
         int maxW = Math.Max(200, canvas.Width - 24);
         int w = Math.Clamp(Math.Max(w1, w2) + 24, Math.Min(280, maxW), maxW);
         int h = 16 + (lineH * 2);

@@ -134,16 +134,16 @@ public sealed class LauncherAndLaunchPlanTests : IDisposable
         string romDir = Path.Combine(modDir, "data", "rom");
         Directory.CreateDirectory(romDir);
 
-        string cuePath = Path.Combine(romDir, "kf.cue");
-        File.WriteAllText(cuePath, "FILE \"kf.bin\" BINARY");
+        string cuePath = Path.Combine(romDir, "disc.cue");
+        File.WriteAllText(cuePath, "FILE \"disc.bin\" BINARY");
         string pkgPath = Path.Combine(modDir, "module.recomp.json");
         File.WriteAllText(pkgPath, """
             {
               "schemaVersion": 1,
-              "moduleId": "kings-field-slus-00158",
-              "title": "King's Field",
+              "moduleId": "crowndepths-slateone-02",
+              "title": "CrownDepths",
               "version": "0.1.3",
-              "engineId": "reStation",
+              "engineId": "reSlate",
               "engineVersion": "0.1.0",
               "compatibleEngineTrack": "0.1.x"
             }
@@ -177,7 +177,7 @@ public sealed class LauncherAndLaunchPlanTests : IDisposable
 
         ChildLaunchPlan plan = RecompLaunchCoordinator.BuildChildLaunchPlan(loaded, appEnv, isolatedRoot, opts);
 
-        string expectedModData = Path.Combine(dataDir, "modules", "kings-field-slus-00158");
+        string expectedModData = Path.Combine(dataDir, "modules", "crowndepths-slateone-02");
         Assert.Equal(expectedModData, plan.ModuleDataDirectory);
         Assert.Equal(Path.Combine(expectedModData, "settings.json"), plan.ModuleConfigPath);
         Assert.Equal(Path.GetFullPath(customLogDir), plan.ModuleLogDirectory);
