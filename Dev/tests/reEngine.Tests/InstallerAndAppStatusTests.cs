@@ -255,9 +255,9 @@ public sealed class InstallerAndAppStatusTests : IDisposable
         Assert.Equal(0, emptyCache.AssemblyCount);
         Assert.Equal(0, emptyCache.TotalBytes);
 
-        string cacheEntryDir = Path.Combine(dataDir, "cache", "kings-field", "abc123");
+        string cacheEntryDir = Path.Combine(dataDir, "cache", "crown-depths", "abc123");
         Directory.CreateDirectory(cacheEntryDir);
-        File.WriteAllBytes(Path.Combine(cacheEntryDir, "kings-field.Generated.dll"), new byte[1024]);
+        File.WriteAllBytes(Path.Combine(cacheEntryDir, "crown-depths.Generated.dll"), new byte[1024]);
         File.WriteAllText(Path.Combine(cacheEntryDir, "ignored.json"), "{}");
 
         AotCacheStatusSummary populatedCache = ReEngineAppStatusHelper.InspectAotCache(dataDir);

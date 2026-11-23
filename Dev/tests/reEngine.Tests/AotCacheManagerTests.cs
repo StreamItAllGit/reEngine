@@ -40,12 +40,12 @@ public sealed class AotCacheManagerTests : IDisposable
         string dataDir = Path.Combine(_tempRoot, "data");
         string sourceDir = Path.Combine(_tempRoot, "build_out");
         Directory.CreateDirectory(sourceDir);
-        string srcDll = Path.Combine(sourceDir, "kings-field.Generated.dll");
+        string srcDll = Path.Combine(sourceDir, "crown-depths.Generated.dll");
         byte[] payload = Encoding.UTF8.GetBytes("MZ-SYNTHETIC-AOT-BINARY-V1");
         await File.WriteAllBytesAsync(srcDll, payload);
 
         string romSha = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes("synthetic-rom"))).ToLowerInvariant();
-        var key = new AotCacheKey("kings-field", romSha, "reStation", "0.2.0", "0.2.0");
+        var key = new AotCacheKey("crown-depths", romSha, "reStation", "0.2.0", "0.2.0");
         var manager = new AotCacheManager(dataDir);
 
         Assert.Null(await manager.TryGetEntryAsync(key));
@@ -97,9 +97,9 @@ public sealed class AotCacheManagerTests : IDisposable
         await File.WriteAllBytesAsync(dllOther, Encoding.UTF8.GetBytes("AOT-OTHER"));
 
         string romSha = new string('a', 64);
-        var kfV1 = new AotCacheKey("kings-field", romSha, "reStation", "0.2.0", "0.1.9");
-        var kfV2 = new AotCacheKey("kings-field", romSha, "reStation", "0.2.0", "0.2.0");
-        var otherKey = new AotCacheKey("metal-gear", new string('b', 64), "reStation", "0.2.0", "0.1.0");
+        var kfV1 = new AotCacheKey("crown-depths", romSha, "reStation", "0.2.0", "0.1.9");
+        var kfV2 = new AotCacheKey("crown-depths", romSha, "reStation", "0.2.0", "0.2.0");
+        var otherKey = new AotCacheKey("ironframe-cart-01", new string('b', 64), "reStation", "0.2.0", "0.1.0");
 
         var manager = new AotCacheManager(dataDir);
         AotCompileResult res1 = await manager.StoreCompiledAssemblyAsync(kfV1, dllV1);
@@ -108,7 +108,7 @@ public sealed class AotCacheManagerTests : IDisposable
 
         Assert.True(res1.Success && res2.Success && resOther.Success);
 
-        int evicted = await manager.EvictStaleEntriesAsync("kings-field", activeKey: kfV2);
+        int evicted = await manager.EvictStaleEntriesAsync("crown-depths", activeKey: kfV2);
         Assert.Equal(1, evicted);
         Assert.False(Directory.Exists(res1.Entry!.CacheDirectory));
         Assert.Null(await manager.TryGetEntryAsync(kfV1));

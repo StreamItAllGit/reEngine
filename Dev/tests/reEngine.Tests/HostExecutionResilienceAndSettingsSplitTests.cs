@@ -32,7 +32,7 @@ public sealed class HostExecutionResilienceAndSettingsSplitTests : IDisposable
         Directory.CreateDirectory(dataDir);
         var sentinel = new BootCrashSentinel(dataDir);
 
-        BootCrashCheckResult clean = sentinel.BeginBoot("kings-field");
+        BootCrashCheckResult clean = sentinel.BeginBoot("crown-depths");
         Assert.False(clean.IsSafeModeTriggered);
         Assert.False(clean.HadPreviousSentinel);
         Assert.True(File.Exists(sentinel.SentinelPath));
@@ -44,7 +44,7 @@ public sealed class HostExecutionResilienceAndSettingsSplitTests : IDisposable
         Assert.False(liveCheck.IsSafeModeTriggered);
 
         // Simulated crash from dead PID triggers Safe Mode with cache rebuild guidance.
-        File.WriteAllText(sentinel.SentinelPath, """{ "pid": 99999997, "moduleId": "kings-field", "startedAtUtc": "2026-01-01T00:00:00Z" }""");
+        File.WriteAllText(sentinel.SentinelPath, """{ "pid": 99999997, "moduleId": "crown-depths", "startedAtUtc": "2026-01-01T00:00:00Z" }""");
         BootCrashCheckResult crashed = sentinel.InspectExisting();
         Assert.True(crashed.IsSafeModeTriggered);
         Assert.True(crashed.HadPreviousSentinel);
