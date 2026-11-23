@@ -12,4 +12,5 @@
 ## 3. Governance & Notion
 - **Assets & Docs:** `LICENSE` (`MPL-2.0`) | `Dev\assets\reEngine.{svg,png,ico}` | `Dev\docs\{plans,reports}\`
 - **Rules & QA:** all active Dev Bible Standards | `@dean` Gatekeeper | `@inspecter` Unit & Log QA | `@tessa` Notion
+- **Public Repo & Discord `/post` Hook:** `isPublicRepo: true` (`StreamItAllGit/reEngine`), `requireHumanReviewBeforePush: false`; every human-approved build/release and `/hotfix` pushes `/post` via `active.state` -> `discordPost` (`DISCORD_WEBHOOK_FOUNDATION`), tagging `@StreamDoesDev`.
 - **Notion:** Manual-only sync via "The Me Hub" (Standard 36)
